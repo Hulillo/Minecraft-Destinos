@@ -27,7 +27,9 @@ public final class DestinosCore implements ModInitializer {
 	public static final String MOD_ID = "destinos_core";
 	public static final Logger LOG = LoggerFactory.getLogger("Destinos Core");
 	private static final int TICKS_PRECARGA = 100;
-	private static final ExecutorService HILO = Executors.newSingleThreadExecutor(r -> {
+	/** Una zona tarda decenas de segundos en un solo hilo: se reparten entre varios, dejando núcleos al juego. */
+	private static final int HILOS = Math.max(1, Math.min(3, Runtime.getRuntime().availableProcessors() - 2));
+	private static final ExecutorService HILO = Executors.newFixedThreadPool(HILOS, r -> {
 		Thread t = new Thread(r, "Destinos Core - terreno");
 		t.setDaemon(true);
 		t.setPriority(Thread.MIN_PRIORITY);
@@ -76,7 +78,10 @@ public final class DestinosCore implements ModInitializer {
 		return m;
 	}
 
-	/** Entrada: #vx #vz (dr.calc) · Salida: #tdx #tdz #tkx #tkz #tw #tmar (dr.calc), como geo/territorio. */
+	/**
+	 * Entrada: #vx #vz (dr.calc) · Salida: #tdx #tdz #tkx #tkz #tw #tmar (dr.calc), como geo/territorio.
+	 * Si la zona aún se está calculando deja #tlisto a 0 y no toca nada más: el datapack lo vuelve a intentar.
+	 */
 	private static int territorio(CommandSourceStack fuente) {
 		MinecraftServer server = fuente.getServer();
 		MapaTerreno m = mapa(server);
@@ -86,7 +91,12 @@ public final class DestinosCore implements ModInitializer {
 			fuente.sendFailure(Component.literal("Destinos Core: falta la sal o #vx/#vz; ¿está cargado el datapack?"));
 			return 0;
 		}
-		MapaTerreno.Resultado r = m.consulta(vx, vz);
+		MapaTerreno.Resultado r = m.consultaSiLista(vx, vz);
+		if (r == null) {
+			escribe(server, "#tlisto", 0);
+			return 1;
+		}
+		escribe(server, "#tlisto", 1);
 		escribe(server, "#tdx", r.dcx());
 		escribe(server, "#tdz", r.dcz());
 		escribe(server, "#tkx", r.kx());

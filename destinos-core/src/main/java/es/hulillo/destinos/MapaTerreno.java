@@ -63,12 +63,37 @@ public final class MapaTerreno {
 		return sal;
 	}
 
+	/** Territorio de un punto. Bloquea hasta que su zona esté calculada (para pruebas y herramientas). */
 	public Resultado consulta(int x, int z) {
+		int tx = Math.floorDiv(x, CASILLA);
+		int tz = Math.floorDiv(z, CASILLA);
+		return resultado(ventana(Math.floorDiv(tx, NUCLEO), Math.floorDiv(tz, NUCLEO)).join(), x, z);
+	}
+
+	/**
+	 * Territorio de un punto sin bloquear: null si su zona aún se está calculando (y la pide).
+	 * Es lo que usa el juego, para que el servidor no se congele esperando al cálculo.
+	 */
+	public Resultado consultaSiLista(int x, int z) {
+		int tx = Math.floorDiv(x, CASILLA);
+		int tz = Math.floorDiv(z, CASILLA);
+		CompletableFuture<Ventana> f = ventana(Math.floorDiv(tx, NUCLEO), Math.floorDiv(tz, NUCLEO));
+		if (!f.isDone()) {
+			return null;
+		}
+		if (f.isCompletedExceptionally()) {
+			// si el terreno no se pudo leer, mejor fronteras geométricas que ninguna
+			int[] g = Geo.territorioGeometrico(x, z, sal);
+			return new Resultado(g[0], g[1], g[2], g[3], g[4] == 1, false);
+		}
+		return resultado(f.join(), x, z);
+	}
+
+	private Resultado resultado(Ventana v, int x, int z) {
 		int tx = Math.floorDiv(x, CASILLA);
 		int tz = Math.floorDiv(z, CASILLA);
 		int wx = Math.floorDiv(tx, NUCLEO);
 		int wz = Math.floorDiv(tz, NUCLEO);
-		Ventana v = ventana(wx, wz).join();
 		int i = (tx - (wx * NUCLEO - MARGEN)) + (tz - (wz * NUCLEO - MARGEN)) * N;
 		int d = v.dueno()[i];
 		if (d < 0) {
