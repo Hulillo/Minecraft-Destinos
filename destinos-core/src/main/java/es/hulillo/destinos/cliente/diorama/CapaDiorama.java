@@ -34,11 +34,17 @@ public final class CapaDiorama {
 	}
 
 	public static void dibuja(GuiGraphics g, MapViewport.View vista) {
-		if (TerritoriosCliente.vacio() || vista.layer() != TileKey.SURFACE) {
+		if (TerritoriosCliente.vacio()) {
+			TerritoriosCliente.ultimoPintado = "Diorama: aún no hay territorios";
+			return;
+		}
+		if (vista.layer() != TileKey.SURFACE) {
+			TerritoriosCliente.ultimoPintado = "Diorama: estás viendo cuevas, no la superficie";
 			return;
 		}
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.level == null || mc.level.dimension() != Level.OVERWORLD) {
+			TerritoriosCliente.ultimoPintado = "Diorama: no estás en el mundo normal";
 			return;
 		}
 		// Dentro de una capa, el juego ordena lo que se pinta por tipo: los rectángulos lisos irían antes que las
@@ -55,10 +61,19 @@ public final class CapaDiorama {
 		int tz0 = Math.floorDiv((int) Math.floor(Projection.zAt(v0, Y_MIN)), C);
 		int tz1 = Math.floorDiv((int) Math.ceil(Projection.zAt(v1, Y_MAX)), C);
 		boolean bordes = C * vista.zoom() >= CASILLA_MIN_BORDES;
+		int sinDatos = 0;
+		int mar = 0;
+		int fuera = 0;
+		int pintadas = 0;
 		for (int tz = tz0; tz <= tz1; tz++) {
 			for (int tx = tx0; tx <= tx1; tx++) {
 				PaqueteTerritorio.Ducado d = TerritoriosCliente.ducado(tx, tz);
 				if (d == null || d.oceano()) {
+					if (d == null) {
+						sinDatos++;
+					} else {
+						mar++;
+					}
 					continue;
 				}
 				int alto = TerritoriosCliente.altura(tx, tz);
@@ -67,8 +82,10 @@ public final class CapaDiorama {
 				int y0 = Math.round(vista.screenY(Projection.v(borde(alto, tx, tz - 1), tz * C)));
 				int y1 = Math.round(vista.screenY(Projection.v(borde(alto, tx, tz + 1), (tz + 1) * C)));
 				if (x1 <= vista.x() || x0 >= vista.x() + vista.width() || y1 <= vista.y() || y0 >= vista.y() + vista.height()) {
+					fuera++;
 					continue;
 				}
+				pintadas++;
 				lienzo.rect(x0, y0, x1, y1, ALFA_RELLENO << 24 | d.color());
 				if (bordes) {
 					frontera(lienzo, d, TerritoriosCliente.ducado(tx + 1, tz), x1 - 1, y0, x1, y1);
@@ -78,6 +95,9 @@ public final class CapaDiorama {
 				}
 			}
 		}
+		TerritoriosCliente.ultimoPintado = "Diorama: " + pintadas + " casillas pintadas, " + mar + " de mar, "
+				+ sinDatos + " sin datos, " + fuera + " fuera de pantalla (x " + tx0 + ".." + tx1 + ", z " + tz0 + ".." + tz1
+				+ ", zoom " + String.format("%.3f", vista.zoom()) + ")";
 	}
 
 	/** Altura del borde con la casilla vecina: la media, para que filas a distinta altura no dejen huecos. */
