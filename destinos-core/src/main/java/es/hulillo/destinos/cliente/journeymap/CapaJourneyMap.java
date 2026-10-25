@@ -9,6 +9,7 @@ import java.awt.geom.Area;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -17,6 +18,7 @@ import journeymap.api.v2.client.display.PolygonOverlay;
 import journeymap.api.v2.client.model.MapPolygonWithHoles;
 import journeymap.api.v2.client.model.ShapeProperties;
 import journeymap.api.v2.client.util.PolygonHelper;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.world.level.Level;
 
 /**
@@ -38,9 +40,15 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 	private final IClientAPI api;
 	private final Map<PaqueteTerritorio.Ducado, Area> areas = new HashMap<>();
 	private final Map<PaqueteTerritorio.Ducado, List<PolygonOverlay>> capas = new HashMap<>();
+	/**
+	 * Polígonos por rehacer. Al entrar o tras una conquista llegan varias zonas seguidas y un mismo reino sale en
+	 * todas: se rehace una sola vez al final del tick, no una por zona.
+	 */
+	private final Set<PaqueteTerritorio.Ducado> pendientes = new LinkedHashSet<>();
 
 	CapaJourneyMap(IClientAPI api) {
 		this.api = api;
+		ClientTickEvents.END_CLIENT_TICK.register(cliente -> rehaz());
 	}
 
 	@Override
@@ -60,9 +68,17 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 			areas.computeIfAbsent(ducado, k -> new Area()).add(trozo);
 			tocados.add(ducado);
 		});
+		pendientes.addAll(tocados);
+	}
+
+	private void rehaz() {
+		if (pendientes.isEmpty()) {
+			return;
+		}
 		// los reinos al final, para que su borde quede por encima de los ducados
-		tocados.stream().filter(d -> !esReino(d)).forEach(this::redibuja);
-		tocados.stream().filter(CapaJourneyMap::esReino).forEach(this::redibuja);
+		pendientes.stream().filter(d -> !esReino(d)).forEach(this::redibuja);
+		pendientes.stream().filter(CapaJourneyMap::esReino).forEach(this::redibuja);
+		pendientes.clear();
 	}
 
 	/**
@@ -90,6 +106,7 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		api.removeAll(DestinosCore.MOD_ID);
 		areas.clear();
 		capas.clear();
+		pendientes.clear();
 	}
 
 	/** Área de cada ducado (tierra y aguas territoriales) dentro de la zona, juntando las casillas seguidas de cada fila. */
@@ -135,7 +152,7 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 						.setStrokeOpacity(OPACIDAD_BORDE)
 						.setStrokeWidth(GROSOR_BORDE);
 		List<PolygonOverlay> nuevas = new ArrayList<>();
-		if (areas.get(ducado).isEmpty()) {
+		if (areas.get(ducado) == null || areas.get(ducado).isEmpty()) {
 			areas.remove(ducado);
 			return;
 		}
