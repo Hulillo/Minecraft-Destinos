@@ -57,7 +57,8 @@ public final class VistaPrevia {
 			double r = Math.abs(fractal(999, x / 6000.0, z / 6000.0));
 			boolean oceano = h < 60;
 			boolean rio = !oceano && r < 0.035 && h < 115;
-			return new MapaTerreno.Casilla((int) h, oceano, rio, h > 120);
+			int familia = oceano ? 1 : (int) ((fractal(4242, x / 2500.0, z / 2500.0) + 1) * 3);  // biomas de mentira
+			return new MapaTerreno.Casilla((int) h, oceano, rio, h > 120, familia);
 		};
 		MapaTerreno mapa = new MapaTerreno(terreno, sal, Executors.newFixedThreadPool(4));
 		int px = 600;
