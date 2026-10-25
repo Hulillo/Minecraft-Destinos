@@ -621,6 +621,10 @@ L("destinos.primer_reino", "Entras por primera vez en el Reino de %s, bajo el es
   "You enter the Kingdom of %s for the first time, under the banner of House %s.")
 L("destinos.gobierna", "Gobierna %s · Fama: %s", "Ruled by %s · Known for: %s")
 L("destinos.info_reino", "Casa %s · Cultura %s · Reino %s", "House %s · %s culture · %s realm")
+L("key.destinos_core.mapa_politico", "Mapa político (reinos en el mapa)", "Political map (kingdoms on the map)")
+L("key.category.destinos_core.destinos", "Destinos", "Destinos")
+L("destinos.mapa_politico.on", "Mapa político: activado", "Political map: on")
+L("destinos.mapa_politico.off", "Mapa político: desactivado", "Political map: off")
 L("destinos.reino_conquista", "Ahora del Reino de %s", "Now of the Kingdom of %s")
 # política viva: los textos los escribe Destinos Core (args: año, reino A, reino B, ducado)
 POLITICA = {
