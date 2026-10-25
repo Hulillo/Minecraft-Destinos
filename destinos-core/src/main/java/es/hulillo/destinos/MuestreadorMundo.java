@@ -82,7 +82,8 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 		int suelo = altura(x, z);
 		int y = Math.max(suelo, nivelMar);
 		Holder<Biome> b = bioma(x, y, z);
-		boolean oceano = b.is(BiomeTags.IS_OCEAN) || suelo < nivelMar - 12;
+		// el mar lo dice el bioma: la altura estimada puede fallar con generadores de terreno de mods
+		boolean oceano = b.is(BiomeTags.IS_OCEAN);
 		boolean rio = b.is(BiomeTags.IS_RIVER) || hayRioCerca(x, y, z);
 		boolean montana = b.is(BiomeTags.IS_MOUNTAIN) || suelo > nivelMar + 60;
 		return new MapaTerreno.Casilla(y, oceano, rio, montana, familia(b));
