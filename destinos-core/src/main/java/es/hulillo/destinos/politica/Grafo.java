@@ -24,6 +24,8 @@ public final class Grafo {
 	private final Map<Long, Integer> casillas = new HashMap<>();
 	private final Map<Long, Map<Long, int[]>> vecinos = new HashMap<>();
 	private final Set<Long> ventanas = new HashSet<>();
+	/** En qué ventanas sale cada ducado (para reenviar a los mapas solo las que cambian). */
+	private final Map<Long, Set<Long>> ventanasDe = new HashMap<>();
 
 	public static long id(int x, int z) {
 		return MapaTerreno.clave(x, z);
@@ -37,6 +39,11 @@ public final class Grafo {
 		return (int) id;
 	}
 
+	/** Si la ventana ya está metida (para no calcular su vecindario otra vez). */
+	public boolean conoce(long ventana) {
+		return ventanas.contains(ventana);
+	}
+
 	/** Añade lo que se ve en una ventana. Cada ventana cuenta una sola vez. */
 	public boolean agrega(long ventana, MapaTerreno.Vecindario v) {
 		if (!ventanas.add(ventana)) {
@@ -46,6 +53,7 @@ public final class Grafo {
 			long id = id(d.dcx(), d.dcz());
 			ducados.putIfAbsent(id, new Ducado(id, d.dcx(), d.dcz(), id(d.kx(), d.kz()), d.salvaje()));
 			casillas.merge(id, d.casillas(), Integer::sum);
+			ventanasDe.computeIfAbsent(id, k -> new HashSet<>()).add(ventana);
 		}
 		for (MapaTerreno.Frontera f : v.fronteras()) {
 			long a = id(f.dcx1(), f.dcz1());
@@ -81,6 +89,11 @@ public final class Grafo {
 
 	public Ducado ducado(long id) {
 		return ducados.get(id);
+	}
+
+	/** Ventanas donde sale el ducado. */
+	public Set<Long> ventanasDe(long id) {
+		return ventanasDe.getOrDefault(id, Set.of());
 	}
 
 	public int tamano(long id) {

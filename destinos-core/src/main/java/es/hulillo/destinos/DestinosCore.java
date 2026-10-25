@@ -82,9 +82,9 @@ public final class DestinosCore implements ModInitializer {
 	private static void tick(MinecraftServer server) {
 		PoliticaMundo pol = politica;
 		// los turnos se miran en cada tick para que /destinoscore turno responda enseguida
-		if (pol != null && mapa != null && pol.tick(server)) {
-			// hay ducados con otro dueño: los mapas de los clientes se vuelven a mandar
-			ENVIO.olvidaTodo();
+		if (pol != null && mapa != null) {
+			// las zonas con ducados de otro dueño se vuelven a mandar a los mapas de los clientes
+			ENVIO.olvidaZonas(pol.tick(server));
 		}
 		if (server.getTickCount() % TICKS_PRECARGA == 0) {
 			precarga(server);

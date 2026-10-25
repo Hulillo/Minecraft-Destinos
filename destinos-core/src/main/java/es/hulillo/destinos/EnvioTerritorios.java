@@ -42,7 +42,14 @@ final class EnvioTerritorios {
 		enviadas.remove(jugador);
 	}
 
-	/** Otro mundo, otra sal o la política ha cambiado dueños: hay que volver a mandarlo todo. */
+	/** Zonas que han cambiado (conquistas): se vuelven a mandar a quien ya las tenía. */
+	void olvidaZonas(Set<Long> claves) {
+		if (!claves.isEmpty()) {
+			enviadas.values().forEach(ya -> ya.removeAll(claves));
+		}
+	}
+
+	/** Otro mundo u otra sal: hay que volver a mandarlo todo. */
 	void olvidaTodo() {
 		enviadas.clear();
 	}
