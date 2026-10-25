@@ -154,7 +154,10 @@ fn("geo/territorio", [
 fn("jugador/comprobar", [
     "execute store result score #vx dr.calc run data get entity @s Pos[0]",
     "execute store result score #vz dr.calc run data get entity @s Pos[2]",
+    "# Con Destinos Core, #tlisto = 0 mientras el mod calcula esa zona: se espera al siguiente segundo",
+    "scoreboard players set #tlisto dr.calc 1",
     "function destinos:geo/territorio",
+    "execute if score #tlisto dr.calc matches 0 run return 0",
     "scoreboard players set #cd dr.calc 0",
     "execute unless score @s dr.dx = #tdx dr.calc run scoreboard players set #cd dr.calc 1",
     "execute unless score @s dr.dz = #tdz dr.calc run scoreboard players set #cd dr.calc 1",
@@ -503,10 +506,13 @@ fn("mapa/fila_j", fila)
 fn("mapa/celda", [
     op("#vx", "=", "#mi"), op("#vx", "*=", "#mpaso"), op("#vx", "+=", "#mx0"),
     op("#vz", "=", "#mj"), op("#vz", "*=", "#mpaso"), op("#vz", "+=", "#mz0"),
+    "scoreboard players set #tlisto dr.calc 1",
     "function destinos:geo/territorio",
     'data modify storage destinos:tmp celda set value {text:"█",color:"#555555"}',
     op("#hx", "=", "#tkx"), op("#hz", "=", "#tkz"),
-    "execute if score #tw dr.calc matches 0 run function destinos:mapa/color_reino",
+    "execute if score #tlisto dr.calc matches 1 if score #tw dr.calc matches 0 run function destinos:mapa/color_reino",
+    "# con Destinos Core: zona que el mod aún está calculando = sin cartografiar",
+    'execute if score #tlisto dr.calc matches 0 run data modify storage destinos:tmp celda set value {text:"░",color:"#888888"}',
     f'execute if score #mi dr.calc matches {MEDIO} if score #mj dr.calc matches {MEDIO} run data modify storage destinos:tmp celda.color set value "white"',
     "data modify storage destinos:tmp mapa.pagina append from storage destinos:tmp celda",
 ])
@@ -518,7 +524,7 @@ fn("mapa/entregar", [
     "data modify storage destinos:tmp libro set value []",
     "data modify storage destinos:tmp libro append from storage destinos:tmp mapa.pagina",
     "data modify storage destinos:tmp libro append value " + snbt([{"text": ""},
-        T("destinos.mapa.leyenda", "Cada cuadro ≈ %s bloques.\n\n█ blanco: tú\n█ gris: tierras salvajes\n█ color: un reino\n\nEl mapa no conoce el terreno: los mares y ríos no aparecen.", [str(PASO_MAPA)])]),
+        T("destinos.mapa.leyenda", "Cada cuadro ≈ %s bloques.\n\n█ blanco: tú\n█ gris: tierras salvajes\n█ color: un reino\n░ sin cartografiar aún: pide el mapa otra vez en un rato\n\nLos mares y ríos no aparecen.", [str(PASO_MAPA)])]),
     "data modify storage destinos:tmp mapa.libro set from storage destinos:tmp libro",
     "function destinos:mapa/dar with storage destinos:tmp mapa",
     "tag @s remove destinos.mapa",
@@ -584,8 +590,8 @@ L("destinos.mar_abierto", "Mar abierto", "Open sea")
 L("destinos.mapa.titulo", "Mapa político · N ↑", "Political map · N ↑")
 L("destinos.mapa.ocupado", "Ya se está dibujando un mapa, espera un momento.", "A map is already being drawn, wait a moment.")
 L("destinos.mapa.dibujando", "El cartógrafo dibuja el mapa…", "The cartographer is drawing the map…")
-L("destinos.mapa.leyenda", "Cada cuadro ≈ %s bloques.\n\n█ blanco: tú\n█ gris: tierras salvajes\n█ color: un reino\n\nEl mapa no conoce el terreno: los mares y ríos no aparecen.",
-  "Each square ≈ %s blocks.\n\n█ white: you\n█ grey: wildlands\n█ colour: a kingdom\n\nThe map doesn't know the terrain: seas and rivers aren't shown.")
+L("destinos.mapa.leyenda", "Cada cuadro ≈ %s bloques.\n\n█ blanco: tú\n█ gris: tierras salvajes\n█ color: un reino\n░ sin cartografiar aún: pide el mapa otra vez en un rato\n\nLos mares y ríos no aparecen.",
+  "Each square ≈ %s blocks.\n\n█ white: you\n█ grey: wildlands\n█ colour: a kingdom\n░ not mapped yet: ask for the map again in a while\n\nSeas and rivers aren't shown.")
 L("destinos.salvajes", "Tierras salvajes", "Wildlands")
 L("destinos.salvajes_info", "Tierras salvajes: aquí no manda nadie", "Wildlands: no one rules here")
 L("destinos.bossbar", "%s · %s", "%s · %s")

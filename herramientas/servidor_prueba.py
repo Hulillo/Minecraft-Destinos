@@ -10,11 +10,11 @@ open(os.path.join(RUN, "eula.txt"), "w").write("eula=true\n")
 open(os.path.join(RUN, "server.properties"), "w").write(
     "online-mode=false\nlevel-seed=184467221\nspawn-protection=0\nsync-chunk-writes=false\n")
 
+# La zona se calcula en segundo plano: se repite geo/territorio hasta que #tlisto sea 1
+ESPERA = ["scoreboard players set #vx dr.calc 1234", "scoreboard players set #vz dr.calc -5678",
+          "function destinos:geo/territorio", "scoreboard players get #tlisto dr.calc"]
 COMANDOS = [
     "destinoscore estado",
-    "scoreboard players set #vx dr.calc 1234",
-    "scoreboard players set #vz dr.calc -5678",
-    "function destinos:geo/territorio",
     "scoreboard players get #tdx dr.calc",
     "scoreboard players get #tkx dr.calc",
     "scoreboard players get #tw dr.calc",
@@ -40,6 +40,14 @@ threading.Thread(target=leer, daemon=True).start()
 if not listo.wait(900):
     p.kill(); sys.exit("El servidor no llegó a arrancar")
 time.sleep(5)
+inicio = time.time()
+while not any(re.search(r"#tlisto has 1 ", l) for l in lineas):
+    if time.time() - inicio > 300:
+        p.kill(); sys.exit("La zona de terreno no terminó de calcularse en 5 minutos")
+    for c in ESPERA:
+        p.stdin.write(c + "\n"); p.stdin.flush()
+    time.sleep(5)
+print(f"zona calculada en {time.time() - inicio:.0f} s sin bloquear el servidor")
 for c in COMANDOS:
     p.stdin.write(c + "\n"); p.stdin.flush(); time.sleep(3)
 p.stdin.write("stop\n"); p.stdin.flush()
