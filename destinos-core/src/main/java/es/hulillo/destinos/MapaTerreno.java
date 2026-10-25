@@ -30,13 +30,16 @@ public final class MapaTerreno {
 	private static final double DIAGONAL = Math.sqrt(2);
 	/** Coste extra de entrar en un río: los ríos son la frontera natural más clara. */
 	private static final double COSTE_RIO = 12;
+	/** Coste extra de pasar a otro tipo de bioma: un desierto entero tiende a quedar en el mismo lado. */
+	private static final double COSTE_BIOMA = 5;
 	/** Las tierras salvajes se extienden más despacio: los ducados con señor llegan antes a ríos y crestas. */
 	private static final double FRENO_SALVAJE = 1.6;
 	/** Un ducado salvaje con un pueblo a esta distancia de su centro pasa a tener señor. */
 	public static final int RADIO_PUEBLO = 900;
 
 	/** Lo que se sabe del terreno en el centro de una casilla. */
-	public record Casilla(int altura, boolean oceano, boolean rio, boolean montana) {
+	/** familia: tipo de bioma (desierto, selva, bosque…) para que las fronteras prefieran los cambios de paisaje. */
+	public record Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia) {
 	}
 
 	/** Fuente del terreno: el generador del mundo en el juego, o ruido sintético en las pruebas. */
@@ -143,6 +146,7 @@ public final class MapaTerreno {
 		boolean[] oceano = new boolean[total];
 		boolean[] rio = new boolean[total];
 		boolean[] montana = new boolean[total];
+		int[] familia = new int[total];
 		for (int j = 0; j < N; j++) {
 			for (int i = 0; i < N; i++) {
 				Casilla c = muestreador.muestra((bx + i) * CASILLA + CASILLA / 2, (bz + j) * CASILLA + CASILLA / 2);
@@ -151,6 +155,7 @@ public final class MapaTerreno {
 				oceano[k] = c.oceano();
 				rio[k] = c.rio();
 				montana[k] = c.montana();
+				familia[k] = c.familia();
 			}
 		}
 
@@ -229,6 +234,9 @@ public final class MapaTerreno {
 					}
 					if (rio[nk] && !rio[k]) {
 						paso += COSTE_RIO;
+					}
+					if (familia[nk] != familia[k]) {
+						paso += COSTE_BIOMA;
 					}
 					if (oceano[nk]) {
 						paso += 20;

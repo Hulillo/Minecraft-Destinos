@@ -3,7 +3,9 @@ package es.hulillo.destinos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
 import net.minecraft.core.registries.Registries;
+import net.fabricmc.fabric.api.tag.convention.v2.ConventionalBiomeTags;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.TagKey;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
@@ -26,6 +28,17 @@ import net.minecraft.world.level.levelgen.structure.placement.RandomSpreadStruct
 final class MuestreadorMundo implements MapaTerreno.Muestreador {
 	/** Los ríos son estrechos: además del centro de la casilla se mira a esta distancia en 4 direcciones. */
 	private static final int RADIO_RIO = 24;
+
+	/**
+	 * Familias de bioma, en orden de prioridad (el primero que encaja gana). Las etiquetas comunes de Fabric
+	 * las rellenan también los mods de biomas como WWOO. 0 = otra cosa.
+	 */
+	@SuppressWarnings("unchecked")
+	private static final TagKey<Biome>[] FAMILIAS = new TagKey[] {
+		BiomeTags.IS_OCEAN, BiomeTags.IS_RIVER, ConventionalBiomeTags.IS_SNOWY, BiomeTags.IS_BADLANDS,
+		ConventionalBiomeTags.IS_DESERT, BiomeTags.IS_JUNGLE, BiomeTags.IS_SAVANNA, ConventionalBiomeTags.IS_SWAMP,
+		BiomeTags.IS_TAIGA, BiomeTags.IS_MOUNTAIN, BiomeTags.IS_FOREST, ConventionalBiomeTags.IS_PLAINS,
+	};
 
 	private final BiomeSource biomas;
 	private final Climate.Sampler clima;
@@ -66,7 +79,16 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 				|| bioma(x + RADIO_RIO, y, z).is(BiomeTags.IS_RIVER) || bioma(x - RADIO_RIO, y, z).is(BiomeTags.IS_RIVER)
 				|| bioma(x, y, z + RADIO_RIO).is(BiomeTags.IS_RIVER) || bioma(x, y, z - RADIO_RIO).is(BiomeTags.IS_RIVER);
 		boolean montana = b.is(BiomeTags.IS_MOUNTAIN) || suelo > nivelMar + 60;
-		return new MapaTerreno.Casilla(y, oceano, rio, montana);
+		return new MapaTerreno.Casilla(y, oceano, rio, montana, familia(b));
+	}
+
+	private static int familia(Holder<Biome> b) {
+		for (int i = 0; i < FAMILIAS.length; i++) {
+			if (b.is(FAMILIAS[i])) {
+				return i + 1;
+			}
+		}
+		return 0;
 	}
 
 	/** Mira los sitios donde el juego intentaría poner un pueblo y si su bioma lo permite. */
