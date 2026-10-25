@@ -72,6 +72,9 @@ final class PoliticaMundo {
 	/** Mete en el grafo las zonas recién calculadas y fija el reino protegido. */
 	void alimenta(MinecraftServer server, MapaTerreno mapa) {
 		for (long clave : mapa.ventanasListas()) {
+			if (grafo.conoce(clave)) {
+				continue;
+			}
 			MapaTerreno.Vecindario v = mapa.vecindarioSiListo(clave);
 			if (v != null) {
 				grafo.agrega(clave, v);
@@ -83,8 +86,8 @@ final class PoliticaMundo {
 					continue;
 				}
 				MapaTerreno.Resultado r = mapa.consultaSiLista(p.getBlockX(), p.getBlockZ());
-				if (r != null && !r.oceano() && !aplica(r).salvaje()) {
-					MapaTerreno.Resultado a = aplica(r);
+				MapaTerreno.Resultado a = r == null ? null : aplica(r);
+				if (a != null && !a.oceano() && !a.salvaje()) {
 					politica.protege(Grafo.id(a.kx(), a.kz()));
 					guarda(server);
 					break;
@@ -93,10 +96,10 @@ final class PoliticaMundo {
 		}
 	}
 
-	/** Juega los turnos que tocan. Devuelve true si algún ducado ha cambiado de dueño (hay que reenviar mapas). */
-	boolean tick(MinecraftServer server) {
+	/** Juega los turnos que tocan. Devuelve las ventanas con ducados que han cambiado de dueño (a reenviar a los mapas). */
+	Set<Long> tick(MinecraftServer server) {
 		if (grafo.ducados().isEmpty()) {
-			return false;
+			return Set.of();
 		}
 		long ahora = server.overworld().getGameTime();
 		int turnos = forzados;
@@ -105,7 +108,7 @@ final class PoliticaMundo {
 			turnos++;
 			siguiente = ahora + ticksTurno;
 		}
-		return turnos > 0 && juega(server, turnos);
+		return turnos > 0 ? juega(server, turnos) : Set.of();
 	}
 
 	/** Pide n turnos ya (se juegan en el siguiente tick, fuera del comando, para que el datapack responda). */
@@ -119,7 +122,7 @@ final class PoliticaMundo {
 		guarda(server);
 	}
 
-	private boolean juega(MinecraftServer server, int turnos) {
+	private Set<Long> juega(MinecraftServer server, int turnos) {
 		Map<Long, Politica.Cambio> antes = new HashMap<>(politica.cambios());
 		List<Suceso> sucesos = new ArrayList<>();
 		for (int i = 0; i < turnos; i++) {
@@ -128,12 +131,14 @@ final class PoliticaMundo {
 		Set<Long> cambiados = new HashSet<>(antes.keySet());
 		cambiados.addAll(politica.cambios().keySet());
 		cambiados.removeIf(d -> Objects.equals(antes.get(d), politica.cambios().get(d)));
+		Set<Long> ventanas = new HashSet<>();
 		for (long d : cambiados) {
 			actualizaDucado(server, d);
+			ventanas.addAll(grafo.ventanasDe(d));
 		}
 		anuncia(server, sucesos);
 		guarda(server);
-		return !cambiados.isEmpty();
+		return ventanas;
 	}
 
 	void guarda(MinecraftServer server) {
