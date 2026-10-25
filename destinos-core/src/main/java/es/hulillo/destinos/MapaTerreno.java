@@ -28,6 +28,12 @@ public final class MapaTerreno {
 	public static final int MAR_ISLA = 6;
 	private static final int RADIO_AJUSTE = 6;
 	private static final double DIAGONAL = Math.sqrt(2);
+	/** Coste extra de entrar en un río: los ríos son la frontera natural más clara. */
+	private static final double COSTE_RIO = 12;
+	/** Las tierras salvajes se extienden más despacio: los ducados con señor llegan antes a ríos y crestas. */
+	private static final double FRENO_SALVAJE = 1.6;
+	/** Un ducado salvaje con un pueblo a esta distancia de su centro pasa a tener señor. */
+	public static final int RADIO_PUEBLO = 900;
 
 	/** Lo que se sabe del terreno en el centro de una casilla. */
 	public record Casilla(int altura, boolean oceano, boolean rio, boolean montana) {
@@ -36,13 +42,18 @@ public final class MapaTerreno {
 	/** Fuente del terreno: el generador del mundo en el juego, o ruido sintético en las pruebas. */
 	public interface Muestreador {
 		Casilla muestra(int bloqueX, int bloqueZ);
+
+		/** ¿Puede aparecer un pueblo a menos de `radio` bloques de (x, z)? */
+		default boolean hayPueblo(int bloqueX, int bloqueZ, int radio) {
+			return false;
+		}
 	}
 
 	/** Territorio de un punto: ducado (celda), reino (celda), salvaje y si la casilla es mar. */
 	public record Resultado(int dcx, int dcz, int kx, int kz, boolean salvaje, boolean oceano) {
 	}
 
-	private record Semilla(int cx, int cz, int ctx, int ctz) {
+	private record Semilla(int cx, int cz, int ctx, int ctz, Geo.Reino reino, boolean salvaje) {
 	}
 
 	private record Ventana(int[] dueno, boolean[] isla, boolean[] oceano, List<Semilla> semillas) {
@@ -101,8 +112,7 @@ public final class MapaTerreno {
 			return new Resultado(g[0], g[1], g[2], g[3], g[4] == 1, v.oceano()[i]);
 		}
 		Semilla s = v.semillas().get(d);
-		Geo.Reino r = Geo.reinoDeDucado(s.cx(), s.cz(), s.ctx(), s.ctz(), sal);
-		return new Resultado(s.cx(), s.cz(), r.kx(), r.kz(), r.salvaje() || v.isla()[i], v.oceano()[i]);
+		return new Resultado(s.cx(), s.cz(), s.reino().kx(), s.reino().kz(), s.salvaje() || v.isla()[i], v.oceano()[i]);
 	}
 
 	/** Pide en segundo plano las ventanas alrededor de un punto para que luego no haya tirones. */
@@ -163,7 +173,10 @@ public final class MapaTerreno {
 				if (k < 0) {
 					continue;
 				}
-				semillas.add(new Semilla(cx, cz, c[0], c[1]));
+				// solo depende del ducado, así que todas las ventanas que lo ven están de acuerdo
+				Geo.Reino r = Geo.reinoDeDucado(cx, cz, c[0], c[1], sal);
+				boolean salvaje = r.salvaje() && !muestreador.hayPueblo(c[0], c[1], RADIO_PUEBLO);
+				semillas.add(new Semilla(cx, cz, c[0], c[1], r, salvaje));
 				origen.add(k);
 			}
 		}
@@ -215,13 +228,16 @@ public final class MapaTerreno {
 						paso += 2.5;
 					}
 					if (rio[nk] && !rio[k]) {
-						paso += 8;
+						paso += COSTE_RIO;
 					}
 					if (oceano[nk]) {
 						paso += 20;
 					}
 					if (di != 0 && dj != 0) {
 						paso *= DIAGONAL;
+					}
+					if (semillas.get(s).salvaje()) {
+						paso *= FRENO_SALVAJE;
 					}
 					double nc = e[0] + paso;
 					if (nc < coste[nk] || (nc == coste[nk] && s < dueno[nk])) {

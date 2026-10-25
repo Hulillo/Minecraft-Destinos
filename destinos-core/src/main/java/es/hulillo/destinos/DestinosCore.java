@@ -27,8 +27,8 @@ public final class DestinosCore implements ModInitializer {
 	public static final String MOD_ID = "destinos_core";
 	public static final Logger LOG = LoggerFactory.getLogger("Destinos Core");
 	private static final int TICKS_PRECARGA = 100;
-	/** Una zona tarda decenas de segundos en un solo hilo: se reparten entre varios, dejando núcleos al juego. */
-	private static final int HILOS = Math.max(1, Math.min(3, Runtime.getRuntime().availableProcessors() - 2));
+	/** Las zonas se calculan en segundo plano en 1 o 2 hilos, dejando el resto de núcleos a la carga de chunks. */
+	private static final int HILOS = Math.max(1, Math.min(2, Runtime.getRuntime().availableProcessors() - 2));
 	private static final ExecutorService HILO = Executors.newFixedThreadPool(HILOS, r -> {
 		Thread t = new Thread(r, "Destinos Core - terreno");
 		t.setDaemon(true);
