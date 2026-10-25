@@ -14,6 +14,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.scores.Objective;
 import net.minecraft.world.scores.ReadOnlyScoreInfo;
 import net.minecraft.world.scores.ScoreHolder;
@@ -129,6 +130,16 @@ public final class DestinosCore implements ModInitializer {
 				? "Destinos Core: esperando al datapack (no hay sal todavía)"
 				: "Destinos Core: sal " + m.sal() + " · zonas de terreno calculadas: " + m.ventanasCalculadas();
 		fuente.sendSuccess(() -> Component.literal(texto), false);
+		ServerPlayer p = fuente.getPlayer();
+		if (p != null && p.level().dimension() == Level.OVERWORLD) {
+			// para comprobar en cada mundo que la altura estimada sin generar chunks se parece a la de verdad
+			int x = p.getBlockX();
+			int z = p.getBlockZ();
+			MapaTerreno.Casilla c = new MuestreadorMundo(fuente.getServer().overworld()).muestra(x, z);
+			int real = p.level().getHeight(Heightmap.Types.OCEAN_FLOOR, x, z);
+			String alturas = "Aquí: suelo estimado " + c.altura() + " · suelo real " + real + (c.oceano() ? " · lo toma por MAR" : "");
+			fuente.sendSuccess(() -> Component.literal(alturas), false);
+		}
 		return 1;
 	}
 
