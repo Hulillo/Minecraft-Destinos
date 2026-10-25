@@ -8,12 +8,21 @@
 	"license": "MIT",
 	"environment": "*",
 	"entrypoints": {
-		"main": ["es.hulillo.destinos.DestinosCore"]
+		"main": ["es.hulillo.destinos.DestinosCore"],
+		"client": ["es.hulillo.destinos.cliente.DestinosCoreCliente"],
+		"journeymap": ["es.hulillo.destinos.cliente.journeymap.PluginJourneyMap"]
 	},
+	"mixins": [
+		{"config": "destinos_core.diorama.mixins.json", "environment": "client"}
+	],
 	"depends": {
 		"fabricloader": ">=0.19.5",
 		"minecraft": "~1.21.11",
 		"java": ">=21",
 		"fabric-api": "*"
+	},
+	"suggests": {
+		"journeymap": "*",
+		"diorama": "*"
 	}
 }

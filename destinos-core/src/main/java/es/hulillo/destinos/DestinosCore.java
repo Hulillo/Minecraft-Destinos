@@ -6,6 +6,8 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -22,6 +24,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Destinos Core: el datapack "Destinos: Reinos" viene dentro del mod (se carga solo en todos los mundos) y
  * su función geo/territorio llama a /destinoscore territorio, que reparte el mundo siguiendo el terreno.
+ * Además manda a los clientes con el mod las zonas calculadas, para pintar los reinos en sus mapas.
  */
 public final class DestinosCore implements ModInitializer {
 	public static final String MOD_ID = "destinos_core";
@@ -37,6 +40,9 @@ public final class DestinosCore implements ModInitializer {
 	});
 
 	private static volatile MapaTerreno mapa;
+	private static final EnvioTerritorios ENVIO = new EnvioTerritorios();
+	/** Mapa para el que se mandaron las zonas: si cambia (otra sal), se manda todo otra vez. */
+	private static MapaTerreno mapaEnviado;
 
 	@Override
 	public void onInitialize() {
@@ -44,7 +50,13 @@ public final class DestinosCore implements ModInitializer {
 				dispatcher.register(Commands.literal("destinoscore")
 						.then(Commands.literal("territorio").executes(ctx -> territorio(ctx.getSource())))
 						.then(Commands.literal("estado").executes(ctx -> estado(ctx.getSource())))));
-		ServerLifecycleEvents.SERVER_STOPPED.register(server -> mapa = null);
+		PayloadTypeRegistry.playS2C().register(PaqueteTerritorio.TIPO, PaqueteTerritorio.CODEC);
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ENVIO.olvida(handler.getPlayer().getUUID()));
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+			mapa = null;
+			mapaEnviado = null;
+			ENVIO.olvidaTodo();
+		});
 		ServerTickEvents.END_SERVER_TICK.register(DestinosCore::precarga);
 		LOG.info("Destinos Core listo: fronteras que siguen el terreno");
 	}
@@ -57,9 +69,14 @@ public final class DestinosCore implements ModInitializer {
 		if (m == null) {
 			return;
 		}
+		if (m != mapaEnviado) {
+			ENVIO.olvidaTodo();
+			mapaEnviado = m;
+		}
 		for (ServerPlayer p : server.getPlayerList().getPlayers()) {
 			if (p.level().dimension() == Level.OVERWORLD) {
 				m.precarga(p.getBlockX(), p.getBlockZ());
+				ENVIO.envia(m, p);
 			}
 		}
 	}

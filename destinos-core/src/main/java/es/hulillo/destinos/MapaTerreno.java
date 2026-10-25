@@ -2,6 +2,7 @@ package es.hulillo.destinos;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.PriorityQueue;
 import java.util.concurrent.CompletableFuture;
@@ -63,7 +64,14 @@ public final class MapaTerreno {
 	private record Semilla(int cx, int cz, int ctx, int ctz, Geo.Reino reino, boolean salvaje) {
 	}
 
-	private record Ventana(int[] dueno, boolean[] isla, boolean[] oceano, List<Semilla> semillas) {
+	private record Ventana(int[] dueno, boolean[] isla, boolean[] oceano, int[] altura, List<Semilla> semillas) {
+	}
+
+	/**
+	 * El núcleo de una ventana, listo para pintarlo en un mapa: cada casilla (i + j * NUCLEO, empezando en la
+	 * casilla wx * NUCLEO, wz * NUCLEO) apunta a una entrada de la paleta y lleva la altura del suelo.
+	 */
+	public record Zona(int wx, int wz, List<Resultado> paleta, short[] indice, short[] altura) {
 	}
 
 	private final Muestreador muestreador;
@@ -113,6 +121,28 @@ public final class MapaTerreno {
 		}
 	}
 
+	/** El núcleo de la ventana (wx, wz) si ya está calculado, o null (sin pedirlo). */
+	public Zona zonaSiLista(int wx, int wz) {
+		CompletableFuture<Ventana> f = ventanas.get(clave(wx, wz));
+		if (f == null || !f.isDone() || f.isCompletedExceptionally()) {
+			return null;
+		}
+		Ventana v = f.join();
+		LinkedHashMap<Resultado, Integer> paleta = new LinkedHashMap<>();
+		short[] indice = new short[NUCLEO * NUCLEO];
+		short[] altura = new short[NUCLEO * NUCLEO];
+		for (int j = 0; j < NUCLEO; j++) {
+			for (int i = 0; i < NUCLEO; i++) {
+				int x = (wx * NUCLEO + i) * CASILLA;
+				int z = (wz * NUCLEO + j) * CASILLA;
+				Resultado r = resultado(v, x, z);
+				indice[i + j * NUCLEO] = (short) (int) paleta.computeIfAbsent(r, k -> paleta.size());
+				altura[i + j * NUCLEO] = (short) v.altura()[(i + MARGEN) + (j + MARGEN) * N];
+			}
+		}
+		return new Zona(wx, wz, List.copyOf(paleta.keySet()), indice, altura);
+	}
+
 	private Resultado resultado(Ventana v, int x, int z) {
 		int tx = Math.floorDiv(x, CASILLA);
 		int tz = Math.floorDiv(z, CASILLA);
@@ -132,7 +162,7 @@ public final class MapaTerreno {
 	}
 
 	/** Ventana cuyo núcleo contiene la coordenada de bloque (en un eje). */
-	private static int indiceVentana(int bloque) {
+	public static int indiceVentana(int bloque) {
 		return Math.floorDiv(Math.floorDiv(bloque, CASILLA), NUCLEO);
 	}
 
@@ -149,9 +179,12 @@ public final class MapaTerreno {
 		return ventanas.size();
 	}
 
+	public static long clave(int wx, int wz) {
+		return ((long) wx << 32) ^ (wz & 0xffffffffL);
+	}
+
 	private CompletableFuture<Ventana> ventana(int wx, int wz) {
-		long clave = ((long) wx << 32) ^ (wz & 0xffffffffL);
-		return ventanas.computeIfAbsent(clave, k -> CompletableFuture.supplyAsync(() -> calcula(wx, wz), hilo));
+		return ventanas.computeIfAbsent(clave(wx, wz), k -> CompletableFuture.supplyAsync(() -> calcula(wx, wz), hilo));
 	}
 
 	private Ventana calcula(int wx, int wz) {
@@ -219,10 +252,12 @@ public final class MapaTerreno {
 			isla[k] = !terreno[k].oceano() && mar[k] >= MAR_ISLA;
 		}
 		boolean[] oceano = new boolean[total];
+		int[] altura = new int[total];
 		for (int k = 0; k < total; k++) {
 			oceano[k] = terreno[k].oceano();
+			altura[k] = terreno[k].altura();
 		}
-		return new Ventana(dueno, isla, oceano, semillas);
+		return new Ventana(dueno, isla, oceano, altura, semillas);
 	}
 
 	/** Terreno en el centro de cada casilla de la ventana (con margen). */

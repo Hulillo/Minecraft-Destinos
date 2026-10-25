@@ -15,8 +15,9 @@ NS = os.path.join(DP, "data", "destinos")
 C = dict(S_D=K.S_DUCADO, S_K=K.S_REINO, WARP=K.WARP, D_FRONTERA=K.D_FRONTERA, P_FRONTERA=K.P_FRONTERA,
          P_SALVAJE=K.P_SALVAJE, K_JZ=K.K_JZ, K_REINO=K.K_REINO, K_SALV=K.K_SALV, K_WARP=K.K_WARP)
 SALES = ["NR", "Casa", "Lema", "Rasgo", "Color", "ND", "Tipo", "Gen", "Sen", "Fama", "Geo", "Mar"]  # sal + 1..12
+assert SALES.index("Color") + 1 == K.SAL_COLOR, "Destinos Core calcula el color con K.SAL_COLOR"
 N_LEMAS, N_RASGOS, N_FAMAS, N_GEO = 12, 5, 6, 5
-COLORES = ["#c0392b", "#2e5fa8", "#2e8b3a", "#7b3fa0", "#c9a227", "#d8d8d8", "#a0582c", "#138d90", "#b0306a", "#5b6f7c"]
+COLORES = K.COLORES
 
 files = {}
 def fn(path, lines):
