@@ -41,9 +41,15 @@ jobs:
         working-directory: destinos-core
         run: ./gradlew build --no-daemon
 
+      - name: Arrancar un servidor de Minecraft con el mod y comprobar que el datapack carga sin errores
+        run: python herramientas/servidor_prueba.py
+        timeout-minutes: 20
+
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: destinos-core
           path: |
             destinos-core/build/libs/*.jar
             salida/*.zip
+            destinos-core/run/logs/latest.log
