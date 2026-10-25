@@ -21,6 +21,9 @@ public final class Geo {
 		0xc0392b, 0x2e5fa8, 0x2e8b3a, 0x7b3fa0, 0xc9a227, 0xd8d8d8, 0xa0582c, 0x138d90, 0xb0306a, 0x5b6f7c,
 	};
 	public static final int SAL_COLOR = 5;
+	/** Rasgo del reino (0 militar, 1 mercantil, 2 devoto, 3 decadente, 4 joven), como en el datapack. */
+	public static final int SAL_RASGO = 4;
+	public static final int N_RASGOS = 5;
 
 	private Geo() {
 	}
@@ -92,6 +95,11 @@ public final class Geo {
 	/** Color (RGB) del reino de celda (kx, kz): el mismo que elige reino/generar_reino. */
 	public static int colorReino(int kx, int kz, int sal) {
 		return COLORES[Math.floorMod(hash(kx, kz, sal + SAL_COLOR), COLORES.length)];
+	}
+
+	/** Rasgo del reino de celda (kx, kz): el mismo índice que elige reino/generar_reino. */
+	public static int rasgoReino(int kx, int kz, int sal) {
+		return Math.floorMod(hash(kx, kz, sal + SAL_RASGO), N_RASGOS);
 	}
 
 	/** Territorio geométrico (sin terreno), el mismo que calcula el datapack solo. */

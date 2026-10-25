@@ -2,6 +2,7 @@ package es.hulillo.destinos;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.UnaryOperator;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -26,8 +27,8 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 	 * toda costa) y el color de su reino (RGB).
 	 */
 	public record Ducado(int dcx, int dcz, int kx, int kz, boolean salvaje, boolean oceano, boolean internacional, int color) {
-		static Ducado de(MapaTerreno.Entrada e, int sal) {
-			MapaTerreno.Resultado r = e.territorio();
+		static Ducado de(MapaTerreno.Entrada e, int sal, UnaryOperator<MapaTerreno.Resultado> politica) {
+			MapaTerreno.Resultado r = politica.apply(e.territorio());
 			int color = r.salvaje() ? COLOR_SALVAJE : Geo.colorReino(r.kx(), r.kz(), sal);
 			return new Ducado(r.dcx(), r.dcz(), r.kx(), r.kz(), r.salvaje(), r.oceano(), e.internacional(), color);
 		}
@@ -46,10 +47,11 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 		}
 	}
 
-	public static PaqueteTerritorio de(MapaTerreno.Zona z, int sal) {
+	/** politica: pone encima el dueño actual de cada ducado (conquistas, crisis…). */
+	public static PaqueteTerritorio de(MapaTerreno.Zona z, int sal, UnaryOperator<MapaTerreno.Resultado> politica) {
 		List<Ducado> paleta = new ArrayList<>(z.paleta().size());
 		for (MapaTerreno.Entrada e : z.paleta()) {
-			paleta.add(Ducado.de(e, sal));
+			paleta.add(Ducado.de(e, sal, politica));
 		}
 		return new PaqueteTerritorio(sal, z.wx(), z.wz(), paleta, z.indice(), z.altura());
 	}
