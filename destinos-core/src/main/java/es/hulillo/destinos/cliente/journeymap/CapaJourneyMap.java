@@ -8,8 +8,10 @@ import java.awt.Rectangle;
 import java.awt.geom.Area;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import journeymap.api.v2.client.IClientAPI;
 import journeymap.api.v2.client.display.PolygonOverlay;
 import journeymap.api.v2.client.model.MapPolygonWithHoles;
@@ -39,12 +41,23 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 	}
 
 	@Override
-	public void zonaNueva(PaqueteTerritorio zona) {
-		Map<PaqueteTerritorio.Ducado, Area> nuevas = trozos(zona);
-		nuevas.forEach((ducado, trozo) -> {
+	public void zonaNueva(PaqueteTerritorio zona, PaqueteTerritorio anterior) {
+		Set<PaqueteTerritorio.Ducado> tocados = new HashSet<>();
+		if (anterior != null) {
+			// la zona ha cambiado (conquistas): se quita lo que aportaba antes
+			trozos(anterior).forEach((ducado, trozo) -> {
+				Area a = areas.get(ducado);
+				if (a != null) {
+					a.subtract(trozo);
+					tocados.add(ducado);
+				}
+			});
+		}
+		trozos(zona).forEach((ducado, trozo) -> {
 			areas.computeIfAbsent(ducado, k -> new Area()).add(trozo);
-			redibuja(ducado);
+			tocados.add(ducado);
 		});
+		tocados.forEach(this::redibuja);
 	}
 
 	@Override
@@ -90,6 +103,10 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 				.setStrokeOpacity(OPACIDAD_BORDE)
 				.setStrokeWidth(GROSOR_BORDE);
 		List<PolygonOverlay> nuevas = new ArrayList<>();
+		if (areas.get(ducado).isEmpty()) {
+			areas.remove(ducado);
+			return;
+		}
 		for (MapPolygonWithHoles poligono : PolygonHelper.createPolygonFromArea(areas.get(ducado), Y)) {
 			PolygonOverlay capa = new PolygonOverlay(DestinosCore.MOD_ID, Level.OVERWORLD, estilo, poligono);
 			capa.setOverlayGroupName(GRUPO);

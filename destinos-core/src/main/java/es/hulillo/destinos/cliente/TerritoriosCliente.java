@@ -15,7 +15,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public final class TerritoriosCliente {
 	/** Quien pinta los territorios en un mapa y quiere enterarse de los cambios. */
 	public interface Oyente {
-		void zonaNueva(PaqueteTerritorio zona);
+		/** anterior: lo que había antes en esa zona (el servidor la reenvía si cambia de dueño), o null. */
+		void zonaNueva(PaqueteTerritorio zona, PaqueteTerritorio anterior);
 
 		void borrado();
 	}
@@ -34,7 +35,7 @@ public final class TerritoriosCliente {
 
 	public static void escucha(Oyente oyente) {
 		OYENTES.add(oyente);
-		ZONAS.values().forEach(oyente::zonaNueva);
+		ZONAS.values().forEach(z -> oyente.zonaNueva(z, null));
 	}
 
 	static void recibe(PaqueteTerritorio zona) {
@@ -45,8 +46,9 @@ public final class TerritoriosCliente {
 			DestinosCore.LOG.info("Destinos Core: llegan los territorios del servidor para pintarlos en el mapa");
 		}
 		sal = zona.sal();
-		ZONAS.put(MapaTerreno.clave(zona.wx(), zona.wz()), zona);
-		OYENTES.forEach(o -> o.zonaNueva(zona));
+		PaqueteTerritorio anterior = ZONAS.put(MapaTerreno.clave(zona.wx(), zona.wz()), zona);
+		ultima = null;
+		OYENTES.forEach(o -> o.zonaNueva(zona, anterior));
 	}
 
 	static void borra() {

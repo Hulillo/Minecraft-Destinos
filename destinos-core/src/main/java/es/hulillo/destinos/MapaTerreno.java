@@ -4,7 +4,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.PriorityQueue;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -66,7 +68,20 @@ public final class MapaTerreno {
 	private record Semilla(int cx, int cz, int ctx, int ctz, Geo.Reino reino, boolean salvaje) {
 	}
 
-	private record Ventana(int[] dueno, boolean[] isla, boolean[] oceano, int[] mar, int[] altura, List<Semilla> semillas) {
+	private record Ventana(int[] dueno, boolean[] isla, boolean[] oceano, boolean[] dificil, int[] mar, int[] altura,
+			List<Semilla> semillas) {
+	}
+
+	/** Un ducado visto en el núcleo de una ventana: su reino del mapa base y cuántas casillas de tierra tiene ahí. */
+	public record DucadoVisto(int dcx, int dcz, int kx, int kz, boolean salvaje, int casillas) {
+	}
+
+	/** Dos ducados que se tocan por tierra: casillas de frontera y cuántas cruzan un río o una montaña. */
+	public record Frontera(int dcx1, int dcz1, int dcx2, int dcz2, int casillas, int dificiles) {
+	}
+
+	/** Ducados y fronteras del núcleo de una ventana: lo que necesita la política para saber quién toca a quién. */
+	public record Vecindario(List<DucadoVisto> ducados, List<Frontera> fronteras) {
 	}
 
 	/** Lo que se pinta en una casilla: su territorio y, si es mar, si ya está lejos de toda costa. */
@@ -149,6 +164,72 @@ public final class MapaTerreno {
 			}
 		}
 		return new Zona(wx, wz, List.copyOf(paleta.keySet()), indice, altura);
+	}
+
+	/** Claves de las ventanas ya calculadas (sin error). */
+	public List<Long> ventanasListas() {
+		List<Long> res = new ArrayList<>();
+		ventanas.forEach((k, f) -> {
+			if (f.isDone() && !f.isCompletedExceptionally()) {
+				res.add(k);
+			}
+		});
+		return res;
+	}
+
+	/** Ducados y fronteras de la ventana (wx, wz) si ya está calculada, o null. */
+	public Vecindario vecindarioSiListo(long clave) {
+		CompletableFuture<Ventana> f = ventanas.get(clave);
+		if (f == null || !f.isDone() || f.isCompletedExceptionally()) {
+			return null;
+		}
+		Ventana v = f.join();
+		int ns = v.semillas().size();
+		int[] casillas = new int[ns];
+		Map<Long, int[]> pares = new TreeMap<>();
+		for (int j = MARGEN; j < MARGEN + NUCLEO; j++) {
+			for (int i = MARGEN; i < MARGEN + NUCLEO; i++) {
+				int k = i + j * N;
+				int a = v.dueno()[k];
+				if (a < 0 || v.oceano()[k]) {
+					continue;
+				}
+				casillas[a]++;
+				// este y sur siempre; oeste y norte solo si el vecino es margen (si es núcleo ya se contó desde él)
+				for (int[] d : new int[][] {{1, 0}, {0, 1}, {-1, 0}, {0, -1}}) {
+					int ni = i + d[0];
+					int nj = j + d[1];
+					boolean nucleo = ni >= MARGEN && nj >= MARGEN && ni < MARGEN + NUCLEO && nj < MARGEN + NUCLEO;
+					if ((d[0] < 0 || d[1] < 0) && nucleo) {
+						continue;
+					}
+					int nk = ni + nj * N;
+					int b = v.dueno()[nk];
+					if (b < 0 || b == a || v.oceano()[nk]) {
+						continue;
+					}
+					int[] par = pares.computeIfAbsent((long) Math.min(a, b) * ns + Math.max(a, b), c -> new int[2]);
+					par[0]++;
+					if (v.dificil()[k] || v.dificil()[nk]) {
+						par[1]++;
+					}
+				}
+			}
+		}
+		List<DucadoVisto> ducados = new ArrayList<>();
+		for (int s = 0; s < ns; s++) {
+			Semilla se = v.semillas().get(s);
+			if (casillas[s] > 0) {
+				ducados.add(new DucadoVisto(se.cx(), se.cz(), se.reino().kx(), se.reino().kz(), se.salvaje(), casillas[s]));
+			}
+		}
+		List<Frontera> fronteras = new ArrayList<>();
+		pares.forEach((clavePar, par) -> {
+			Semilla a = v.semillas().get((int) (clavePar / ns));
+			Semilla b = v.semillas().get((int) (clavePar % ns));
+			fronteras.add(new Frontera(a.cx(), a.cz(), b.cx(), b.cz(), par[0], par[1]));
+		});
+		return new Vecindario(ducados, fronteras);
 	}
 
 	private Resultado resultado(Ventana v, int x, int z) {
@@ -261,11 +342,13 @@ public final class MapaTerreno {
 		}
 		boolean[] oceano = new boolean[total];
 		int[] altura = new int[total];
+		boolean[] dificil = new boolean[total];
 		for (int k = 0; k < total; k++) {
 			oceano[k] = terreno[k].oceano();
 			altura[k] = terreno[k].altura();
+			dificil[k] = terreno[k].rio() || terreno[k].montana();
 		}
-		return new Ventana(dueno, isla, oceano, mar, altura, semillas);
+		return new Ventana(dueno, isla, oceano, dificil, mar, altura, semillas);
 	}
 
 	/** Terreno en el centro de cada casilla de la ventana (con margen). */

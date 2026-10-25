@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -15,7 +16,7 @@ import net.minecraft.server.level.ServerPlayer;
 final class EnvioTerritorios {
 	private final Map<UUID, Set<Long>> enviadas = new HashMap<>();
 
-	void envia(MapaTerreno mapa, ServerPlayer jugador) {
+	void envia(MapaTerreno mapa, UnaryOperator<MapaTerreno.Resultado> politica, ServerPlayer jugador) {
 		if (!ServerPlayNetworking.canSend(jugador, PaqueteTerritorio.TIPO)) {
 			return;
 		}
@@ -30,7 +31,7 @@ final class EnvioTerritorios {
 				}
 				MapaTerreno.Zona zona = mapa.zonaSiLista(wx + ox, wz + oz);
 				if (zona != null) {
-					ServerPlayNetworking.send(jugador, PaqueteTerritorio.de(zona, mapa.sal()));
+					ServerPlayNetworking.send(jugador, PaqueteTerritorio.de(zona, mapa.sal(), politica));
 					ya.add(clave);
 				}
 			}
@@ -41,7 +42,7 @@ final class EnvioTerritorios {
 		enviadas.remove(jugador);
 	}
 
-	/** Otro mundo u otra sal: hay que volver a mandarlo todo. */
+	/** Otro mundo, otra sal o la política ha cambiado dueños: hay que volver a mandarlo todo. */
 	void olvidaTodo() {
 		enviadas.clear();
 	}
