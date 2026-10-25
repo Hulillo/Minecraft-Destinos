@@ -1,0 +1,11 @@
+{
+	"required": false,
+	"minVersion": "0.8",
+	"package": "es.hulillo.destinos.cliente.diorama.mixin",
+	"plugin": "es.hulillo.destinos.cliente.diorama.PluginMixins",
+	"compatibilityLevel": "JAVA_21",
+	"client": ["MixinMapViewport"],
+	"injectors": {
+		"defaultRequire": 0
+	}
+}

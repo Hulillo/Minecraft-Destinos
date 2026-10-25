@@ -10,6 +10,17 @@ base {
 }
 
 repositories {
+	// Solo para compilar los enchufes de mapas: ni JourneyMap ni Diorama van dentro del jar
+	maven {
+		name = "JourneyMap"
+		url = "https://maven.blamejared.com"
+		content { includeGroup "info.journeymap" }
+	}
+	maven {
+		name = "Modrinth"
+		url = "https://api.modrinth.com/maven"
+		content { includeGroup "maven.modrinth" }
+	}
 }
 
 dependencies {
@@ -17,6 +28,8 @@ dependencies {
 	mappings loom.officialMojangMappings()
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	modCompileOnly "info.journeymap:journeymap-api-fabric:${project.journeymap_api_version}"
+	modCompileOnly "maven.modrinth:diorama-map:${project.diorama_version}"
 }
 
 // El datapack y los idiomas los genera datapack/build.py --mod (lo hace la CI antes de compilar)
