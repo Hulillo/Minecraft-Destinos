@@ -29,7 +29,7 @@ public final class DestinosCoreCliente implements ClientModInitializer {
 		String aqui = d == null
 				? "sin datos aquí todavía"
 				: "ducado " + d.dcx() + "," + d.dcz() + " · reino " + d.kx() + "," + d.kz()
-						+ (d.salvaje() ? " · salvaje" : "") + (d.oceano() ? " · MAR" : "")
+						+ (d.salvaje() ? " · salvaje" : "") + (d.oceano() ? (d.internacional() ? " · mar internacional" : " · aguas territoriales") : "")
 						+ " · color #" + String.format("%06x", d.color()) + " · altura " + TerritoriosCliente.altura(tx, tz);
 		fuente.sendFeedback(Component.literal("Destinos Core: " + TerritoriosCliente.zonas() + " zonas recibidas · " + aqui));
 		fuente.sendFeedback(Component.literal(TerritoriosCliente.ultimoPintado));

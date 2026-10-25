@@ -21,11 +21,20 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 	public static final int COLOR_SALVAJE = 0x8a8577;
 	private static final int CASILLAS = MapaTerreno.NUCLEO * MapaTerreno.NUCLEO;
 
-	/** Un ducado tal y como se pinta: su reino, si es salvaje o mar, y el color de su reino (RGB). */
-	public record Ducado(int dcx, int dcz, int kx, int kz, boolean salvaje, boolean oceano, int color) {
-		static Ducado de(MapaTerreno.Resultado r, int sal) {
+	/**
+	 * Un ducado tal y como se pinta: su reino, si es salvaje o mar (y si ese mar es internacional, lejos de
+	 * toda costa) y el color de su reino (RGB).
+	 */
+	public record Ducado(int dcx, int dcz, int kx, int kz, boolean salvaje, boolean oceano, boolean internacional, int color) {
+		static Ducado de(MapaTerreno.Entrada e, int sal) {
+			MapaTerreno.Resultado r = e.territorio();
 			int color = r.salvaje() ? COLOR_SALVAJE : Geo.colorReino(r.kx(), r.kz(), sal);
-			return new Ducado(r.dcx(), r.dcz(), r.kx(), r.kz(), r.salvaje(), r.oceano(), color);
+			return new Ducado(r.dcx(), r.dcz(), r.kx(), r.kz(), r.salvaje(), r.oceano(), e.internacional(), color);
+		}
+
+		/** Mar de nadie: no se pinta. */
+		public boolean deNadie() {
+			return oceano && internacional;
 		}
 
 		public boolean mismoReino(Ducado o) {
@@ -39,8 +48,8 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 
 	public static PaqueteTerritorio de(MapaTerreno.Zona z, int sal) {
 		List<Ducado> paleta = new ArrayList<>(z.paleta().size());
-		for (MapaTerreno.Resultado r : z.paleta()) {
-			paleta.add(Ducado.de(r, sal));
+		for (MapaTerreno.Entrada e : z.paleta()) {
+			paleta.add(Ducado.de(e, sal));
 		}
 		return new PaqueteTerritorio(sal, z.wx(), z.wz(), paleta, z.indice(), z.altura());
 	}
@@ -64,7 +73,7 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 			buf.writeVarInt(d.dcz());
 			buf.writeVarInt(d.kx());
 			buf.writeVarInt(d.kz());
-			buf.writeByte((d.salvaje() ? 1 : 0) | (d.oceano() ? 2 : 0));
+			buf.writeByte((d.salvaje() ? 1 : 0) | (d.oceano() ? 2 : 0) | (d.internacional() ? 4 : 0));
 			buf.writeInt(d.color());
 		}
 		for (int k = 0; k < CASILLAS; k++) {
@@ -85,7 +94,7 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 			int kx = buf.readVarInt();
 			int kz = buf.readVarInt();
 			int flags = buf.readByte();
-			paleta.add(new Ducado(dcx, dcz, kx, kz, (flags & 1) != 0, (flags & 2) != 0, buf.readInt()));
+			paleta.add(new Ducado(dcx, dcz, kx, kz, (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0, buf.readInt()));
 		}
 		short[] indice = new short[CASILLAS];
 		short[] altura = new short[CASILLAS];
