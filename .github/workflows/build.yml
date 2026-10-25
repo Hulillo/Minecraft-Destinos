@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "25"  # Loom 1.18 necesita Java 25 para ejecutarse; el mod se sigue compilando para Java 21 (release = 21)
 
       - uses: gradle/actions/setup-gradle@v4
 
