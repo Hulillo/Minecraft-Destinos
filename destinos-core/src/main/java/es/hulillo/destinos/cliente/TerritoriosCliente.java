@@ -1,5 +1,6 @@
 package es.hulillo.destinos.cliente;
 
+import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.MapaTerreno;
 import es.hulillo.destinos.PaqueteTerritorio;
 import java.util.HashMap;
@@ -37,6 +38,9 @@ public final class TerritoriosCliente {
 	static void recibe(PaqueteTerritorio zona) {
 		if (!ZONAS.isEmpty() && zona.sal() != sal) {
 			borra();
+		}
+		if (ZONAS.isEmpty()) {
+			DestinosCore.LOG.info("Destinos Core: llegan los territorios del servidor para pintarlos en el mapa");
 		}
 		sal = zona.sal();
 		ZONAS.put(MapaTerreno.clave(zona.wx(), zona.wz()), zona);

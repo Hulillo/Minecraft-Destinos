@@ -41,6 +41,10 @@ public final class CapaDiorama {
 		if (mc.level == null || mc.level.dimension() != Level.OVERWORLD) {
 			return;
 		}
+		// Dentro de una capa, el juego ordena lo que se pinta por tipo: los rectángulos lisos irían antes que las
+		// casillas de Diorama (que llevan textura) y quedarían tapados. En una capa nueva van encima, y la
+		// niebla de Diorama, que se pinta después, sigue tapándolos.
+		g.nextStratum();
 		Lienzo lienzo = new Lienzo(g, redondo(vista) ? vista : null);
 		double u0 = vista.minU();
 		double u1 = u0 + vista.width() / vista.zoom();
