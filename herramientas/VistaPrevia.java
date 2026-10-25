@@ -1,5 +1,5 @@
-package es.hulillo.destinos;
-
+import es.hulillo.destinos.Geo;
+import es.hulillo.destinos.MapaTerreno;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.util.concurrent.Executors;
@@ -7,7 +7,8 @@ import javax.imageio.ImageIO;
 
 /**
  * Vista previa sin Minecraft: terreno sintético (ruido) + fronteras calculadas por MapaTerreno.
- * Uso: java es.hulillo.destinos.VistaPrevia <sal> <salida.png> [geo|terreno] [radio] [altura_base]
+ * Herramienta de desarrollo, no es un test de Gradle.
+ * Uso: java VistaPrevia <sal> <salida.png> [geo|terreno] [radio] [altura_base]
  */
 public final class VistaPrevia {
 	private VistaPrevia() {
