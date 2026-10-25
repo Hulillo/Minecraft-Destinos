@@ -30,6 +30,10 @@ public final class MapaTerreno {
 	private static final double DIAGONAL = Math.sqrt(2);
 	/** Coste extra de entrar en un río: los ríos son la frontera natural más clara. */
 	private static final double COSTE_RIO = 12;
+	private static final double COSTE_MONTANA = 2.5;
+	private static final double COSTE_MAR = 20;
+	/** Cada tantos bloques de desnivel entre casillas suman 1 al coste. */
+	private static final double DESNIVEL_POR_PUNTO = 6.0;
 	/** Coste extra de pasar a otro tipo de bioma: un desierto entero tiende a quedar en el mismo lado. */
 	private static final double COSTE_BIOMA = 5;
 	/** Las tierras salvajes se extienden más despacio: los ducados con señor llegan antes a ríos y crestas. */
@@ -79,9 +83,7 @@ public final class MapaTerreno {
 
 	/** Territorio de un punto. Bloquea hasta que su zona esté calculada (para pruebas y herramientas). */
 	public Resultado consulta(int x, int z) {
-		int tx = Math.floorDiv(x, CASILLA);
-		int tz = Math.floorDiv(z, CASILLA);
-		return resultado(ventana(Math.floorDiv(tx, NUCLEO), Math.floorDiv(tz, NUCLEO)).join(), x, z);
+		return resultado(ventanaDe(x, z).join(), x, z);
 	}
 
 	/**
@@ -89,44 +91,58 @@ public final class MapaTerreno {
 	 * Es lo que usa el juego, para que el servidor no se congele esperando al cálculo.
 	 */
 	public Resultado consultaSiLista(int x, int z) {
-		int tx = Math.floorDiv(x, CASILLA);
-		int tz = Math.floorDiv(z, CASILLA);
-		CompletableFuture<Ventana> f = ventana(Math.floorDiv(tx, NUCLEO), Math.floorDiv(tz, NUCLEO));
+		CompletableFuture<Ventana> f = ventanaDe(x, z);
 		if (!f.isDone()) {
 			return null;
 		}
 		if (f.isCompletedExceptionally()) {
 			// si el terreno no se pudo leer, mejor fronteras geométricas que ninguna
-			int[] g = Geo.territorioGeometrico(x, z, sal);
-			return new Resultado(g[0], g[1], g[2], g[3], g[4] == 1, false);
+			return geometrico(x, z, false);
 		}
 		return resultado(f.join(), x, z);
 	}
 
-	private Resultado resultado(Ventana v, int x, int z) {
-		int tx = Math.floorDiv(x, CASILLA);
-		int tz = Math.floorDiv(z, CASILLA);
-		int wx = Math.floorDiv(tx, NUCLEO);
-		int wz = Math.floorDiv(tz, NUCLEO);
-		int i = (tx - (wx * NUCLEO - MARGEN)) + (tz - (wz * NUCLEO - MARGEN)) * N;
-		int d = v.dueno()[i];
-		if (d < 0) {
-			int[] g = Geo.territorioGeometrico(x, z, sal);
-			return new Resultado(g[0], g[1], g[2], g[3], g[4] == 1, v.oceano()[i]);
-		}
-		Semilla s = v.semillas().get(d);
-		return new Resultado(s.cx(), s.cz(), s.reino().kx(), s.reino().kz(), s.salvaje() || v.isla()[i], v.oceano()[i]);
-	}
-
 	/** Pide en segundo plano las ventanas alrededor de un punto para que luego no haya tirones. */
 	public void precarga(int x, int z) {
-		int wx = Math.floorDiv(Math.floorDiv(x, CASILLA), NUCLEO);
-		int wz = Math.floorDiv(Math.floorDiv(z, CASILLA), NUCLEO);
+		int wx = indiceVentana(x);
+		int wz = indiceVentana(z);
 		for (int ox = -1; ox <= 1; ox++) {
 			for (int oz = -1; oz <= 1; oz++) {
 				ventana(wx + ox, wz + oz);
 			}
 		}
+	}
+
+	private Resultado resultado(Ventana v, int x, int z) {
+		int tx = Math.floorDiv(x, CASILLA);
+		int tz = Math.floorDiv(z, CASILLA);
+		int i = (tx - origenVentana(indiceVentana(x))) + (tz - origenVentana(indiceVentana(z))) * N;
+		int d = v.dueno()[i];
+		if (d < 0) {
+			return geometrico(x, z, v.oceano()[i]);
+		}
+		Semilla s = v.semillas().get(d);
+		return new Resultado(s.cx(), s.cz(), s.reino().kx(), s.reino().kz(), s.salvaje() || v.isla()[i], v.oceano()[i]);
+	}
+
+	/** Lo que diría el datapack solo, sin mirar el terreno. */
+	private Resultado geometrico(int x, int z, boolean oceano) {
+		int[] g = Geo.territorioGeometrico(x, z, sal);
+		return new Resultado(g[0], g[1], g[2], g[3], g[4] == 1, oceano);
+	}
+
+	/** Ventana cuyo núcleo contiene la coordenada de bloque (en un eje). */
+	private static int indiceVentana(int bloque) {
+		return Math.floorDiv(Math.floorDiv(bloque, CASILLA), NUCLEO);
+	}
+
+	/** Primera casilla (con margen) de la ventana w en un eje. */
+	private static int origenVentana(int w) {
+		return w * NUCLEO - MARGEN;
+	}
+
+	private CompletableFuture<Ventana> ventanaDe(int x, int z) {
+		return ventana(indiceVentana(x), indiceVentana(z));
 	}
 
 	public int ventanasCalculadas() {
@@ -139,52 +155,13 @@ public final class MapaTerreno {
 	}
 
 	private Ventana calcula(int wx, int wz) {
-		int bx = wx * NUCLEO - MARGEN;
-		int bz = wz * NUCLEO - MARGEN;
+		int bx = origenVentana(wx);
+		int bz = origenVentana(wz);
 		int total = N * N;
-		int[] altura = new int[total];
-		boolean[] oceano = new boolean[total];
-		boolean[] rio = new boolean[total];
-		boolean[] montana = new boolean[total];
-		int[] familia = new int[total];
-		for (int j = 0; j < N; j++) {
-			for (int i = 0; i < N; i++) {
-				Casilla c = muestreador.muestra((bx + i) * CASILLA + CASILLA / 2, (bz + j) * CASILLA + CASILLA / 2);
-				int k = i + j * N;
-				altura[k] = c.altura();
-				oceano[k] = c.oceano();
-				rio[k] = c.rio();
-				montana[k] = c.montana();
-				familia[k] = c.familia();
-			}
-		}
-
-		// Semillas: centros de ducado dentro de la ventana, movidos a tierra firme si caen en el mar.
+		Casilla[] terreno = muestrea(bx, bz);
 		List<Semilla> semillas = new ArrayList<>();
 		List<Integer> origen = new ArrayList<>();
-		int minX = bx * CASILLA;
-		int minZ = bz * CASILLA;
-		int maxX = (bx + N) * CASILLA;
-		int maxZ = (bz + N) * CASILLA;
-		for (int cx = Math.floorDiv(minX, Geo.S_DUCADO) - 1; cx <= Math.floorDiv(maxX, Geo.S_DUCADO) + 1; cx++) {
-			for (int cz = Math.floorDiv(minZ, Geo.S_DUCADO) - 1; cz <= Math.floorDiv(maxZ, Geo.S_DUCADO) + 1; cz++) {
-				int[] c = Geo.centro(cx, cz, Geo.S_DUCADO, sal);
-				int ti = Math.floorDiv(c[0], CASILLA) - bx;
-				int tj = Math.floorDiv(c[1], CASILLA) - bz;
-				if (ti < 0 || tj < 0 || ti >= N || tj >= N) {
-					continue;
-				}
-				int k = ajustaATierra(ti, tj, oceano);
-				if (k < 0) {
-					continue;
-				}
-				// solo depende del ducado, así que todas las ventanas que lo ven están de acuerdo
-				Geo.Reino r = Geo.reinoDeDucado(cx, cz, c[0], c[1], sal);
-				boolean salvaje = r.salvaje() && !muestreador.hayPueblo(c[0], c[1], RADIO_PUEBLO);
-				semillas.add(new Semilla(cx, cz, c[0], c[1], r, salvaje));
-				origen.add(k);
-			}
-		}
+		buscaSemillas(bx, bz, terreno, semillas, origen);
 
 		// Dijkstra con varias fuentes: cada casilla se queda con el ducado más barato de alcanzar.
 		double[] coste = new double[total];
@@ -192,13 +169,13 @@ public final class MapaTerreno {
 		int[] dueno = new int[total];
 		Arrays.fill(dueno, -1);
 		int[] mar = new int[total];
-		PriorityQueue<double[]> cola = new PriorityQueue<>((a, b) -> {
-			int c = Double.compare(a[0], b[0]);
+		PriorityQueue<double[]> cola = new PriorityQueue<>((p, q) -> {
+			int c = Double.compare(p[0], q[0]);
 			if (c != 0) {
 				return c;
 			}
-			c = Double.compare(a[2], b[2]);
-			return c != 0 ? c : Double.compare(a[1], b[1]);
+			c = Double.compare(p[2], q[2]);
+			return c != 0 ? c : Double.compare(p[1], q[1]);
 		});
 		for (int s = 0; s < semillas.size(); s++) {
 			int k = origen.get(s);
@@ -215,43 +192,22 @@ public final class MapaTerreno {
 			if (e[0] > coste[k] || dueno[k] != s) {
 				continue;
 			}
+			boolean salvaje = semillas.get(s).salvaje();
 			int i = k % N;
 			int j = k / N;
 			for (int dj = -1; dj <= 1; dj++) {
 				for (int di = -1; di <= 1; di++) {
-					if (di == 0 && dj == 0) {
-						continue;
-					}
 					int ni = i + di;
 					int nj = j + dj;
-					if (ni < 0 || nj < 0 || ni >= N || nj >= N) {
+					if ((di == 0 && dj == 0) || ni < 0 || nj < 0 || ni >= N || nj >= N) {
 						continue;
 					}
 					int nk = ni + nj * N;
-					double paso = 1 + Math.abs(altura[nk] - altura[k]) / 6.0;
-					if (montana[nk]) {
-						paso += 2.5;
-					}
-					if (rio[nk] && !rio[k]) {
-						paso += COSTE_RIO;
-					}
-					if (familia[nk] != familia[k]) {
-						paso += COSTE_BIOMA;
-					}
-					if (oceano[nk]) {
-						paso += 20;
-					}
-					if (di != 0 && dj != 0) {
-						paso *= DIAGONAL;
-					}
-					if (semillas.get(s).salvaje()) {
-						paso *= FRENO_SALVAJE;
-					}
-					double nc = e[0] + paso;
+					double nc = e[0] + costePaso(terreno[k], terreno[nk], di != 0 && dj != 0, salvaje);
 					if (nc < coste[nk] || (nc == coste[nk] && s < dueno[nk])) {
 						coste[nk] = nc;
 						dueno[nk] = s;
-						mar[nk] = mar[k] + (oceano[nk] ? 1 : 0);
+						mar[nk] = mar[k] + (terreno[nk].oceano() ? 1 : 0);
 						cola.add(new double[] {nc, nk, s});
 					}
 				}
@@ -260,14 +216,77 @@ public final class MapaTerreno {
 
 		boolean[] isla = new boolean[total];
 		for (int k = 0; k < total; k++) {
-			isla[k] = !oceano[k] && mar[k] >= MAR_ISLA;
+			isla[k] = !terreno[k].oceano() && mar[k] >= MAR_ISLA;
+		}
+		boolean[] oceano = new boolean[total];
+		for (int k = 0; k < total; k++) {
+			oceano[k] = terreno[k].oceano();
 		}
 		return new Ventana(dueno, isla, oceano, semillas);
 	}
 
+	/** Terreno en el centro de cada casilla de la ventana (con margen). */
+	private Casilla[] muestrea(int bx, int bz) {
+		Casilla[] terreno = new Casilla[N * N];
+		for (int j = 0; j < N; j++) {
+			for (int i = 0; i < N; i++) {
+				terreno[i + j * N] = muestreador.muestra((bx + i) * CASILLA + CASILLA / 2, (bz + j) * CASILLA + CASILLA / 2);
+			}
+		}
+		return terreno;
+	}
+
+	/** Centros de ducado dentro de la ventana, movidos a tierra firme si caen en el mar. */
+	private void buscaSemillas(int bx, int bz, Casilla[] terreno, List<Semilla> semillas, List<Integer> origen) {
+		int c0x = Math.floorDiv(bx * CASILLA, Geo.S_DUCADO) - 1;
+		int c1x = Math.floorDiv((bx + N) * CASILLA, Geo.S_DUCADO) + 1;
+		int c0z = Math.floorDiv(bz * CASILLA, Geo.S_DUCADO) - 1;
+		int c1z = Math.floorDiv((bz + N) * CASILLA, Geo.S_DUCADO) + 1;
+		for (int cx = c0x; cx <= c1x; cx++) {
+			for (int cz = c0z; cz <= c1z; cz++) {
+				int[] c = Geo.centro(cx, cz, Geo.S_DUCADO, sal);
+				int ti = Math.floorDiv(c[0], CASILLA) - bx;
+				int tj = Math.floorDiv(c[1], CASILLA) - bz;
+				if (ti < 0 || tj < 0 || ti >= N || tj >= N) {
+					continue;
+				}
+				int k = ajustaATierra(ti, tj, terreno);
+				if (k < 0) {
+					continue;
+				}
+				// solo depende del ducado, así que todas las ventanas que lo ven están de acuerdo
+				Geo.Reino r = Geo.reinoDeDucado(cx, cz, c[0], c[1], sal);
+				boolean salvaje = r.salvaje() && !muestreador.hayPueblo(c[0], c[1], RADIO_PUEBLO);
+				semillas.add(new Semilla(cx, cz, c[0], c[1], r, salvaje));
+				origen.add(k);
+			}
+		}
+	}
+
+	/** Lo que cuesta andar de una casilla a la vecina: ríos, montañas, mar y cambios de bioma lo encarecen. */
+	private static double costePaso(Casilla desde, Casilla hacia, boolean diagonal, boolean salvaje) {
+		double paso = 1 + Math.abs(hacia.altura() - desde.altura()) / DESNIVEL_POR_PUNTO;
+		if (hacia.montana()) {
+			paso += COSTE_MONTANA;
+		}
+		if (hacia.rio() && !desde.rio()) {
+			paso += COSTE_RIO;
+		}
+		if (hacia.familia() != desde.familia()) {
+			paso += COSTE_BIOMA;
+		}
+		if (hacia.oceano()) {
+			paso += COSTE_MAR;
+		}
+		if (diagonal) {
+			paso *= DIAGONAL;
+		}
+		return salvaje ? paso * FRENO_SALVAJE : paso;
+	}
+
 	/** Casilla de tierra más cercana a (ti, tj) en un radio pequeño, o -1 si todo es mar. */
-	private static int ajustaATierra(int ti, int tj, boolean[] oceano) {
-		if (!oceano[ti + tj * N]) {
+	private static int ajustaATierra(int ti, int tj, Casilla[] terreno) {
+		if (!terreno[ti + tj * N].oceano()) {
 			return ti + tj * N;
 		}
 		for (int r = 1; r <= RADIO_AJUSTE; r++) {
@@ -280,7 +299,7 @@ public final class MapaTerreno {
 					}
 					int i = ti + di;
 					int j = tj + dj;
-					if (i < 0 || j < 0 || i >= N || j >= N || oceano[i + j * N]) {
+					if (i < 0 || j < 0 || i >= N || j >= N || terreno[i + j * N].oceano()) {
 						continue;
 					}
 					int d = di * di + dj * dj;

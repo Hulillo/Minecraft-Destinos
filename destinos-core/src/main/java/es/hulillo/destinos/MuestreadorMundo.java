@@ -28,6 +28,7 @@ import net.minecraft.world.level.levelgen.structure.placement.RandomSpreadStruct
 final class MuestreadorMundo implements MapaTerreno.Muestreador {
 	/** Los ríos son estrechos: además del centro de la casilla se mira a esta distancia en 4 direcciones. */
 	private static final int RADIO_RIO = 24;
+	private static final int[][] CRUZ = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
 	/**
 	 * Familias de bioma, en orden de prioridad (el primero que encaja gana). Las etiquetas comunes de Fabric
@@ -75,11 +76,18 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 		int y = Math.max(suelo, nivelMar);
 		Holder<Biome> b = bioma(x, y, z);
 		boolean oceano = b.is(BiomeTags.IS_OCEAN) || suelo < nivelMar - 12;
-		boolean rio = b.is(BiomeTags.IS_RIVER)
-				|| bioma(x + RADIO_RIO, y, z).is(BiomeTags.IS_RIVER) || bioma(x - RADIO_RIO, y, z).is(BiomeTags.IS_RIVER)
-				|| bioma(x, y, z + RADIO_RIO).is(BiomeTags.IS_RIVER) || bioma(x, y, z - RADIO_RIO).is(BiomeTags.IS_RIVER);
+		boolean rio = b.is(BiomeTags.IS_RIVER) || hayRioCerca(x, y, z);
 		boolean montana = b.is(BiomeTags.IS_MOUNTAIN) || suelo > nivelMar + 60;
 		return new MapaTerreno.Casilla(y, oceano, rio, montana, familia(b));
+	}
+
+	private boolean hayRioCerca(int x, int y, int z) {
+		for (int[] d : CRUZ) {
+			if (bioma(x + d[0] * RADIO_RIO, y, z + d[1] * RADIO_RIO).is(BiomeTags.IS_RIVER)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static int familia(Holder<Biome> b) {

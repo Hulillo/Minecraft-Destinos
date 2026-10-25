@@ -2,6 +2,7 @@
 import json, os, shutil, sys, zipfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from culturas import CULTURAS, ORDEN, BIOMAS
+import constantes as K
 
 # Uso: python build.py <salida> [--mod <carpeta generated del mod>]
 OUT = sys.argv[1]
@@ -10,30 +11,47 @@ DP = os.path.join(OUT, "destinos_reinos")
 RP = os.path.join(OUT, "destinos_reinos_idiomas")
 NS = os.path.join(DP, "data", "destinos")
 
-# Constantes compartidas con sim.py (si cambias una, cambia la otra)
-C = dict(S_D=1500, S_K=6000, WARP=1200, D_FRONTERA=2800, P_FRONTERA=45, P_SALVAJE=4,
-         K_JZ=7919, K_REINO=104729, K_SALV=1299709, K_WARP=15485863)
+# Constantes del mapa (datapack/constantes.py, compartidas con sim.py)
+C = dict(S_D=K.S_DUCADO, S_K=K.S_REINO, WARP=K.WARP, D_FRONTERA=K.D_FRONTERA, P_FRONTERA=K.P_FRONTERA,
+         P_SALVAJE=K.P_SALVAJE, K_JZ=K.K_JZ, K_REINO=K.K_REINO, K_SALV=K.K_SALV, K_WARP=K.K_WARP)
 SALES = ["NR", "Casa", "Lema", "Rasgo", "Color", "ND", "Tipo", "Gen", "Sen", "Fama", "Geo", "Mar"]  # sal + 1..12
 N_LEMAS, N_RASGOS, N_FAMAS, N_GEO = 12, 5, 6, 5
 COLORES = ["#c0392b", "#2e5fa8", "#2e8b3a", "#7b3fa0", "#c9a227", "#d8d8d8", "#a0582c", "#138d90", "#b0306a", "#5b6f7c"]
 
 files = {}
 def fn(path, lines):
-    files[f"function/{path}.mcfunction"] = "\n".join(l for l in lines if l is not None) + "\n"
+    """Escribe una función. Las líneas con $(…) se marcan solas como macro."""
+    lines = [("$" + l if "$(" in l and not l.startswith("$") else l) for l in lines if l is not None]
+    files[f"function/{path}.mcfunction"] = "\n".join(lines) + "\n"
 def js(path, obj, base=NS):
     files_json.append((os.path.join(base, path), obj))
 files_json = []
 def op(a, o, b, ca="dr.calc", cb="dr.calc"):
     return f"scoreboard players operation {a} {ca} {o} {b} {cb}"
+def tirada(sal, mod):
+    """#h = hash(#hx, #hz, #sal<sal>) % mod"""
+    return [op("#hs", "=", f"#sal{sal}", cb="dr.const"), "function destinos:geo/hash", op("#h", "%=", f"#{mod}", cb="dr.const")]
+def a_storage(dst, pares):
+    """Copia marcadores a destinos:tmp <dst>.<campo>; pares = [(campo, "holder objetivo"), …]"""
+    pre = f"{dst}." if dst else ""
+    return [f"execute store result storage destinos:tmp {pre}{k} int 1 run scoreboard players get {src}" for k, src in pares]
+def celda_macro(x, z):
+    """#hx #hz = $(x) $(z) (función macro)"""
+    return [f"$scoreboard players set #hx dr.calc $({x})", f"$scoreboard players set #hz dr.calc $({z})"]
+def nombre_nuevo(sal):
+    """Genera un nombre con la cultura de destinos:tmp gen y lo guarda en destinos:tmp nuevo"""
+    return [op("#hs", "=", f"#sal{sal}", cb="dr.const"), "function destinos:nombres/generar",
+            "data modify storage destinos:tmp nuevo.nombre set from storage destinos:tmp gen.nombre",
+            "data modify storage destinos:tmp nuevo.cultura set from storage destinos:tmp gen.cultura"]
+TRIGGERS = ("donde", "hud", "mapa")
+TIEMPOS_TITULO = "title @s times 10 70 20"
 
 # ---------------------------------------------------------------- init
 fn("init/load", [
     "# Destinos: Reinos v0.1 · carga",
     *[f"scoreboard objectives add {o} dummy" for o in
       ["dr.calc", "dr.const", "dr.dx", "dr.dz", "dr.kx", "dr.kz", "dr.w", "dr.init", "dr.id", "dr.hud", "dr.mar"]],
-    "scoreboard objectives add destinos.donde trigger",
-    "scoreboard objectives add destinos.hud trigger",
-    "scoreboard objectives add destinos.mapa trigger",
+    *[f"scoreboard objectives add destinos.{t} trigger" for t in TRIGGERS],
     "tag @a remove destinos.mapa",
     *[f"scoreboard players set #{n} dr.const {n}" for n in (2, 3, 4, 5, 6, 8, 10, 12, 16, 24, 100, 65536)],
     "scoreboard players set #-1 dr.const -1",
@@ -73,9 +91,7 @@ fn("init/tablas", [
 fn("bucle", [
     "schedule function destinos:bucle 20t replace",
     "execute as @a unless score @s dr.id matches 1.. run function destinos:jugador/nuevo",
-    "scoreboard players enable @a destinos.donde",
-    "scoreboard players enable @a destinos.hud",
-    "scoreboard players enable @a destinos.mapa",
+    *[f"scoreboard players enable @a destinos.{t}" for t in TRIGGERS],
     "execute as @a[scores={destinos.mapa=1..}] at @s run function destinos:jugador/mapa",
     "execute as @a[scores={destinos.hud=1..}] run function destinos:jugador/hud",
     "execute as @a[gamemode=!spectator] at @s if dimension minecraft:overworld run function destinos:jugador/comprobar",
@@ -176,11 +192,8 @@ fn("jugador/comprobar", [
     "execute if score #cd dr.calc matches 1 run function destinos:jugador/cambio",
 ])
 def guarda_args(dst="a"):
-    return [f"execute store result storage destinos:tmp {dst}.dx int 1 run scoreboard players get #tdx dr.calc",
-            f"execute store result storage destinos:tmp {dst}.dz int 1 run scoreboard players get #tdz dr.calc",
-            f"execute store result storage destinos:tmp {dst}.kx int 1 run scoreboard players get #tkx dr.calc",
-            f"execute store result storage destinos:tmp {dst}.kz int 1 run scoreboard players get #tkz dr.calc",
-            f"execute store result storage destinos:tmp {dst}.id int 1 run scoreboard players get @s dr.id"]
+    return a_storage(dst, [("dx", "#tdx dr.calc"), ("dz", "#tdz dr.calc"), ("kx", "#tkx dr.calc"),
+                           ("kz", "#tkz dr.calc"), ("id", "@s dr.id")])
 fn("jugador/cambio", [
     *guarda_args(),
     "execute if score #mar dr.calc matches 0 run function destinos:reino/entrar with storage destinos:tmp a",
@@ -194,10 +207,7 @@ fn("jugador/cambio", [
 fn("jugador/donde", [
     "scoreboard players set @s destinos.donde 0",
     "execute unless score @s dr.init matches 1 run return fail",
-    "execute store result storage destinos:tmp a.dx int 1 run scoreboard players get @s dr.dx",
-    "execute store result storage destinos:tmp a.dz int 1 run scoreboard players get @s dr.dz",
-    "execute store result storage destinos:tmp a.kx int 1 run scoreboard players get @s dr.kx",
-    "execute store result storage destinos:tmp a.kz int 1 run scoreboard players get @s dr.kz",
+    *a_storage("a", [(k, f"@s dr.{k}") for k in ("dx", "dz", "kx", "kz")]),
     "execute if score @s dr.mar matches 1 run return run function destinos:jugador/donde_mar with storage destinos:tmp a",
     "function destinos:jugador/donde_m with storage destinos:tmp a",
 ])
@@ -211,7 +221,7 @@ fn("jugador/donde_m", [
 ])
 fn("jugador/hud", [
     "scoreboard players set @s destinos.hud 0",
-    "execute store result storage destinos:tmp a.id int 1 run scoreboard players get @s dr.id",
+    *a_storage("a", [("id", "@s dr.id")]),
     "execute if score @s dr.hud matches 1 run return run function destinos:jugador/hud_off",
     "scoreboard players set @s dr.hud 1",
     "function destinos:hud/bossbar_crear with storage destinos:tmp a",
@@ -229,7 +239,7 @@ fn("reino/entrar", [
     '$execute unless data storage destinos:mundo ducados."d$(dx)_$(dz)" run function destinos:reino/generar_ducado with storage destinos:tmp a',
     '$data modify storage destinos:tmp t set from storage destinos:mundo ducados."d$(dx)_$(dz)"',
     "$data modify storage destinos:tmp t.id set value $(id)",
-    "title @s times 10 70 20",
+    TIEMPOS_TITULO,
     "execute if score #tw dr.calc matches 1 run function destinos:hud/salvaje with storage destinos:tmp t",
     "execute if score #tw dr.calc matches 0 run function destinos:hud/noble with storage destinos:tmp t",
     "execute if score #cr dr.calc matches 1 run playsound minecraft:item.goat_horn.sound.0 master @s ~ ~ ~ 0.35 1",
@@ -243,26 +253,20 @@ fn("reino/entrar", [
 ])
 def elegir(lista_expr, mod, sal, dst):
     """hash con #sal<sal> → índice % mod → copia lista[índice] a destinos:tmp <dst>"""
-    return [op("#hs", "=", f"#sal{sal}", cb="dr.const"), "function destinos:geo/hash",
-            op("#h", "%=", f"#{mod}", cb="dr.const"),
+    return [*tirada(sal, mod),
             "execute store result storage destinos:tmp idx.i int 1 run scoreboard players get #h dr.calc",
             f'data modify storage destinos:tmp idx.lista set value "{lista_expr}"',
             "function destinos:util/elegir with storage destinos:tmp idx",
             f"data modify storage destinos:tmp {dst} set from storage destinos:tmp elegido"]
 def indice(mod, sal, dst):
-    return [op("#hs", "=", f"#sal{sal}", cb="dr.const"), "function destinos:geo/hash",
-            op("#h", "%=", f"#{mod}", cb="dr.const"),
-            f"execute store result storage destinos:tmp {dst} int 1 run scoreboard players get #h dr.calc"]
+    return [*tirada(sal, mod), *a_storage("", [(dst, "#h dr.calc")])]
 fn("util/elegir", ["$data modify storage destinos:tmp elegido set from storage destinos:tablas $(lista)[$(i)]"])
 fn("reino/generar_reino", [
     "# Macro: kx kz",
     "function destinos:cultura/detectar",
-    "$scoreboard players set #hx dr.calc $(kx)",
-    "$scoreboard players set #hz dr.calc $(kz)",
+    *celda_macro("kx", "kz"),
     "data modify storage destinos:tmp nuevo set value {descubierto:0b}",
-    op("#hs", "=", "#salNR", cb="dr.const"), "function destinos:nombres/generar",
-    "data modify storage destinos:tmp nuevo.nombre set from storage destinos:tmp gen.nombre",
-    "data modify storage destinos:tmp nuevo.cultura set from storage destinos:tmp gen.cultura",
+    *nombre_nuevo("NR"),
     "function destinos:reino/casa with storage destinos:tmp gen",
     *indice(N_LEMAS, "Lema", "nuevo.lema"),
     *indice(N_RASGOS, "Rasgo", "nuevo.rasgo"),
@@ -271,16 +275,11 @@ fn("reino/generar_reino", [
 ])
 fn("reino/casa", [
     "# Macro: cultura",
-    *elegir("$(cultura).casas", 12, "Casa", "nuevo.casa")[:-1],
-    "data modify storage destinos:tmp nuevo.casa set from storage destinos:tmp elegido",
+    *elegir("$(cultura).casas", 12, "Casa", "nuevo.casa"),
 ])
-# los $(cultura) dentro de reino/casa hacen que sus líneas sean macro
-files["function/reino/casa.mcfunction"] = "\n".join(
-    ("$" + l if "$(" in l and not l.startswith("$") else l) for l in files["function/reino/casa.mcfunction"].splitlines()) + "\n"
 fn("reino/generar_ducado", [
     "# Macro: dx dz kx kz",
-    "$scoreboard players set #hx dr.calc $(dx)",
-    "$scoreboard players set #hz dr.calc $(dz)",
+    *celda_macro("dx", "dz"),
     "data modify storage destinos:tmp nuevo set value {descubierto:0b}",
     "execute if score #tw dr.calc matches 1 run function destinos:reino/ducado_salvaje",
     "execute if score #tw dr.calc matches 0 run function destinos:reino/ducado_noble with storage destinos:tmp a",
@@ -288,29 +287,25 @@ fn("reino/generar_ducado", [
 ])
 fn("reino/ducado_salvaje", [
     "function destinos:cultura/detectar",
-    op("#hs", "=", "#salND", cb="dr.const"), "function destinos:nombres/generar",
-    "data modify storage destinos:tmp nuevo.nombre set from storage destinos:tmp gen.nombre",
-    "data modify storage destinos:tmp nuevo.cultura set from storage destinos:tmp gen.cultura",
+    *nombre_nuevo("ND"),
     "data modify storage destinos:tmp nuevo.salvaje set value 1b",
     *indice(N_GEO, "Geo", "nuevo.geo"),
 ])
 fn("reino/ducado_noble", [
     "# Macro: kx kz",
     '$data modify storage destinos:tmp gen.cultura set from storage destinos:mundo reinos."k$(kx)_$(kz)".cultura',
-    op("#hs", "=", "#salND", cb="dr.const"), "function destinos:nombres/generar",
-    "data modify storage destinos:tmp nuevo.nombre set from storage destinos:tmp gen.nombre",
-    "data modify storage destinos:tmp nuevo.cultura set from storage destinos:tmp gen.cultura",
+    *nombre_nuevo("ND"),
     "data modify storage destinos:tmp nuevo.salvaje set value 0b",
     '$data modify storage destinos:tmp nuevo.reino set value "k$(kx)_$(kz)"',
     '$data modify storage destinos:tmp nuevo.rnombre set from storage destinos:mundo reinos."k$(kx)_$(kz)".nombre',
     '$data modify storage destinos:tmp nuevo.color set from storage destinos:mundo reinos."k$(kx)_$(kz)".color',
     "# tipo: 60% ducado, 20% condado, 20% marca",
-    op("#hs", "=", "#salTipo", cb="dr.const"), "function destinos:geo/hash", op("#h", "%=", "#10", cb="dr.const"),
+    *tirada("Tipo", 10),
     'data modify storage destinos:tmp nuevo.tipo set value "ducado"',
     'execute if score #h dr.calc matches 6..7 run data modify storage destinos:tmp nuevo.tipo set value "condado"',
     'execute if score #h dr.calc matches 8..9 run data modify storage destinos:tmp nuevo.tipo set value "marca"',
     "# quién gobierna",
-    op("#hs", "=", "#salGen", cb="dr.const"), "function destinos:geo/hash", op("#h", "%=", "#2", cb="dr.const"),
+    *tirada("Gen", 2),
     'data modify storage destinos:tmp nuevo.g set value "m"',
     'execute if score #h dr.calc matches 1 run data modify storage destinos:tmp nuevo.g set value "f"',
     "function destinos:reino/senor with storage destinos:tmp nuevo",
@@ -318,12 +313,7 @@ fn("reino/ducado_noble", [
 ])
 fn("reino/senor", [
     "# Macro: cultura g",
-    op("#hs", "=", "#salSen", cb="dr.const"), "function destinos:geo/hash",
-    op("#h", "%=", "#12", cb="dr.const"),
-    "execute store result storage destinos:tmp idx.i int 1 run scoreboard players get #h dr.calc",
-    '$data modify storage destinos:tmp idx.lista set value "$(cultura).$(g)"',
-    "function destinos:util/elegir with storage destinos:tmp idx",
-    "data modify storage destinos:tmp nuevo.senor set from storage destinos:tmp elegido",
+    *elegir("$(cultura).$(g)", 12, "Sen", "nuevo.senor"),
 ])
 
 # ---------------------------------------------------------------- nombres
@@ -372,15 +362,31 @@ def snbt(o):
         return "true" if o else "false"
     return json.dumps(o, ensure_ascii=False)
 
+# textos que se repiten en títulos, chat y bossbar
+NOMBRE_DUCADO = T("destinos.tipo.$(tipo)", "$(nombre)", ["$(nombre)"])
+NOMBRE_REINO = T("destinos.reino", "Reino de %s", ["$(rnombre)"])
+NOMBRE_SALVAJE = T("destinos.salvaje.$(geo)", "$(nombre)", ["$(nombre)"])
+NOMBRE_MAR = T("destinos.mar", "Mar de %s", ["$(nombre)"])
+SALVAJES = T("destinos.salvajes", "Tierras salvajes")
+MAR_ABIERTO = T("destinos.mar_abierto", "Mar abierto")
+GOBIERNA = T("destinos.gobierna", "Gobierna %s · Fama: %s",
+             [T("destinos.titulo.$(tipo).$(g)", "$(senor)", ["$(senor)"]), T("destinos.fama.$(fama)", "")], color="gray")
+def con(texto, **estilo):
+    """Copia de un componente con estilo añadido (color, bold…)"""
+    return {**texto, **estilo}
+def bossbar(nombre, lugar, color):
+    """Bossbar del jugador: "<nombre> · <lugar>" """
+    return ["$bossbar set destinos:t$(id) name " + snbt(T("destinos.bossbar", "%s · %s", [nombre, lugar], color=color))]
+
 fn("hud/noble", [
     "# Macro: registro de ducado noble",
-    "$title @s subtitle " + snbt(T("destinos.reino", "Reino de %s", ["$(rnombre)"], color="$(color)")),
-    "$title @s title " + snbt(T("destinos.tipo.$(tipo)", "$(nombre)", ["$(nombre)"], color="$(color)")),
+    "$title @s subtitle " + snbt(con(NOMBRE_REINO, color="$(color)")),
+    "$title @s title " + snbt(con(NOMBRE_DUCADO, color="$(color)")),
 ])
 fn("hud/salvaje", [
     "# Macro: registro de tierra salvaje",
-    "title @s subtitle " + snbt(T("destinos.salvajes", "Tierras salvajes", color="gray")),
-    "$title @s title " + snbt(T("destinos.salvaje.$(geo)", "$(nombre)", ["$(nombre)"], color="#9e9e9e")),
+    "title @s subtitle " + snbt(con(SALVAJES, color="gray")),
+    "$title @s title " + snbt(con(NOMBRE_SALVAJE, color="#9e9e9e")),
 ])
 fn("hud/primer_reino", [
     "# Macro: registro de reino",
@@ -391,17 +397,13 @@ fn("hud/primer_reino", [
 ])
 fn("hud/primer_ducado", [
     "# Macro: registro de ducado noble",
-    "$tellraw @s " + snbt(T("destinos.gobierna", "Gobierna %s · Fama: %s",
-                             [T("destinos.titulo.$(tipo).$(g)", "$(senor)", ["$(senor)"]), T("destinos.fama.$(fama)", "")],
-                             color="gray")),
+    "$tellraw @s " + snbt(GOBIERNA),
 ])
 fn("hud/info_noble", [
     "$tellraw @s " + snbt(["", {"text": "⚑ ", "color": "$(color)"},
-                          T("destinos.tipo.$(tipo)", "$(nombre)", ["$(nombre)"], color="$(color)", bold=True),
-                          {"text": " · "}, T("destinos.reino", "Reino de %s", ["$(rnombre)"], color="$(color)")]),
-    "$tellraw @s " + snbt(T("destinos.gobierna", "Gobierna %s · Fama: %s",
-                             [T("destinos.titulo.$(tipo).$(g)", "$(senor)", ["$(senor)"]), T("destinos.fama.$(fama)", "")],
-                             color="gray")),
+                          con(NOMBRE_DUCADO, color="$(color)", bold=True),
+                          {"text": " · "}, con(NOMBRE_REINO, color="$(color)")]),
+    "$tellraw @s " + snbt(GOBIERNA),
 ])
 fn("hud/info_reino", [
     "$tellraw @s " + snbt(T("destinos.info_reino", "Casa %s · Cultura %s · Reino %s",
@@ -411,7 +413,7 @@ fn("hud/info_reino", [
 ])
 fn("hud/info_salvaje", [
     "$tellraw @s " + snbt(["", {"text": "☘ ", "color": "#9e9e9e"},
-                          T("destinos.salvaje.$(geo)", "$(nombre)", ["$(nombre)"], color="#9e9e9e", bold=True),
+                          con(NOMBRE_SALVAJE, color="#9e9e9e", bold=True),
                           {"text": " · "}, T("destinos.salvajes_info", "Tierras salvajes: aquí no manda nadie", color="gray")]),
 ])
 fn("hud/bossbar_crear", [
@@ -423,16 +425,8 @@ fn("hud/bossbar_crear", [
     "$bossbar set destinos:t$(id) visible true",
 ])
 fn("hud/bossbar_ocultar", ["$bossbar set destinos:t$(id) visible false"])
-fn("hud/bossbar_noble", [
-    "$bossbar set destinos:t$(id) name " + snbt(T("destinos.bossbar", "%s · %s",
-        [T("destinos.tipo.$(tipo)", "$(nombre)", ["$(nombre)"]), T("destinos.reino", "Reino de %s", ["$(rnombre)"])],
-        color="$(color)")),
-])
-fn("hud/bossbar_salvaje", [
-    "$bossbar set destinos:t$(id) name " + snbt(T("destinos.bossbar", "%s · %s",
-        [T("destinos.salvaje.$(geo)", "$(nombre)", ["$(nombre)"]), T("destinos.salvajes", "Tierras salvajes")],
-        color="#9e9e9e")),
-])
+fn("hud/bossbar_noble", bossbar(NOMBRE_DUCADO, NOMBRE_REINO, "$(color)"))
+fn("hud/bossbar_salvaje", bossbar(NOMBRE_SALVAJE, SALVAJES, "#9e9e9e"))
 
 
 # ---------------------------------------------------------------- mar
@@ -441,33 +435,27 @@ fn("mar/entrar", [
     '$execute unless data storage destinos:mundo mares."m$(dx)_$(dz)" run function destinos:mar/generar with storage destinos:tmp a',
     '$data modify storage destinos:tmp t set from storage destinos:mundo mares."m$(dx)_$(dz)"',
     "$data modify storage destinos:tmp t.id set value $(id)",
-    "title @s times 10 70 20",
+    TIEMPOS_TITULO,
     "function destinos:hud/mar with storage destinos:tmp t",
     "playsound minecraft:ambient.underwater.exit master @s ~ ~ ~ 0.5 0.7",
     "execute if score @s dr.hud matches 1 run function destinos:hud/bossbar_mar with storage destinos:tmp t",
 ])
 fn("mar/generar", [
     "# Macro: dx dz",
-    "$scoreboard players set #hx dr.calc $(dx)",
-    "$scoreboard players set #hz dr.calc $(dz)",
+    *celda_macro("dx", "dz"),
     "function destinos:cultura/detectar",
-    op("#hs", "=", "#salMar", cb="dr.const"), "function destinos:nombres/generar",
     "data modify storage destinos:tmp nuevo set value {}",
-    "data modify storage destinos:tmp nuevo.nombre set from storage destinos:tmp gen.nombre",
-    "data modify storage destinos:tmp nuevo.cultura set from storage destinos:tmp gen.cultura",
+    *nombre_nuevo("Mar"),
     '$data modify storage destinos:mundo mares."m$(dx)_$(dz)" set from storage destinos:tmp nuevo',
 ])
 fn("hud/mar", [
-    "title @s subtitle " + snbt(T("destinos.mar_abierto", "Mar abierto", color="#8fc6e8")),
-    "$title @s title " + snbt(T("destinos.mar", "Mar de %s", ["$(nombre)"], color="#4fa3d9")),
+    "title @s subtitle " + snbt(con(MAR_ABIERTO, color="#8fc6e8")),
+    "$title @s title " + snbt(con(NOMBRE_MAR, color="#4fa3d9")),
 ])
-fn("hud/bossbar_mar", [
-    "$bossbar set destinos:t$(id) name " + snbt(T("destinos.bossbar", "%s · %s",
-        [T("destinos.mar", "Mar de %s", ["$(nombre)"]), T("destinos.mar_abierto", "Mar abierto")], color="#4fa3d9")),
-])
+fn("hud/bossbar_mar", bossbar(NOMBRE_MAR, MAR_ABIERTO, "#4fa3d9"))
 fn("hud/info_mar", [
-    "$tellraw @s " + snbt(["", {"text": "≈ ", "color": "#4fa3d9"}, T("destinos.mar", "Mar de %s", ["$(nombre)"], color="#4fa3d9", bold=True),
-                          {"text": " · "}, T("destinos.mar_abierto", "Mar abierto", color="gray")]),
+    "$tellraw @s " + snbt(["", {"text": "≈ ", "color": "#4fa3d9"}, con(NOMBRE_MAR, color="#4fa3d9", bold=True),
+                          {"text": " · "}, con(MAR_ABIERTO, color="gray")]),
 ])
 
 # ---------------------------------------------------------------- libro-mapa
