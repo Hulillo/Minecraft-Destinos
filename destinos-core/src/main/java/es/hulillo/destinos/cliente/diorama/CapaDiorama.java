@@ -19,6 +19,8 @@ import net.minecraft.world.level.Level;
 public final class CapaDiorama {
 	private static final int C = MapaTerreno.CASILLA;
 	private static final int ALFA_RELLENO = 0x38;
+	/** Las aguas territoriales, más suaves que la tierra. */
+	private static final int ALFA_AGUAS = 0x1c;
 	private static final int ALFA_DUCADO = 0x80;
 	private static final int ALFA_REINO = 0xd0;
 	/** Por debajo de estos píxeles por casilla las fronteras serían solo ruido. */
@@ -68,7 +70,7 @@ public final class CapaDiorama {
 		for (int tz = tz0; tz <= tz1; tz++) {
 			for (int tx = tx0; tx <= tx1; tx++) {
 				PaqueteTerritorio.Ducado d = TerritoriosCliente.ducado(tx, tz);
-				if (d == null || d.oceano()) {
+				if (d == null || d.deNadie()) {
 					if (d == null) {
 						sinDatos++;
 					} else {
@@ -86,7 +88,7 @@ public final class CapaDiorama {
 					continue;
 				}
 				pintadas++;
-				lienzo.rect(x0, y0, x1, y1, ALFA_RELLENO << 24 | d.color());
+				lienzo.rect(x0, y0, x1, y1, (d.oceano() ? ALFA_AGUAS : ALFA_RELLENO) << 24 | d.color());
 				if (bordes) {
 					frontera(lienzo, d, TerritoriosCliente.ducado(tx + 1, tz), x1 - 1, y0, x1, y1);
 					frontera(lienzo, d, TerritoriosCliente.ducado(tx, tz + 1), x0, y1 - 1, x1, y1);
@@ -95,7 +97,7 @@ public final class CapaDiorama {
 				}
 			}
 		}
-		TerritoriosCliente.ultimoPintado = "Diorama: " + pintadas + " casillas pintadas, " + mar + " de mar, "
+		TerritoriosCliente.ultimoPintado = "Diorama: " + pintadas + " casillas pintadas, " + mar + " de mar internacional, "
 				+ sinDatos + " sin datos, " + fuera + " fuera de pantalla (x " + tx0 + ".." + tx1 + ", z " + tz0 + ".." + tz1
 				+ ", zoom " + String.format("%.3f", vista.zoom()) + ")";
 	}
@@ -112,7 +114,7 @@ public final class CapaDiorama {
 		if (vecino == null || d.mismoDucado(vecino)) {
 			return;
 		}
-		boolean reino = vecino.oceano() || !d.mismoReino(vecino);
+		boolean reino = vecino.deNadie() || !d.mismoReino(vecino);
 		int alfa = reino ? ALFA_REINO : ALFA_DUCADO;
 		lienzo.rect(x0, y0, x1, y1, alfa << 24 | oscuro(d.color()));
 	}

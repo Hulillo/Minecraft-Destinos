@@ -24,6 +24,7 @@ import net.minecraft.world.level.Level;
 final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 	private static final String GRUPO = "Destinos: reinos";
 	private static final float OPACIDAD_RELLENO = 0.22F;
+	private static final float OPACIDAD_AGUAS = 0.11F;
 	private static final float OPACIDAD_BORDE = 0.7F;
 	private static final float GROSOR_BORDE = 1.5F;
 	/** Altura a la que se dejan los polígonos (JourneyMap la usa al ver cuevas por capas). */
@@ -53,7 +54,7 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		capas.clear();
 	}
 
-	/** Área de cada ducado de tierra dentro de la zona, juntando las casillas seguidas de cada fila. */
+	/** Área de cada ducado (tierra y aguas territoriales) dentro de la zona, juntando las casillas seguidas de cada fila. */
 	private static Map<PaqueteTerritorio.Ducado, Area> trozos(PaqueteTerritorio zona) {
 		Map<PaqueteTerritorio.Ducado, Area> res = new HashMap<>();
 		int n = MapaTerreno.NUCLEO;
@@ -66,7 +67,7 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 				while (fin < n && zona.ducado(fin, j) == d) {
 					fin++;
 				}
-				if (!d.oceano()) {
+				if (!d.deNadie()) {
 					int x = (zona.wx() * n + i) * c;
 					int z = (zona.wz() * n + j) * c;
 					res.computeIfAbsent(d, k -> new Area()).add(new Area(new Rectangle(x, z, (fin - i) * c, c)));
@@ -84,7 +85,7 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		}
 		ShapeProperties estilo = new ShapeProperties()
 				.setFillColor(ducado.color())
-				.setFillOpacity(OPACIDAD_RELLENO)
+				.setFillOpacity(ducado.oceano() ? OPACIDAD_AGUAS : OPACIDAD_RELLENO)
 				.setStrokeColor(oscuro(ducado.color()))
 				.setStrokeOpacity(OPACIDAD_BORDE)
 				.setStrokeWidth(GROSOR_BORDE);

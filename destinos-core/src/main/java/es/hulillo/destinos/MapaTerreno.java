@@ -27,6 +27,8 @@ public final class MapaTerreno {
 	public static final int N = NUCLEO + 2 * MARGEN;
 	/** Casillas de mar cruzadas a partir de las cuales una tierra se considera isla sin señor. */
 	public static final int MAR_ISLA = 6;
+	/** Casillas de mar desde la costa que siguen siendo del ducado; más allá, mar internacional. */
+	public static final int AGUAS_TERRITORIALES = 4;
 	private static final int RADIO_AJUSTE = 6;
 	private static final double DIAGONAL = Math.sqrt(2);
 	/** Coste extra de entrar en un río: los ríos son la frontera natural más clara. */
@@ -64,14 +66,18 @@ public final class MapaTerreno {
 	private record Semilla(int cx, int cz, int ctx, int ctz, Geo.Reino reino, boolean salvaje) {
 	}
 
-	private record Ventana(int[] dueno, boolean[] isla, boolean[] oceano, int[] altura, List<Semilla> semillas) {
+	private record Ventana(int[] dueno, boolean[] isla, boolean[] oceano, int[] mar, int[] altura, List<Semilla> semillas) {
+	}
+
+	/** Lo que se pinta en una casilla: su territorio y, si es mar, si ya está lejos de toda costa. */
+	public record Entrada(Resultado territorio, boolean internacional) {
 	}
 
 	/**
 	 * El núcleo de una ventana, listo para pintarlo en un mapa: cada casilla (i + j * NUCLEO, empezando en la
 	 * casilla wx * NUCLEO, wz * NUCLEO) apunta a una entrada de la paleta y lleva la altura del suelo.
 	 */
-	public record Zona(int wx, int wz, List<Resultado> paleta, short[] indice, short[] altura) {
+	public record Zona(int wx, int wz, List<Entrada> paleta, short[] indice, short[] altura) {
 	}
 
 	private final Muestreador muestreador;
@@ -128,16 +134,18 @@ public final class MapaTerreno {
 			return null;
 		}
 		Ventana v = f.join();
-		LinkedHashMap<Resultado, Integer> paleta = new LinkedHashMap<>();
+		LinkedHashMap<Entrada, Integer> paleta = new LinkedHashMap<>();
 		short[] indice = new short[NUCLEO * NUCLEO];
 		short[] altura = new short[NUCLEO * NUCLEO];
 		for (int j = 0; j < NUCLEO; j++) {
 			for (int i = 0; i < NUCLEO; i++) {
 				int x = (wx * NUCLEO + i) * CASILLA;
 				int z = (wz * NUCLEO + j) * CASILLA;
+				int k = (i + MARGEN) + (j + MARGEN) * N;
 				Resultado r = resultado(v, x, z);
-				indice[i + j * NUCLEO] = (short) (int) paleta.computeIfAbsent(r, k -> paleta.size());
-				altura[i + j * NUCLEO] = (short) v.altura()[(i + MARGEN) + (j + MARGEN) * N];
+				Entrada e = new Entrada(r, r.oceano() && v.mar()[k] > AGUAS_TERRITORIALES);
+				indice[i + j * NUCLEO] = (short) (int) paleta.computeIfAbsent(e, c -> paleta.size());
+				altura[i + j * NUCLEO] = (short) v.altura()[k];
 			}
 		}
 		return new Zona(wx, wz, List.copyOf(paleta.keySet()), indice, altura);
@@ -257,7 +265,7 @@ public final class MapaTerreno {
 			oceano[k] = terreno[k].oceano();
 			altura[k] = terreno[k].altura();
 		}
-		return new Ventana(dueno, isla, oceano, altura, semillas);
+		return new Ventana(dueno, isla, oceano, mar, altura, semillas);
 	}
 
 	/** Terreno en el centro de cada casilla de la ventana (con margen). */
