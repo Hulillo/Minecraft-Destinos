@@ -71,8 +71,20 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		pendientes.addAll(tocados);
 	}
 
+	@Override
+	public void visibilidad(boolean visible) {
+		if (visible) {
+			pendientes.addAll(areas.keySet());
+		} else {
+			api.removeAll(DestinosCore.MOD_ID);
+			capas.clear();
+			pendientes.clear();
+		}
+	}
+
 	private void rehaz() {
-		if (pendientes.isEmpty()) {
+		// apagado: las áreas se siguen juntando, pero no se pinta nada hasta que se encienda
+		if (pendientes.isEmpty() || !TerritoriosCliente.visible()) {
 			return;
 		}
 		// los reinos al final, para que su borde quede por encima de los ducados

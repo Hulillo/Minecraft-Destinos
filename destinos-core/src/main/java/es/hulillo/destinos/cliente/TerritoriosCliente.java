@@ -19,6 +19,10 @@ public final class TerritoriosCliente {
 		void zonaNueva(PaqueteTerritorio zona, PaqueteTerritorio anterior);
 
 		void borrado();
+
+		/** Se ha encendido o apagado el mapa político. */
+		default void visibilidad(boolean visible) {
+		}
 	}
 
 	public static final int SIN_ALTURA = Integer.MIN_VALUE;
@@ -29,6 +33,8 @@ public final class TerritoriosCliente {
 	public static volatile String ultimoPintado = "ningún mapa ha intentado pintar todavía";
 	/** La última zona consultada: al pintar se piden muchas casillas seguidas de la misma. */
 	private static PaqueteTerritorio ultima;
+	/** Si se pintan los reinos en los mapas (la tecla del mapa político lo cambia). */
+	private static boolean visible = Ajustes.leeVisible();
 
 	private TerritoriosCliente() {
 	}
@@ -55,6 +61,17 @@ public final class TerritoriosCliente {
 		ZONAS.clear();
 		ultima = null;
 		OYENTES.forEach(Oyente::borrado);
+	}
+
+	public static boolean visible() {
+		return visible;
+	}
+
+	/** Enciende o apaga el mapa político en todos los mapas y lo recuerda para la próxima vez. */
+	public static void alterna() {
+		visible = !visible;
+		Ajustes.guardaVisible(visible);
+		OYENTES.forEach(o -> o.visibilidad(visible));
 	}
 
 	public static int zonas() {

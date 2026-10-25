@@ -38,6 +38,10 @@ public final class CapaDiorama {
 	}
 
 	public static void dibuja(GuiGraphics g, MapViewport.View vista) {
+		if (!TerritoriosCliente.visible()) {
+			TerritoriosCliente.ultimoPintado = "Diorama: mapa político apagado (tecla del mapa político)";
+			return;
+		}
 		if (TerritoriosCliente.vacio()) {
 			TerritoriosCliente.ultimoPintado = "Diorama: aún no hay territorios";
 			return;
