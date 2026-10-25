@@ -24,6 +24,8 @@ public final class TerritoriosCliente {
 	private static final Map<Long, PaqueteTerritorio> ZONAS = new HashMap<>();
 	private static final List<Oyente> OYENTES = new CopyOnWriteArrayList<>();
 	private static int sal;
+	/** Qué hizo el último mapa al pintar, para /destinosmapa. Lo rellenan las capas de cada mapa. */
+	public static volatile String ultimoPintado = "ningún mapa ha intentado pintar todavía";
 	/** La última zona consultada: al pintar se piden muchas casillas seguidas de la misma. */
 	private static PaqueteTerritorio ultima;
 
@@ -51,6 +53,10 @@ public final class TerritoriosCliente {
 		ZONAS.clear();
 		ultima = null;
 		OYENTES.forEach(Oyente::borrado);
+	}
+
+	public static int zonas() {
+		return ZONAS.size();
 	}
 
 	public static boolean vacio() {
