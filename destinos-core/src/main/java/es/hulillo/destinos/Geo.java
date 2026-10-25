@@ -3,7 +3,7 @@ package es.hulillo.destinos;
 /**
  * Matemática del mapa político, idéntica a las funciones geo/* del datapack y a herramientas/sim.py.
  * Aritmética int de Java = scoreboard de Minecraft (desbordamiento incluido), floorDiv y floorMod.
- * Si cambias una constante aquí, cámbiala también en datapack/build.py y herramientas/sim.py.
+ * Si cambias una constante aquí, cámbiala también en datapack/constantes.py (PruebaGeo lo comprueba en la CI).
  */
 public final class Geo {
 	public static final int S_DUCADO = 1500;

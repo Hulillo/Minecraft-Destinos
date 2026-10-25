@@ -1,7 +1,9 @@
 """Simulador de 'Destinos: Reinos' con aritmética de scoreboard (int32 con desbordamiento,
 división hacia abajo). Replica 1:1 las funciones geo/* del datapack para previsualizar el mapa."""
-import sys
+import os, sys
 from PIL import Image, ImageDraw
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "datapack"))
+from constantes import S_DUCADO, S_REINO, WARP, D_FRONTERA, P_FRONTERA, P_SALVAJE, K_JZ, K_REINO, K_SALV, K_WARP
 
 def i32(v):
     v &= 0xFFFFFFFF
@@ -12,13 +14,6 @@ def fdiv(a, b):  # Mth.floorDiv
 
 def pmod(a, b):  # Mth.positiveModulo (solo se usa con a >= 0)
     return a % b
-
-S_DUCADO = 1500
-S_REINO = 6000
-SALVAJE = 20
-K_JZ = 7919        # desplazamiento de sal para el jitter Z
-K_REINO = 104729   # desplazamiento de sal para la capa de reinos
-K_SALV = 1299709   # desplazamiento de sal para tierras salvajes
 
 def hash_(hx, hz, hs):
     h = i32(hx * 73856093)
@@ -50,11 +45,6 @@ def voronoi(vx, vz, S, sal):
                 best, res = d, (hx, hz, ctx, ctz, d)
     return res
 
-K_WARP = 15485863
-WARP = 1200          # desplazamiento máx. del centro del ducado antes de buscar su reino
-D_FRONTERA = 2800    # a partir de esta distancia al centro del reino, el ducado puede ser salvaje
-P_FRONTERA = 45      # % de ducados lejanos que son salvajes
-P_SALVAJE = 4        # % de ducados salvajes en cualquier sitio
 
 def territorio(x, z, sal):
     dcx, dcz, dctx, dctz, _ = voronoi(x, z, S_DUCADO, sal)
