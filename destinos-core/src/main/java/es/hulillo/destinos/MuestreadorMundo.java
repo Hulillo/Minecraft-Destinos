@@ -24,11 +24,16 @@ import net.minecraft.world.level.levelgen.structure.placement.RandomSpreadStruct
  * Calcular la altura exacta (getBaseHeight) cuesta milisegundos por punto y congelaba la carga de chunks,
  * así que la altura se estima con la función "depth" del generador: depth = gradiente(y) + offset, y la
  * superficie está donde depth ≈ 0. Ignora los picos afilados, pero las montañas ya las marca su bioma.
+ * El gradiente cambia según el mundo (Lithosphere lo estira hasta y=512), así que se mide en dos alturas
+ * en vez de suponer el del mundo normal.
  */
 final class MuestreadorMundo implements MapaTerreno.Muestreador {
 	/** Los ríos son estrechos: además del centro de la casilla se mira a esta distancia en 4 direcciones. */
 	private static final int RADIO_RIO = 24;
 	private static final int[][] CRUZ = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+	/** Alturas a las que se mide depth para sacar su pendiente. */
+	private static final int Y_BAJA = 0;
+	private static final int Y_ALTA = 128;
 
 	/**
 	 * Familias de bioma, en orden de prioridad (el primero que encaja gana). Las etiquetas comunes de Fabric
@@ -60,10 +65,12 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 	}
 
 	private int altura(int x, int z) {
-		// gradiente(0) = 1 en el mundo normal (de 1.5 en y=-64 a -1.5 en y=320)
-		double offset = profundidad.compute(new DensityFunction.SinglePointContext(x, 0, z)) - 1.0;
-		double y = (1.5 + offset) * 128 - 64;
-		return Double.isFinite(y) ? (int) Math.round(y) : nivelMar;
+		// depth baja en línea recta con la altura: con dos medidas se ve dónde cruza el cero
+		double baja = profundidad.compute(new DensityFunction.SinglePointContext(x, Y_BAJA, z));
+		double alta = profundidad.compute(new DensityFunction.SinglePointContext(x, Y_ALTA, z));
+		double pendiente = (alta - baja) / (Y_ALTA - Y_BAJA);
+		double y = Y_BAJA - baja / pendiente;
+		return pendiente < 0 && Double.isFinite(y) ? (int) Math.round(y) : nivelMar;
 	}
 
 	private Holder<Biome> bioma(int x, int y, int z) {
