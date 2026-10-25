@@ -20,15 +20,18 @@ import journeymap.api.v2.client.util.PolygonHelper;
 import net.minecraft.world.level.Level;
 
 /**
- * Cada ducado es un polígono de JourneyMap relleno con el color de su reino. Un ducado puede caer en varias
- * zonas, así que su área se va juntando según llegan y su polígono se rehace.
+ * Cada ducado es un polígono de JourneyMap relleno con el color de su reino y borde fino. Encima, cada reino
+ * lleva su contorno sin relleno con un borde gordo y oscuro, para que se vea bien dónde cambia de reino.
+ * Un ducado o reino puede caer en varias zonas, así que su área se va juntando según llegan y su polígono se rehace.
  */
 final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 	private static final String GRUPO = "Destinos: reinos";
 	private static final float OPACIDAD_RELLENO = 0.22F;
 	private static final float OPACIDAD_AGUAS = 0.11F;
-	private static final float OPACIDAD_BORDE = 0.7F;
-	private static final float GROSOR_BORDE = 1.5F;
+	private static final float OPACIDAD_BORDE = 0.6F;
+	private static final float GROSOR_BORDE = 1.0F;
+	private static final float OPACIDAD_REINO = 0.95F;
+	private static final float GROSOR_REINO = 3.5F;
 	/** Altura a la que se dejan los polígonos (JourneyMap la usa al ver cuevas por capas). */
 	private static final int Y = 64;
 
@@ -45,7 +48,7 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		Set<PaqueteTerritorio.Ducado> tocados = new HashSet<>();
 		if (anterior != null) {
 			// la zona ha cambiado (conquistas): se quita lo que aportaba antes
-			trozos(anterior).forEach((ducado, trozo) -> {
+			conReinos(trozos(anterior)).forEach((ducado, trozo) -> {
 				Area a = areas.get(ducado);
 				if (a != null) {
 					a.subtract(trozo);
@@ -53,11 +56,33 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 				}
 			});
 		}
-		trozos(zona).forEach((ducado, trozo) -> {
+		conReinos(trozos(zona)).forEach((ducado, trozo) -> {
 			areas.computeIfAbsent(ducado, k -> new Area()).add(trozo);
 			tocados.add(ducado);
 		});
-		tocados.forEach(this::redibuja);
+		// los reinos al final, para que su borde quede por encima de los ducados
+		tocados.stream().filter(d -> !esReino(d)).forEach(this::redibuja);
+		tocados.stream().filter(CapaJourneyMap::esReino).forEach(this::redibuja);
+	}
+
+	/**
+	 * Añade a los trozos de ducado el de cada reino entero (tierra y aguas). El reino se guarda como un Ducado
+	 * de mentira en la celda (MIN_VALUE, MIN_VALUE). Las tierras salvajes no son un reino: no llevan contorno.
+	 */
+	private static Map<PaqueteTerritorio.Ducado, Area> conReinos(Map<PaqueteTerritorio.Ducado, Area> trozos) {
+		Map<PaqueteTerritorio.Ducado, Area> res = new HashMap<>(trozos);
+		trozos.forEach((d, trozo) -> {
+			if (!d.salvaje()) {
+				PaqueteTerritorio.Ducado reino = new PaqueteTerritorio.Ducado(Integer.MIN_VALUE, Integer.MIN_VALUE,
+						d.kx(), d.kz(), false, false, false, d.color());
+				res.computeIfAbsent(reino, k -> new Area()).add(trozo);
+			}
+		});
+		return res;
+	}
+
+	private static boolean esReino(PaqueteTerritorio.Ducado d) {
+		return d.dcx() == Integer.MIN_VALUE && d.dcz() == Integer.MIN_VALUE;
 	}
 
 	@Override
@@ -96,12 +121,19 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		if (viejas != null) {
 			viejas.forEach(api::remove);
 		}
-		ShapeProperties estilo = new ShapeProperties()
-				.setFillColor(ducado.color())
-				.setFillOpacity(ducado.oceano() ? OPACIDAD_AGUAS : OPACIDAD_RELLENO)
-				.setStrokeColor(oscuro(ducado.color()))
-				.setStrokeOpacity(OPACIDAD_BORDE)
-				.setStrokeWidth(GROSOR_BORDE);
+		ShapeProperties estilo = esReino(ducado)
+				? new ShapeProperties()
+						.setFillColor(ducado.color())
+						.setFillOpacity(0)
+						.setStrokeColor(oscuro(oscuro(ducado.color())))
+						.setStrokeOpacity(OPACIDAD_REINO)
+						.setStrokeWidth(GROSOR_REINO)
+				: new ShapeProperties()
+						.setFillColor(ducado.color())
+						.setFillOpacity(ducado.oceano() ? OPACIDAD_AGUAS : OPACIDAD_RELLENO)
+						.setStrokeColor(oscuro(ducado.color()))
+						.setStrokeOpacity(OPACIDAD_BORDE)
+						.setStrokeWidth(GROSOR_BORDE);
 		List<PolygonOverlay> nuevas = new ArrayList<>();
 		if (areas.get(ducado).isEmpty()) {
 			areas.remove(ducado);
