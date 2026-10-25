@@ -1,0 +1,55 @@
+name: Compilar
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  compilar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"  # Loom 1.18 necesita Java 25 para ejecutarse; el mod se sigue compilando para Java 21 (release = 21)
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Generar el datapack (suelto y variante del mod)
+        run: |
+          pip install pillow
+          python datapack/build.py salida --mod destinos-core/src/main/generated
+
+      - name: Comprobar que el datapack calcula lo mismo que el simulador
+        run: python herramientas/verifica.py salida/destinos_reinos
+
+      - name: Comprobar que Geo.java calcula lo mismo que el simulador
+        run: |
+          python herramientas/casos.py casos.txt
+          mkdir -p prueba
+          javac -d prueba destinos-core/src/main/java/es/hulillo/destinos/Geo.java herramientas/PruebaGeo.java
+          java -cp prueba PruebaGeo casos.txt
+
+      - name: Compilar Destinos Core
+        working-directory: destinos-core
+        run: ./gradlew build --no-daemon
+
+      - name: Arrancar un servidor de Minecraft con el mod y comprobar que el datapack carga sin errores
+        run: python herramientas/servidor_prueba.py
+        timeout-minutes: 20
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: destinos-core
+          path: |
+            destinos-core/build/libs/*.jar
+            salida/*.zip
+            destinos-core/run/logs/latest.log

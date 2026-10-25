@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 1,
+	"id": "destinos_core",
+	"version": "${version}",
+	"name": "Destinos Core",
+	"description": "Reinos y ducados RNG cuyas fronteras siguen montañas, ríos y costas. Trae dentro el datapack Destinos: Reinos. / RNG kingdoms and duchies whose borders follow mountains, rivers and coasts.",
+	"authors": ["Hulillo"],
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": ["es.hulillo.destinos.DestinosCore"]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
