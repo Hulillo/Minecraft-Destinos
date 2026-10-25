@@ -16,6 +16,11 @@ public final class Geo {
 	public static final int K_REINO = 104729;
 	public static final int K_SALV = 1299709;
 	public static final int K_WARP = 15485863;
+	/** Colores de reino (RGB), en el mismo orden que COLORES de constantes.py. */
+	public static final int[] COLORES = {
+		0xc0392b, 0x2e5fa8, 0x2e8b3a, 0x7b3fa0, 0xc9a227, 0xd8d8d8, 0xa0582c, 0x138d90, 0xb0306a, 0x5b6f7c,
+	};
+	public static final int SAL_COLOR = 5;
 
 	private Geo() {
 	}
@@ -82,6 +87,11 @@ public final class Geo {
 		int tirada = Math.floorMod(hash(dcx, dcz, sal + K_SALV), 100);
 		boolean salvaje = tirada < P_SALVAJE || (k.dist() > D_FRONTERA * D_FRONTERA && tirada < P_FRONTERA);
 		return new Reino(k.cx(), k.cz(), salvaje);
+	}
+
+	/** Color (RGB) del reino de celda (kx, kz): el mismo que elige reino/generar_reino. */
+	public static int colorReino(int kx, int kz, int sal) {
+		return COLORES[Math.floorMod(hash(kx, kz, sal + SAL_COLOR), COLORES.length)];
 	}
 
 	/** Territorio geométrico (sin terreno), el mismo que calcula el datapack solo. */
