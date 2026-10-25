@@ -22,6 +22,11 @@ dependencies {
 // El datapack y los idiomas los genera datapack/build.py --mod (lo hace la CI antes de compilar)
 sourceSets.main.resources.srcDir 'src/main/generated'
 
+// Para herramientas/servidor_prueba.py: los comandos de consola llegan al servidor por stdin
+tasks.named('runServer') {
+	standardInput = System.in
+}
+
 processResources {
 	inputs.property "version", project.version
 	filesMatching("fabric.mod.json") {
