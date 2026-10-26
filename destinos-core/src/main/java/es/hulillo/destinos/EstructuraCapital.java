@@ -50,6 +50,8 @@ public final class EstructuraCapital extends Structure {
 	private static final int DISTANCIA = 80;
 	private static final int DISTANCIA_BARRIO = 48;
 	private static final int SEPARACION_BARRIO = 64;
+	/** Largo de cada tramo de calle entre el centro y un barrio. */
+	private static final int TRAMO = 16;
 
 	/** Pueblos agrandados ya preparados (por pueblo, profundidad y distancia), para los registros del mundo abierto. */
 	private static final Map<String, Optional<Structure>> COPIAS = new ConcurrentHashMap<>();
@@ -118,6 +120,11 @@ public final class EstructuraCapital extends Structure {
 			}
 		}
 		Structure.GenerationStub principal = plaza.get();
+		// calles del centro a cada barrio, para que no queden como pueblos sueltos
+		List<CalleCapital> calles = new ArrayList<>();
+		for (Structure.GenerationStub b : barrios) {
+			calles(ctx, principal.position().getX(), principal.position().getZ(), b.position().getX(), b.position().getZ(), calles);
+		}
 		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
 			List<StructurePiece> puestas = new ArrayList<>();
 			List<StructurePiece> delCentro = principal.getPiecesBuilder().build().pieces();
@@ -137,7 +144,23 @@ public final class EstructuraCapital extends Structure {
 					}
 				}
 			}
+			calles.forEach(piezas::addPiece);
 		}));
+	}
+
+	/** Tramos de calle de (x0, z0) a (x1, z1), cada uno a la altura del suelo en su mitad. */
+	private static void calles(Structure.GenerationContext ctx, int x0, int z0, int x1, int z1, List<CalleCapital> calles) {
+		int largo = Math.max(Math.abs(x1 - x0), Math.abs(z1 - z0));
+		int tramos = Math.max(1, (largo + TRAMO - 1) / TRAMO);
+		for (int i = 0; i < tramos; i++) {
+			int ax = x0 + (x1 - x0) * i / tramos;
+			int az = z0 + (z1 - z0) * i / tramos;
+			int bx = x0 + (x1 - x0) * (i + 1) / tramos;
+			int bz = z0 + (z1 - z0) * (i + 1) / tramos;
+			int y = ctx.chunkGenerator().getFirstOccupiedHeight((ax + bx) / 2, (az + bz) / 2, Heightmap.Types.WORLD_SURFACE_WG,
+					ctx.heightAccessor(), ctx.randomState());
+			calles.add(new CalleCapital(ax, az, bx, bz, y));
+		}
 	}
 
 	/** Dónde hay agua en vez de tierra (fondo por debajo del nivel del mar), mirado por casillas de 8 bloques. */
