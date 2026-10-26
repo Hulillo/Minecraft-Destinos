@@ -7,12 +7,16 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -47,6 +51,7 @@ public final class DestinosCore implements ModInitializer {
 	/** Mapa para el que se mandaron las zonas: si cambia (otra sal), se manda todo otra vez. */
 	private static MapaTerreno mapaEnviado;
 	private static PoliticaMundo politica;
+	private static final Identifier MUNDO = Identifier.fromNamespaceAndPath("destinos", "mundo");
 
 	@Override
 	public void onInitialize() {
@@ -68,6 +73,15 @@ public final class DestinosCore implements ModInitializer {
 		PayloadTypeRegistry.playS2C().register(PaqueteTerritorio.TIPO, PaqueteTerritorio.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaquetePolitica.TIPO, PaquetePolitica.CODEC);
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ENVIO.olvida(handler.getPlayer().getUUID()));
+		// la sal tiene que estar antes del primer chunk (los de alrededor del spawn se generan antes de que el
+		// datapack cargue); si no, ahí no salen capitales
+		ServerWorldEvents.LOAD.register(DestinosCore::salTemprana);
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			MapaTerreno m = mapa;
+			if (m != null) {
+				guardaSal(server, m.sal());
+			}
+		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			if (politica != null) {
 				politica.guarda(server);
@@ -138,10 +152,57 @@ public final class DestinosCore implements ModInitializer {
 		MapaTerreno m = mapa;
 		if (m == null || m.sal() != sal) {
 			m = new MapaTerreno(new MuestreadorMundo(server.overworld()), sal, HILO);
-			politica = PoliticaMundo.de(server, sal);
 			mapa = m;
 		}
+		if (politica == null || politica.sal() != sal) {
+			politica = PoliticaMundo.de(server, sal);
+		}
 		return m;
+	}
+
+	/**
+	 * Al abrir el overworld, antes de generar nada: la sal del mundo (la guardada o, en un mundo nuevo, una sacada
+	 * de la semilla, que se deja en el storage para que el datapack la adopte en vez de tirar otra).
+	 */
+	private static void salTemprana(MinecraftServer server, ServerLevel level) {
+		if (level.dimension() != Level.OVERWORLD) {
+			return;
+		}
+		Integer guardada = null;
+		try {
+			CompoundTag t = server.getCommandStorage().get(MUNDO);
+			if (t.contains("sal")) {
+				guardada = t.getIntOr("sal", 0);
+			}
+		} catch (RuntimeException e) {
+			// el storage aún no está: se guarda en SERVER_STARTED
+		}
+		int sal = guardada != null ? guardada : salDeSemilla(level.getSeed());
+		mapa = new MapaTerreno(new MuestreadorMundo(level), sal, HILO);
+		if (guardada == null) {
+			guardaSal(server, sal);
+		}
+	}
+
+	private static int salDeSemilla(long semilla) {
+		long h = (semilla ^ 0x5DEECE66DL) * 0x9E3779B97F4A7C15L;
+		h ^= h >>> 31;
+		h *= 0xBF58476D1CE4E5B9L;
+		h ^= h >>> 29;
+		return 1 + (int) Math.floorMod(h, 2_000_000_000L);
+	}
+
+	/** Deja la sal en destinos:mundo si aún no hay (el datapack solo tira una si falta). */
+	private static void guardaSal(MinecraftServer server, int sal) {
+		try {
+			CompoundTag t = server.getCommandStorage().get(MUNDO);
+			if (!t.contains("sal")) {
+				t.putInt("sal", sal);
+				server.getCommandStorage().set(MUNDO, t);
+			}
+		} catch (RuntimeException e) {
+			LOG.warn("Destinos Core: no se ha podido guardar la sal temprana", e);
+		}
 	}
 
 	/**

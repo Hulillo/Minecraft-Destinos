@@ -80,6 +80,8 @@ if malas:
 capitales = len(re.findall(r"Generated structure \S*destinos_core:capital", salida))
 if "agrandado no es válido" in salida:
     sys.exit("la capital no ha podido agrandar el pueblo (ver el aviso de arriba)")
+if "antes de que el datapack ponga la sal" in salida:
+    sys.exit("se han generado chunks sin sal (ahí no habría capitales)")
 if capitales < 1:
     print("\n".join(l.rstrip() for l in lineas if "capital" in l or "structure" in l.lower())[-3000:])
     sys.exit("la capital de prueba no se ha generado")
