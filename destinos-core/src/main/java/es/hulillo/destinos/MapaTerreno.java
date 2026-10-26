@@ -480,10 +480,19 @@ public final class MapaTerreno {
 		return f.isCompletedExceptionally() ? Optional.empty() : Optional.ofNullable(f.join());
 	}
 
-	/** Capital del reino ya calculada, o la calcula aquí mismo (para pruebas y herramientas). */
+	/**
+	 * Capital del reino, ya calculada o calculándola aquí mismo (para la generación del mundo, pruebas y
+	 * herramientas). No espera al hilo del terreno, que puede estar ocupado con zonas enteras: si la está
+	 * calculando él, se calcula otra vez aquí (sale igual).
+	 */
 	public Capital capital(int kx, int kz) {
-		return capitales.computeIfAbsent(clave(kx, kz),
-				k -> CompletableFuture.completedFuture(calculaCapital(kx, kz))).join();
+		CompletableFuture<Capital> f = capitales.get(clave(kx, kz));
+		if (f != null && f.isDone() && !f.isCompletedExceptionally()) {
+			return f.join();
+		}
+		Capital c = calculaCapital(kx, kz);
+		capitales.putIfAbsent(clave(kx, kz), CompletableFuture.completedFuture(c));
+		return c;
 	}
 
 	/**
