@@ -81,26 +81,36 @@ public final class EstructuraCapital extends Structure {
 				pueblos.add(h);
 			}
 		});
-		Holder.Reference<Structure> pueblo;
+		// el que toca en este chunk primero; si no puede empezar (algunos pueblos de mods piden un sitio muy
+		// concreto), los demás del bioma y al final el vanilla del clima
+		List<Holder.Reference<Structure>> orden = new ArrayList<>();
 		if (!pueblos.isEmpty()) {
 			pueblos.sort((a, b) -> String.valueOf(estructuras.getKey(a.value())).compareTo(String.valueOf(estructuras.getKey(b.value()))));
 			int i = Math.floorMod(Geo.hash(ctx.chunkPos().x, ctx.chunkPos().z, (int) ctx.seed()), pueblos.size());
-			pueblo = pueblos.get(i);
-		} else {
-			float temperatura = bioma.value().getBaseTemperature();
-			String porDefecto = temperatura < 0.2F ? "village_snowy" : temperatura > 1.5F ? "village_desert" : "village_plains";
-			Optional<Holder.Reference<Structure>> h = estructuras.get(Identifier.withDefaultNamespace(porDefecto));
-			if (h.isEmpty()) {
-				return Optional.empty();
+			for (int k = 0; k < pueblos.size(); k++) {
+				orden.add(pueblos.get((i + k) % pueblos.size()));
 			}
-			pueblo = h.get();
 		}
-		Identifier id = estructuras.getKey(pueblo.value());
-		Optional<Structure> centro = agrandado(ctx.registryAccess(), id, pueblo.value(), MAS_PROFUNDIDAD, DISTANCIA);
-		Optional<Structure.GenerationStub> plaza = centro.flatMap(s -> s.findValidGenerationPoint(ctx));
-		if (plaza.isEmpty()) {
-			DestinosCore.LOG.warn("Destinos Core: la capital del chunk {} ({}) no ha podido empezar su pueblo {}",
-					ctx.chunkPos(), bioma.unwrapKey().map(Object::toString).orElse("?"), id);
+		float temperatura = bioma.value().getBaseTemperature();
+		String porDefecto = temperatura < 0.2F ? "village_snowy" : temperatura > 1.5F ? "village_desert" : "village_plains";
+		estructuras.get(Identifier.withDefaultNamespace(porDefecto)).filter(h -> !orden.contains(h)).ifPresent(orden::add);
+		Holder.Reference<Structure> pueblo = null;
+		Identifier id = null;
+		Optional<Structure.GenerationStub> plaza = Optional.empty();
+		for (Holder.Reference<Structure> candidato : orden) {
+			Identifier idCandidato = estructuras.getKey(candidato.value());
+			plaza = agrandado(ctx.registryAccess(), idCandidato, candidato.value(), MAS_PROFUNDIDAD, DISTANCIA)
+					.flatMap(s -> s.findValidGenerationPoint(ctx));
+			if (plaza.isPresent()) {
+				pueblo = candidato;
+				id = idCandidato;
+				break;
+			}
+			DestinosCore.LOG.info("Destinos Core: la capital del chunk {} ({}) no ha podido empezar con {}; prueba otro",
+					ctx.chunkPos(), bioma.unwrapKey().map(Object::toString).orElse("?"), idCandidato);
+		}
+		if (pueblo == null) {
+			DestinosCore.LOG.warn("Destinos Core: la capital del chunk {} no ha podido empezar con ningún pueblo", ctx.chunkPos());
 			return Optional.empty();
 		}
 		// los barrios: el mismo pueblo, en las cuatro diagonales (menos los que caen en el agua)
