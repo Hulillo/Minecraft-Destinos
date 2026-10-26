@@ -21,6 +21,7 @@ import net.minecraft.tags.StructureTags;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructureType;
@@ -100,7 +101,8 @@ public final class EstructuraCapital extends Structure {
 					ctx.chunkPos(), bioma.unwrapKey().map(Object::toString).orElse("?"), id);
 			return Optional.empty();
 		}
-		// los barrios: el mismo pueblo, en las cuatro diagonales
+		// los barrios: el mismo pueblo, en las cuatro diagonales (menos los que caen en el agua)
+		Agua agua = new Agua(ctx);
 		List<Structure.GenerationStub> barrios = new ArrayList<>();
 		Optional<Structure> barrio = agrandado(ctx.registryAccess(), id, pueblo.value(), MAS_PROFUNDIDAD_BARRIO, DISTANCIA_BARRIO);
 		if (barrio.isPresent()) {
@@ -110,23 +112,59 @@ public final class EstructuraCapital extends Structure {
 				Structure.GenerationContext otro = new Structure.GenerationContext(ctx.registryAccess(), ctx.chunkGenerator(),
 						ctx.biomeSource(), ctx.randomState(), ctx.structureTemplateManager(), ctx.seed(), sitio,
 						ctx.heightAccessor(), ctx.validBiome());
-				barrio.get().findValidGenerationPoint(otro).ifPresent(barrios::add);
+				if (!agua.en(sitio.getMiddleBlockX(), sitio.getMiddleBlockZ())) {
+					barrio.get().findValidGenerationPoint(otro).ifPresent(barrios::add);
+				}
 			}
 		}
 		Structure.GenerationStub principal = plaza.get();
 		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
-			List<StructurePiece> puestas = new ArrayList<>(principal.getPiecesBuilder().build().pieces());
-			puestas.forEach(piezas::addPiece);
+			List<StructurePiece> puestas = new ArrayList<>();
+			List<StructurePiece> delCentro = principal.getPiecesBuilder().build().pieces();
+			for (int i = 0; i < delCentro.size(); i++) {
+				// la plaza siempre; el resto, si no está metido en el mar (calles y casas flotando)
+				if (i == 0 || !agua.tapa(delCentro.get(i))) {
+					puestas.add(delCentro.get(i));
+					piezas.addPiece(delCentro.get(i));
+				}
+			}
 			for (Structure.GenerationStub b : barrios) {
 				for (StructurePiece pieza : b.getPiecesBuilder().build().pieces()) {
-					// una pieza de barrio que choca con algo ya puesto se queda fuera
-					if (puestas.stream().noneMatch(otra -> otra.getBoundingBox().intersects(pieza.getBoundingBox()))) {
+					// una pieza de barrio que choca con algo ya puesto o cae en el agua se queda fuera
+					if (!agua.tapa(pieza) && puestas.stream().noneMatch(otra -> otra.getBoundingBox().intersects(pieza.getBoundingBox()))) {
 						puestas.add(pieza);
 						piezas.addPiece(pieza);
 					}
 				}
 			}
 		}));
+	}
+
+	/** Dónde hay agua en vez de tierra (fondo por debajo del nivel del mar), mirado por casillas de 8 bloques. */
+	private static final class Agua {
+		private final Structure.GenerationContext ctx;
+		private final Map<Long, Boolean> visto = new ConcurrentHashMap<>();
+
+		Agua(Structure.GenerationContext ctx) {
+			this.ctx = ctx;
+		}
+
+		boolean en(int x, int z) {
+			return visto.computeIfAbsent(((long) (x >> 3) << 32) ^ ((z >> 3) & 0xffffffffL), k ->
+					ctx.chunkGenerator().getBaseHeight(x, z, Heightmap.Types.OCEAN_FLOOR_WG, ctx.heightAccessor(),
+							ctx.randomState()) < ctx.chunkGenerator().getSeaLevel());
+		}
+
+		/** Si la pieza está casi toda sobre el agua: el centro y al menos dos esquinas. */
+		boolean tapa(StructurePiece pieza) {
+			BoundingBox c = pieza.getBoundingBox();
+			if (!en(c.getCenter().getX(), c.getCenter().getZ())) {
+				return false;
+			}
+			int esquinas = (en(c.minX(), c.minZ()) ? 1 : 0) + (en(c.maxX(), c.minZ()) ? 1 : 0)
+					+ (en(c.minX(), c.maxZ()) ? 1 : 0) + (en(c.maxX(), c.maxZ()) ? 1 : 0);
+			return esquinas >= 2;
+		}
 	}
 
 	private static boolean esPueblo(Registry<Structure> estructuras, Holder.Reference<Structure> h) {
