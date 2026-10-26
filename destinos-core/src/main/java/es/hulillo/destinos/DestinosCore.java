@@ -175,13 +175,11 @@ public final class DestinosCore implements ModInitializer {
 				guardada = t.getIntOr("sal", 0);
 			}
 		} catch (RuntimeException e) {
-			// el storage aún no está: se guarda en SERVER_STARTED
+			// el storage aún no está (mundo nuevo)
 		}
 		int sal = guardada != null ? guardada : salDeSemilla(level.getSeed());
+		// en un mundo nuevo el storage aún no existe aquí: la sal se guarda en SERVER_STARTED, antes del primer tick
 		mapa = new MapaTerreno(new MuestreadorMundo(level), sal, HILO);
-		if (guardada == null) {
-			guardaSal(server, sal);
-		}
 	}
 
 	private static int salDeSemilla(long semilla) {
