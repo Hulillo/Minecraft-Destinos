@@ -21,6 +21,7 @@ COMANDOS = [
     "destinoscore estado",
     "destinoscore politica",
     "destinoscore turno 16",
+    "destinoscore politica reinos",
     "destinoscore cronica",
     "data get storage destinos:politica turno",
 ]

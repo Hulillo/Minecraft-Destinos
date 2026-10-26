@@ -7,6 +7,10 @@ package es.hulillo.destinos.politica;
 public record Suceso(Tipo tipo, int anio, long reinoA, long reinoB, long ducado) {
 	/** El nombre de cada tipo es también el de su texto (clave de idioma destinos.politica.<nombre>). */
 	public enum Tipo {
-		guerra, paz, conquista, cae, alianza, ruptura, vasallaje, independencia, anexion, disolucion, expansion
+		guerra, paz, conquista, cae, alianza, ruptura, vasallaje, independencia, anexion, disolucion, expansion,
+		/** El reino A toma la capital del B (ducado). */
+		capital,
+		/** A y B se unen en una corona o liga con nombre propio; fin_union: se separan. */
+		union, fin_union
 	}
 }

@@ -4,6 +4,7 @@ import dev.diorama.Projection;
 import dev.diorama.bake.TileKey;
 import dev.diorama.render.MapViewport;
 import es.hulillo.destinos.MapaTerreno;
+import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTerritorio;
 import es.hulillo.destinos.cliente.TerritoriosCliente;
 import java.lang.reflect.Method;
@@ -147,6 +148,20 @@ public final class CapaDiorama {
 				}
 			}
 		}
+		if (bordes) {
+			for (PaquetePolitica.Capital c : TerritoriosCliente.capitales()) {
+				int alto = TerritoriosCliente.altura(Math.floorDiv(c.x(), C), Math.floorDiv(c.z(), C));
+				if (alto == TerritoriosCliente.SIN_ALTURA) {
+					continue;
+				}
+				int sx = Math.round(vista.screenX(c.x()));
+				int sy = Math.round(vista.screenY(Projection.v(alto, c.z())));
+				if (sx < vista.x() || sx >= vista.x() + vista.width() || sy < vista.y() || sy >= vista.y() + vista.height()) {
+					continue;
+				}
+				corona(lienzo, sx, sy, Math.max(2, Math.min(4, Math.round(px / 20))), c.perdida() ? GRIS : ORO);
+			}
+		}
 		TerritoriosCliente.ultimoPintado = "Diorama: " + pintadas + " casillas pintadas, " + mar + " de mar internacional, "
 				+ sinDatos + " sin datos, " + fuera + " fuera de pantalla (x " + tx0 + ".." + tx1 + ", z " + tz0 + ".." + tz1
 				+ ", zoom " + String.format("%.3f", vista.zoom()) + ")";
@@ -194,6 +209,26 @@ public final class CapaDiorama {
 		for (int i = -r; i <= r; i++) {
 			lienzo.rect(cx + i - b, cy + i - b, cx + i + t + b, cy + i + t + b, c);
 			lienzo.rect(cx + i - b, cy - i - b, cx + i + t + b, cy - i + t + b, c);
+		}
+	}
+
+	/** Corona de una capital, en píxeles de s×s centrada en (cx, cy), con contorno negro. */
+	private static final String[] CORONA = {"x.x.x", "xxxxx", "xxxxx"};
+	/** Corona de una capital que hoy tiene otro reino. */
+	private static final int GRIS = 0x9e9e9e;
+
+	private static void corona(Lienzo lienzo, int cx, int cy, int s, int color) {
+		int x0 = cx - 5 * s / 2;
+		int y0 = cy - 3 * s / 2;
+		for (int borde = 1; borde >= 0; borde--) {
+			int c = borde == 1 ? 0xff000000 : 0xff << 24 | color;
+			for (int j = 0; j < CORONA.length; j++) {
+				for (int i = 0; i < CORONA[j].length(); i++) {
+					if (CORONA[j].charAt(i) == 'x') {
+						lienzo.rect(x0 + i * s - borde, y0 + j * s - borde, x0 + (i + 1) * s + borde, y0 + (j + 1) * s + borde, c);
+					}
+				}
+			}
 		}
 	}
 

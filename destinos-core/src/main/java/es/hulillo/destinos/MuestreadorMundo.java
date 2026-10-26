@@ -2,11 +2,15 @@ package es.hulillo.destinos;
 
 import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
 import net.fabricmc.fabric.api.tag.convention.v2.ConventionalBiomeTags;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.TagKey;
 import net.minecraft.tags.BiomeTags;
+import net.minecraft.tags.StructureTags;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeSource;
@@ -52,6 +56,22 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 	private final int nivelMar;
 	private final ChunkGeneratorStructureState estructuras;
 	private final StructureSet pueblos;
+	/** Todos los grupos de estructuras que ponen pueblos (los vanilla y los de mods como Towns and Towers). */
+	private final List<StructureSet> gruposPueblo = new ArrayList<>();
+
+	/** Culturas del datapack en su orden de detección (cultura/detectar) y si son de montaña. */
+	private static final String[] CULTURAS = {"norte", "cerezo", "bambu", "selva", "andina", "sabana", "desierto", "estepa", "costa"};
+	private static final boolean[] DE_MONTANA = {true, false, false, false, true, false, false, true, false};
+	@SuppressWarnings("unchecked")
+	private static final TagKey<Biome>[] TAGS_CULTURA = new TagKey[CULTURAS.length];
+	private static final TagKey<Biome> ISLAS = TagKey.create(Registries.BIOME,
+			Identifier.fromNamespaceAndPath("destinos", "cultura/islas"));
+
+	static {
+		for (int i = 0; i < CULTURAS.length; i++) {
+			TAGS_CULTURA[i] = TagKey.create(Registries.BIOME, Identifier.fromNamespaceAndPath("destinos", "cultura/" + CULTURAS[i]));
+		}
+	}
 
 	MuestreadorMundo(ServerLevel level) {
 		RandomState aleatorio = level.getChunkSource().randomState();
@@ -62,6 +82,12 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 		this.estructuras = level.getChunkSource().getGeneratorState();
 		this.pueblos = level.registryAccess().lookupOrThrow(Registries.STRUCTURE_SET)
 				.getValue(BuiltinStructureSets.VILLAGES);
+		for (StructureSet grupo : level.registryAccess().lookupOrThrow(Registries.STRUCTURE_SET)) {
+			if (grupo.placement() instanceof RandomSpreadStructurePlacement
+					&& grupo.structures().stream().anyMatch(e -> e.structure().is(StructureTags.VILLAGE))) {
+				gruposPueblo.add(grupo);
+			}
+		}
 	}
 
 	private int altura(int x, int z) {
@@ -105,6 +131,52 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 			}
 		}
 		return 0;
+	}
+
+	@Override
+	public List<int[]> pueblos(int x0, int z0, int x1, int z1) {
+		List<int[]> res = new ArrayList<>();
+		long semilla = estructuras.getLevelSeed();
+		for (StructureSet grupo : gruposPueblo) {
+			RandomSpreadStructurePlacement colocacion = (RandomSpreadStructurePlacement) grupo.placement();
+			int paso = colocacion.spacing();
+			for (int rx = Math.floorDiv(x0 >> 4, paso); rx <= Math.floorDiv((x1 - 1) >> 4, paso); rx++) {
+				for (int rz = Math.floorDiv(z0 >> 4, paso); rz <= Math.floorDiv((z1 - 1) >> 4, paso); rz++) {
+					ChunkPos c = colocacion.getPotentialStructureChunk(semilla, rx * paso, rz * paso);
+					int bx = c.getMiddleBlockX();
+					int bz = c.getMiddleBlockZ();
+					if (bx < x0 || bz < z0 || bx >= x1 || bz >= z1 || !colocacion.isStructureChunk(estructuras, c.x, c.z)) {
+						continue;
+					}
+					Holder<Biome> b = bioma(bx, Math.max(altura(bx, bz), nivelMar), bz);
+					for (StructureSet.StructureSelectionEntry e : grupo.structures()) {
+						if (e.structure().is(StructureTags.VILLAGE) && e.structure().value().biomes().contains(b)) {
+							res.add(new int[] {bx, bz});
+							break;
+						}
+					}
+				}
+			}
+		}
+		return res;
+	}
+
+	/** La misma elección que cultura/detectar del datapack: islas si hay mar cálido cerca, si no, la primera que encaja. */
+	@Override
+	public boolean culturaDeMontana(int x, int z) {
+		int y = Math.max(altura(x, z), nivelMar);
+		for (int[] d : new int[][] {{0, 0}, {48, 0}, {-48, 0}, {0, 48}, {0, -48}}) {
+			if (bioma(x + d[0], y, z + d[1]).is(ISLAS)) {
+				return false;
+			}
+		}
+		Holder<Biome> b = bioma(x, y, z);
+		for (int i = 0; i < CULTURAS.length; i++) {
+			if (b.is(TAGS_CULTURA[i])) {
+				return DE_MONTANA[i];
+			}
+		}
+		return false;
 	}
 
 	/** Mira los sitios donde el juego intentaría poner un pueblo y si su bioma lo permite. */
