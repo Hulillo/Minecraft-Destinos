@@ -44,6 +44,7 @@ final class GuardadoPolitica {
 			x.putInt("lealtad", c.lealtad());
 			x.putInt("anio", c.anio());
 			x.putBoolean("noble", c.baseNoble());
+			x.putInt("turno", c.turno());
 			cambios.add(x);
 		});
 		t.put("cambios", cambios);
@@ -89,7 +90,7 @@ final class GuardadoPolitica {
 		for (int i = 0; i < cambios.size(); i++) {
 			CompoundTag c = cambios.getCompoundOrEmpty(i);
 			p.cambios().put(c.getLongOr("ducado", 0), new Politica.Cambio(c.getLongOr("dueno", Politica.SALVAJE),
-					c.getIntOr("lealtad", 50), c.getIntOr("anio", 1), c.getBooleanOr("noble", false)));
+					c.getIntOr("lealtad", 50), c.getIntOr("anio", 1), c.getBooleanOr("noble", false), c.getIntOr("turno", -1)));
 		}
 		leePares(t.getListOrEmpty("relaciones"), "valor", p.relaciones());
 		leePares(t.getListOrEmpty("guerras"), "turnos", p.guerras());

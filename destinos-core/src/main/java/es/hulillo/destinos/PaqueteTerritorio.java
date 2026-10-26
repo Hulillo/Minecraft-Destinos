@@ -2,7 +2,6 @@ package es.hulillo.destinos;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.UnaryOperator;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -22,15 +21,26 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 	public static final int COLOR_SALVAJE = 0x8a8577;
 	private static final int CASILLAS = MapaTerreno.NUCLEO * MapaTerreno.NUCLEO;
 
+	/** Lo que la política viva pone encima del mapa base. */
+	public interface Politica {
+		/** El territorio con su dueño de hoy. */
+		MapaTerreno.Resultado aplica(MapaTerreno.Resultado r);
+
+		/** Turno en que el ducado cambió de dueño por última vez, o -1. */
+		int turnoCambio(int dcx, int dcz);
+	}
+
 	/**
 	 * Un ducado tal y como se pinta: su reino, si es salvaje o mar (y si ese mar es internacional, lejos de
-	 * toda costa) y el color de su reino (RGB).
+	 * toda costa), el color de su reino (RGB) y el turno político en que cambió de dueño (-1 si nunca).
 	 */
-	public record Ducado(int dcx, int dcz, int kx, int kz, boolean salvaje, boolean oceano, boolean internacional, int color) {
-		static Ducado de(MapaTerreno.Entrada e, int sal, UnaryOperator<MapaTerreno.Resultado> politica) {
-			MapaTerreno.Resultado r = politica.apply(e.territorio());
+	public record Ducado(int dcx, int dcz, int kx, int kz, boolean salvaje, boolean oceano, boolean internacional, int color,
+			int cambio) {
+		static Ducado de(MapaTerreno.Entrada e, int sal, Politica politica) {
+			MapaTerreno.Resultado r = politica.aplica(e.territorio());
 			int color = r.salvaje() ? COLOR_SALVAJE : Geo.colorReino(r.kx(), r.kz(), sal);
-			return new Ducado(r.dcx(), r.dcz(), r.kx(), r.kz(), r.salvaje(), r.oceano(), e.internacional(), color);
+			return new Ducado(r.dcx(), r.dcz(), r.kx(), r.kz(), r.salvaje(), r.oceano(), e.internacional(), color,
+					r.oceano() ? -1 : politica.turnoCambio(r.dcx(), r.dcz()));
 		}
 
 		/** Mar de nadie: no se pinta. */
@@ -48,7 +58,7 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 	}
 
 	/** politica: pone encima el dueño actual de cada ducado (conquistas, crisis…). */
-	public static PaqueteTerritorio de(MapaTerreno.Zona z, int sal, UnaryOperator<MapaTerreno.Resultado> politica) {
+	public static PaqueteTerritorio de(MapaTerreno.Zona z, int sal, Politica politica) {
 		List<Ducado> paleta = new ArrayList<>(z.paleta().size());
 		for (MapaTerreno.Entrada e : z.paleta()) {
 			paleta.add(Ducado.de(e, sal, politica));
@@ -77,6 +87,7 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 			buf.writeVarInt(d.kz());
 			buf.writeByte((d.salvaje() ? 1 : 0) | (d.oceano() ? 2 : 0) | (d.internacional() ? 4 : 0));
 			buf.writeInt(d.color());
+			buf.writeVarInt(d.cambio() + 1);
 		}
 		for (int k = 0; k < CASILLAS; k++) {
 			buf.writeVarInt(indice[k]);
@@ -96,7 +107,8 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 			int kx = buf.readVarInt();
 			int kz = buf.readVarInt();
 			int flags = buf.readByte();
-			paleta.add(new Ducado(dcx, dcz, kx, kz, (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0, buf.readInt()));
+			int color = buf.readInt();
+			paleta.add(new Ducado(dcx, dcz, kx, kz, (flags & 1) != 0, (flags & 2) != 0, (flags & 4) != 0, color, buf.readVarInt() - 1));
 		}
 		short[] indice = new short[CASILLAS];
 		short[] altura = new short[CASILLAS];

@@ -3,6 +3,7 @@ package es.hulillo.destinos.cliente;
 import com.mojang.blaze3d.platform.InputConstants;
 import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.MapaTerreno;
+import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTerritorio;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
@@ -27,6 +28,7 @@ public final class DestinosCoreCliente implements ClientModInitializer {
 	public void onInitializeClient() {
 		// Fabric ya entrega los paquetes en el hilo del cliente
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteTerritorio.TIPO, (paquete, contexto) -> TerritoriosCliente.recibe(paquete));
+		ClientPlayNetworking.registerGlobalReceiver(PaquetePolitica.TIPO, (paquete, contexto) -> TerritoriosCliente.politica(paquete));
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, cliente) -> cliente.execute(TerritoriosCliente::borra));
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, contexto) ->
 				dispatcher.register(ClientCommandManager.literal("destinosmapa").executes(c -> diagnostico(c.getSource()))

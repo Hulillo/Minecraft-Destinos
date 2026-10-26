@@ -23,6 +23,12 @@ public final class CapaDiorama {
 	private static final int ALFA_AGUAS = 0x1c;
 	private static final int ALFA_DUCADO = 0xa0;
 	private static final int ALFA_REINO = 0xf0;
+	/** Ducados que acaban de cambiar de dueño: brillo dorado que late. */
+	private static final int ORO = 0xffc83d;
+	private static final int ALFA_ORO_MAX = 0x78;
+	/** Frentes de guerra: línea roja y, con zoom suficiente, una trinchera de X sobre la frontera. */
+	private static final int ROJO = 0xd42a2a;
+	private static final float CASILLA_MIN_TRINCHERA = 10;
 	/** Por debajo de estos píxeles por casilla las fronteras de ducado serían solo ruido. */
 	private static final float CASILLA_MIN_DUCADOS = 6;
 	/** Las de reino se ven antes, para que de lejos se lea el mapa político. */
@@ -74,6 +80,10 @@ public final class CapaDiorama {
 		// grosor según el zoom: la de reino, bastante más gorda que la de ducado
 		int gDucado = Math.max(1, Math.round(px / 16));
 		int gReino = Math.max(2, Math.round(px / 7));
+		boolean trinchera = px >= CASILLA_MIN_TRINCHERA;
+		// el brillo dorado late una vez cada ~2 segundos
+		double fase = (System.currentTimeMillis() % 2000L) / 2000.0 * Math.PI * 2;
+		int alfaOro = (int) (ALFA_ORO_MAX * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(fase))));
 		int sinDatos = 0;
 		int mar = 0;
 		int fuera = 0;
@@ -100,20 +110,40 @@ public final class CapaDiorama {
 				}
 				pintadas++;
 				lienzo.rect(x0, y0, x1, y1, (d.oceano() ? ALFA_AGUAS : ALFA_RELLENO) << 24 | d.color());
+				boolean reciente = TerritoriosCliente.reciente(d);
+				if (reciente) {
+					lienzo.rect(x0, y0, x1, y1, alfaOro << 24 | ORO);
+				}
 				if (bordes) {
 					// la línea no puede comerse más de un tercio de la casilla
 					int tope = Math.max(1, Math.min(x1 - x0, y1 - y0) / 3);
 					int gr = Math.min(gReino, tope);
 					int gd = ducados ? Math.min(gDucado, tope) : 0;
-					int color = oscuro(d.color());
-					int g0 = grosor(d, TerritoriosCliente.ducado(tx + 1, tz), gr, gd);
-					int g1 = grosor(d, TerritoriosCliente.ducado(tx, tz + 1), gr, gd);
-					int g2 = grosor(d, TerritoriosCliente.ducado(tx - 1, tz), gr, gd);
-					int g3 = grosor(d, TerritoriosCliente.ducado(tx, tz - 1), gr, gd);
-					linea(lienzo, x1 - Math.abs(g0), y0, x1, y1, g0, color);
-					linea(lienzo, x0, y1 - Math.abs(g1), x1, y1, g1, color);
-					linea(lienzo, x0, y0, x0 + Math.abs(g2), y1, g2, color);
-					linea(lienzo, x0, y0, x1, y0 + Math.abs(g3), g3, color);
+					int color = reciente ? ORO : oscuro(d.color());
+					PaqueteTerritorio.Ducado este = TerritoriosCliente.ducado(tx + 1, tz);
+					PaqueteTerritorio.Ducado sur = TerritoriosCliente.ducado(tx, tz + 1);
+					PaqueteTerritorio.Ducado oeste = TerritoriosCliente.ducado(tx - 1, tz);
+					PaqueteTerritorio.Ducado norte = TerritoriosCliente.ducado(tx, tz - 1);
+					boolean guerraE = TerritoriosCliente.enGuerra(d, este);
+					boolean guerraS = TerritoriosCliente.enGuerra(d, sur);
+					int g0 = grosor(d, este, gr, gd);
+					int g1 = grosor(d, sur, gr, gd);
+					int g2 = grosor(d, oeste, gr, gd);
+					int g3 = grosor(d, norte, gr, gd);
+					linea(lienzo, x1 - Math.abs(g0), y0, x1, y1, g0, guerraE, color);
+					linea(lienzo, x0, y1 - Math.abs(g1), x1, y1, g1, guerraS, color);
+					linea(lienzo, x0, y0, x0 + Math.abs(g2), y1, g2, TerritoriosCliente.enGuerra(d, oeste), color);
+					linea(lienzo, x0, y0, x1, y0 + Math.abs(g3), g3, TerritoriosCliente.enGuerra(d, norte), color);
+					// la trinchera se dibuja una sola vez sobre cada frontera: desde la casilla del oeste o del norte
+					if (trinchera) {
+						int r = Math.max(2, Math.min(x1 - x0, y1 - y0) / 5);
+						if (guerraE) {
+							equis(lienzo, x1, (y0 + y1) / 2, r);
+						}
+						if (guerraS) {
+							equis(lienzo, (x0 + x1) / 2, y1, r);
+						}
+					}
 				}
 			}
 		}
@@ -139,13 +169,24 @@ public final class CapaDiorama {
 		return vecino.deNadie() || !d.mismoReino(vecino) ? gReino : -gDucado;
 	}
 
-	/** Línea por dentro de la casilla: la de reino (grosor positivo), más oscura y opaca. */
-	private static void linea(Lienzo lienzo, int x0, int y0, int x1, int y1, int grosor, int color) {
+	/** Línea por dentro de la casilla: la de reino (grosor positivo), más oscura y opaca; roja si es frente de guerra. */
+	private static void linea(Lienzo lienzo, int x0, int y0, int x1, int y1, int grosor, boolean guerra, int color) {
 		if (grosor == 0 || x0 >= x1 || y0 >= y1) {
 			return;
 		}
-		int c = grosor > 0 ? ALFA_REINO << 24 | oscuro(color) : ALFA_DUCADO << 24 | color;
+		int c = guerra && grosor > 0 ? ALFA_REINO << 24 | ROJO
+				: grosor > 0 ? ALFA_REINO << 24 | oscuro(color) : ALFA_DUCADO << 24 | color;
 		lienzo.rect(x0, y0, x1, y1, c);
+	}
+
+	/** Una X roja de radio r centrada en (cx, cy), hecha a escalones: las marcas de la trinchera. */
+	private static void equis(Lienzo lienzo, int cx, int cy, int r) {
+		int t = Math.max(1, r / 3);
+		int c = 0xff << 24 | ROJO;
+		for (int i = -r; i <= r; i++) {
+			lienzo.rect(cx + i, cy + i, cx + i + t, cy + i + t, c);
+			lienzo.rect(cx + i, cy - i, cx + i + t, cy - i + t, c);
+		}
 	}
 
 	/** El color de la casilla oscurecido a 3/5 (líneas de ducado); aplicado dos veces, el de reino. */

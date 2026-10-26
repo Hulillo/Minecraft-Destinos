@@ -63,6 +63,7 @@ public final class DestinosCore implements ModInitializer {
 										.executes(ctx -> turno(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "n")))))
 						.then(Commands.literal("cronica").executes(ctx -> cronica(ctx.getSource())))));
 		PayloadTypeRegistry.playS2C().register(PaqueteTerritorio.TIPO, PaqueteTerritorio.CODEC);
+		PayloadTypeRegistry.playS2C().register(PaquetePolitica.TIPO, PaquetePolitica.CODEC);
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ENVIO.olvida(handler.getPlayer().getUUID()));
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			if (politica != null) {
@@ -84,7 +85,12 @@ public final class DestinosCore implements ModInitializer {
 		// los turnos se miran en cada tick para que /destinoscore turno responda enseguida
 		if (pol != null && mapa != null) {
 			// las zonas con ducados de otro dueño se vuelven a mandar a los mapas de los clientes
+			int antes = pol.turno();
 			ENVIO.olvidaZonas(pol.tick(server));
+			if (pol.turno() != antes) {
+				// guerras y "cambios recientes" del mapa: el estado político nuevo a todos
+				ENVIO.olvidaPolitica();
+			}
 		}
 		if (server.getTickCount() % TICKS_PRECARGA == 0) {
 			precarga(server);
@@ -102,10 +108,11 @@ public final class DestinosCore implements ModInitializer {
 		}
 		PoliticaMundo pol = politica;
 		pol.alimenta(server, m);
+		PaquetePolitica estado = pol.estadoMapas();
 		for (ServerPlayer p : server.getPlayerList().getPlayers()) {
 			if (p.level().dimension() == Level.OVERWORLD) {
 				m.precarga(p.getBlockX(), p.getBlockZ());
-				ENVIO.envia(m, pol::aplica, p);
+				ENVIO.envia(m, pol, estado, p);
 			}
 		}
 	}
