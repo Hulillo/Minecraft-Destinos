@@ -7,12 +7,16 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -47,6 +51,7 @@ public final class DestinosCore implements ModInitializer {
 	/** Mapa para el que se mandaron las zonas: si cambia (otra sal), se manda todo otra vez. */
 	private static MapaTerreno mapaEnviado;
 	private static PoliticaMundo politica;
+	private static final Identifier MUNDO = Identifier.fromNamespaceAndPath("destinos", "mundo");
 
 	@Override
 	public void onInitialize() {
@@ -55,6 +60,7 @@ public final class DestinosCore implements ModInitializer {
 						.then(Commands.literal("territorio").executes(ctx -> territorio(ctx.getSource())))
 						.then(Commands.literal("estado").executes(ctx -> estado(ctx.getSource())))
 						.then(Commands.literal("politica").executes(ctx -> politica(ctx.getSource()))
+								.then(Commands.literal("reinos").executes(ctx -> ranking(ctx.getSource())))
 								.then(Commands.literal("ritmo")
 										.then(Commands.argument("dias", IntegerArgumentType.integer(1, 30))
 												.executes(ctx -> ritmo(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "dias"))))))
@@ -62,9 +68,21 @@ public final class DestinosCore implements ModInitializer {
 								.then(Commands.argument("n", IntegerArgumentType.integer(1, 500))
 										.executes(ctx -> turno(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "n")))))
 						.then(Commands.literal("cronica").executes(ctx -> cronica(ctx.getSource())))));
+		ColocacionCapital.registra();
+		EstructuraCapital.registra();
+		CalleCapital.registra();
 		PayloadTypeRegistry.playS2C().register(PaqueteTerritorio.TIPO, PaqueteTerritorio.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaquetePolitica.TIPO, PaquetePolitica.CODEC);
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ENVIO.olvida(handler.getPlayer().getUUID()));
+		// la sal tiene que estar antes del primer chunk (los de alrededor del spawn se generan antes de que el
+		// datapack cargue); si no, ahí no salen capitales
+		ServerWorldEvents.LOAD.register(DestinosCore::salTemprana);
+		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			MapaTerreno m = mapa;
+			if (m != null) {
+				guardaSal(server, m.sal());
+			}
+		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			if (politica != null) {
 				politica.guarda(server);
@@ -107,7 +125,10 @@ public final class DestinosCore implements ModInitializer {
 			mapaEnviado = m;
 		}
 		PoliticaMundo pol = politica;
-		pol.alimenta(server, m);
+		if (pol.alimenta(server, m)) {
+			// capitales nuevas: el estado político (con sus coronas) otra vez a todos
+			ENVIO.olvidaPolitica();
+		}
 		PaquetePolitica estado = pol.estadoMapas();
 		for (ServerPlayer p : server.getPlayerList().getPlayers()) {
 			if (p.level().dimension() == Level.OVERWORLD) {
@@ -116,6 +137,11 @@ public final class DestinosCore implements ModInitializer {
 				ENVIO.envia(m, pol, estado, p);
 			}
 		}
+	}
+
+	/** El mapa del mundo que está abierto, o null (para la generación del mundo, que no sabe del servidor). */
+	static MapaTerreno mapaActual() {
+		return mapa;
 	}
 
 	/** El mapa del mundo actual. Se rehace si cambia la sal (otro mundo). Null si el datapack aún no ha cargado. */
@@ -127,10 +153,55 @@ public final class DestinosCore implements ModInitializer {
 		MapaTerreno m = mapa;
 		if (m == null || m.sal() != sal) {
 			m = new MapaTerreno(new MuestreadorMundo(server.overworld()), sal, HILO);
-			politica = PoliticaMundo.de(server, sal);
 			mapa = m;
 		}
+		if (politica == null || politica.sal() != sal) {
+			politica = PoliticaMundo.de(server, sal);
+		}
 		return m;
+	}
+
+	/**
+	 * Al abrir el overworld, antes de generar nada: la sal del mundo (la guardada o, en un mundo nuevo, una sacada
+	 * de la semilla, que se deja en el storage para que el datapack la adopte en vez de tirar otra).
+	 */
+	private static void salTemprana(MinecraftServer server, ServerLevel level) {
+		if (level.dimension() != Level.OVERWORLD) {
+			return;
+		}
+		Integer guardada = null;
+		try {
+			CompoundTag t = server.getCommandStorage().get(MUNDO);
+			if (t.contains("sal")) {
+				guardada = t.getIntOr("sal", 0);
+			}
+		} catch (RuntimeException e) {
+			// el storage aún no está (mundo nuevo)
+		}
+		int sal = guardada != null ? guardada : salDeSemilla(level.getSeed());
+		// en un mundo nuevo el storage aún no existe aquí: la sal se guarda en SERVER_STARTED, antes del primer tick
+		mapa = new MapaTerreno(new MuestreadorMundo(level), sal, HILO);
+	}
+
+	private static int salDeSemilla(long semilla) {
+		long h = (semilla ^ 0x5DEECE66DL) * 0x9E3779B97F4A7C15L;
+		h ^= h >>> 31;
+		h *= 0xBF58476D1CE4E5B9L;
+		h ^= h >>> 29;
+		return 1 + (int) Math.floorMod(h, 2_000_000_000L);
+	}
+
+	/** Deja la sal en destinos:mundo si aún no hay (el datapack solo tira una si falta). */
+	private static void guardaSal(MinecraftServer server, int sal) {
+		try {
+			CompoundTag t = server.getCommandStorage().get(MUNDO);
+			if (!t.contains("sal")) {
+				t.putInt("sal", sal);
+				server.getCommandStorage().set(MUNDO, t);
+			}
+		} catch (RuntimeException e) {
+			LOG.warn("Destinos Core: no se ha podido guardar la sal temprana", e);
+		}
 	}
 
 	/**
@@ -219,6 +290,14 @@ public final class DestinosCore implements ModInitializer {
 		politica.ritmo(fuente.getServer(), dias);
 		fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.ritmo",
 				"Ahora pasa un turno de política cada %s días de juego.", dias), false);
+		return 1;
+	}
+
+	private static int ranking(CommandSourceStack fuente) {
+		if (mapa(fuente.getServer()) == null) {
+			return 0;
+		}
+		politica.ranking(fuente);
 		return 1;
 	}
 

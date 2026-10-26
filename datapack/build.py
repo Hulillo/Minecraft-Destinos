@@ -644,6 +644,11 @@ POLITICA = {
     "disolucion": ("☠ Año %1$s · El %2$s se hunde en el caos: sus tierras quedan sin señor.",
                    "☠ Year %1$s · The %2$s collapses into chaos: its lands are left without a lord."),
     "expansion": ("⚜ Año %1$s · El %2$s reclama %4$s, antes tierra salvaje.", "⚜ Year %1$s · The %2$s claims %4$s, once wildland."),
+    "capital": ("♛ Año %1$s · ¡El %2$s toma %4$s, la capital del %3$s!", "♛ Year %1$s · The %2$s seizes %4$s, capital of the %3$s!"),
+    "union": ("❖ Año %1$s · El %2$s y el %3$s se unen: nace la %4$s.",
+              "❖ Year %1$s · The %2$s and the %3$s unite: the %4$s is born."),
+    "fin_union": ("✧ Año %1$s · Se rompe la %4$s: el %2$s y el %3$s vuelven a ir cada uno por su lado.",
+                  "✧ Year %1$s · The %4$s breaks apart: the %2$s and the %3$s go their separate ways again."),
 }
 for k, (a, b) in POLITICA.items(): L(f"destinos.politica.{k}", a, b)
 L("destinos.politica.coordenadas", "Centro: %s, %s", "Centre: %s, %s")
@@ -668,6 +673,18 @@ L("destinos.politica.aliados", "✦ Aliados: %s", "✦ Allies: %s")
 L("destinos.politica.relacion", "%s (%s)", "%s (%s)")
 L("destinos.politica.relaciones", "Vecinos (relación de -100 a 100): %s", "Neighbours (relations from -100 to 100): %s")
 L("destinos.politica.cronica", "📜 Crónica del mundo", "📜 Chronicle of the world")
+for i, (a, b) in enumerate([("Corona de %s y %s", "Crown of %s and %s"), ("Unión de %s y %s", "Union of %s and %s"),
+                            ("Liga de %s y %s", "League of %s and %s"), ("Mancomunidad de %s y %s", "Commonwealth of %s and %s")]):
+    L(f"destinos.union.{i}", a, b)
+L("destinos.politica.poder", "Poder %s · unos %s habitantes · %s ducados · comida %s, mineral %s, madera %s",
+  "Power %s · about %s inhabitants · %s duchies · food %s, ore %s, timber %s")
+L("destinos.politica.capital", "♛ Capital: %s", "♛ Capital: %s")
+L("destinos.politica.capital_perdida", "♛ Capital: %s, en manos del %s", "♛ Capital: %s, held by the %s")
+L("destinos.politica.capital_montana", "%s (en las montañas)", "%s (in the mountains)")
+L("destinos.politica.en_union", "❖ Forma parte de la %s", "❖ Part of the %s")
+L("destinos.politica.ranking", "♛ Reinos más poderosos que se conocen", "♛ Most powerful known kingdoms")
+L("destinos.politica.ranking_linea", "%s. %s · poder %s · unos %s habitantes · %s ducados",
+  "%s. %s · power %s · about %s inhabitants · %s duchies")
 L("destinos.politica.cronica_vacia", "La crónica está vacía: aún no ha pasado nada.", "The chronicle is empty: nothing has happened yet.")
 L("destinos.politica.permiso", "Solo en modo creativo o desde la consola.", "Only in creative mode or from the console.")
 L("destinos.politica.forzado", "Pasan %s turnos de política…", "%s political turns go by…")
@@ -693,9 +710,9 @@ def wjson(p, o):
     open(p, "w", encoding="utf-8").write(json.dumps(o, ensure_ascii=False, indent=2) + "\n")
 for p, o in files_json: wjson(p, o)
 wjson(os.path.join(DP, "data/minecraft/tags/function/load.json"), {"values": ["destinos:init/load"]})
-wjson(os.path.join(DP, "pack.mcmeta"), {"pack": {"description": "Destinos: Reinos v0.3 · reinos y ducados RNG",
+wjson(os.path.join(DP, "pack.mcmeta"), {"pack": {"description": "Destinos: Reinos v0.4 · reinos y ducados RNG",
                                                  "min_format": 88, "max_format": 99}})
-wjson(os.path.join(RP, "pack.mcmeta"), {"pack": {"description": "Destinos: Reinos v0.3 · idiomas ES/EN",
+wjson(os.path.join(RP, "pack.mcmeta"), {"pack": {"description": "Destinos: Reinos v0.4 · idiomas ES/EN",
                                                  "min_format": 69, "max_format": 99}})
 for loc in ("es_es", "es_mx", "es_ar", "es_cl", "es_ec", "es_uy", "es_ve"):
     wjson(os.path.join(RP, f"assets/destinos/lang/{loc}.json"), es)
@@ -718,4 +735,19 @@ if MOD:
     open(os.path.join(MOD, "data/destinos/function/geo/territorio.mcfunction"), "w", encoding="utf-8").write(
         "# Destinos Core: fronteras que siguen montañas, ríos y costas (mismas entradas y salidas)\n"
         "destinoscore territorio\n")
+    # Capitales: una aldea grande por reino, en el sitio que elige Destinos Core (solo con el mod: la colocación
+    # destinos_core:capital y la estructura destinos_core:capital son suyas). La estructura copia el pueblo que toca
+    # en ese bioma, de vanilla o de cualquier mod, con más profundidad (EstructuraCapital.java).
+    CAP = os.path.join(MOD, "data/destinos_core")
+    def wj(rel, o):
+        q = os.path.join(CAP, rel); os.makedirs(os.path.dirname(q), exist_ok=True)
+        open(q, "w", encoding="utf-8").write(json.dumps(o, ensure_ascii=False, indent=2) + "\n")
+    # todos los biomas del mundo normal, también los de mods que no se apuntan al tag de vanilla
+    wj("tags/worldgen/biome/capital.json", {"replace": False, "values": [
+        "#minecraft:is_overworld", {"id": "#c:is_overworld", "required": False}]})
+    wj("worldgen/structure/capital.json", {"type": "destinos_core:capital", "biomes": "#destinos_core:capital",
+                                           "step": "surface_structures", "spawn_overrides": {},
+                                           "terrain_adaptation": "beard_thin"})
+    wj("worldgen/structure_set/capitales.json", {"structures": [{"structure": "destinos_core:capital", "weight": 1}],
+                                                 "placement": {"type": "destinos_core:capital", "salt": 0}})
     print("variante del mod en", MOD)

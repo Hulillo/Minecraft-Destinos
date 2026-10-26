@@ -38,6 +38,10 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 
 	private final Grafo grafo = new Grafo();
 	private final Politica politica;
+	/** Capitales ya elegidas de los reinos conocidos (no se guardan: salen siempre igual del terreno). */
+	private final Map<Long, MapaTerreno.Capital> capitales = new HashMap<>();
+	/** Reinos sin sitio para capital (no se vuelve a mirar). */
+	private final Set<Long> sinCapital = new HashSet<>();
 	private long siguiente;
 	private int ticksTurno;
 	private int forzados;
@@ -90,17 +94,23 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		return politica.turnoCambio(dcx, dcz);
 	}
 
-	/** Turno y guerras abiertas, para que los mapas marquen cambios recientes y frentes. */
+	/** Turno, guerras abiertas y capitales, para que los mapas marquen cambios recientes, frentes y coronas. */
 	PaquetePolitica estadoMapas() {
 		List<PaquetePolitica.Guerra> guerras = new ArrayList<>();
 		for (Politica.Par p : politica.guerras().keySet()) {
 			guerras.add(new PaquetePolitica.Guerra(Grafo.x(p.a()), Grafo.z(p.a()), Grafo.x(p.b()), Grafo.z(p.b())));
 		}
-		return new PaquetePolitica(politica.turno(), guerras);
+		List<PaquetePolitica.Capital> coronas = new ArrayList<>();
+		capitales.forEach((reino, c) -> coronas.add(new PaquetePolitica.Capital(c.x(), c.z(), Grafo.x(reino), Grafo.z(reino),
+				politica.capitalPerdida(grafo, reino))));
+		return new PaquetePolitica(politica.turno(), guerras, coronas);
 	}
 
-	/** Mete en el grafo las zonas recién calculadas y fija el reino protegido. */
-	void alimenta(MinecraftServer server, MapaTerreno mapa) {
+	/**
+	 * Mete en el grafo las zonas recién calculadas, apunta las capitales que ya se han elegido y fija el reino
+	 * protegido. Devuelve si hay capitales nuevas (para mandarlas a los mapas).
+	 */
+	boolean alimenta(MinecraftServer server, MapaTerreno mapa) {
 		for (long clave : mapa.ventanasListas()) {
 			if (grafo.conoce(clave)) {
 				continue;
@@ -109,6 +119,25 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 			if (v != null) {
 				grafo.agrega(clave, v);
 			}
+		}
+		boolean nuevas = false;
+		Set<Long> mirados = new HashSet<>();
+		for (Grafo.Ducado d : grafo.ducados().values()) {
+			long reino = d.reinoBase();
+			if (d.salvajeBase() || !mirados.add(reino) || capitales.containsKey(reino) || sinCapital.contains(reino)) {
+				continue;
+			}
+			java.util.Optional<MapaTerreno.Capital> c = mapa.capitalSiLista(Grafo.x(reino), Grafo.z(reino));
+			if (c == null) {
+				continue;
+			}
+			if (c.isEmpty()) {
+				sinCapital.add(reino);
+				continue;
+			}
+			capitales.put(reino, c.get());
+			grafo.fijaCapital(reino, Grafo.id(c.get().dcx(), c.get().dcz()));
+			nuevas = true;
 		}
 		if (politica.reinoProtegido() == Politica.NADIE) {
 			for (ServerPlayer p : server.getPlayerList().getPlayers()) {
@@ -124,6 +153,7 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 				}
 			}
 		}
+		return nuevas;
 	}
 
 	/** Juega los turnos que tocan. Devuelve las ventanas con ducados que han cambiado de dueño (a reenviar a los mapas). */
@@ -338,7 +368,29 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 			Map.entry(Suceso.Tipo.independencia, "⚐ Año %1$s · El %2$s rompe el vasallaje y se declara libre del %3$s."),
 			Map.entry(Suceso.Tipo.anexion, "♛ Año %1$s · El %2$s se anexiona a su vasallo, el %3$s."),
 			Map.entry(Suceso.Tipo.disolucion, "☠ Año %1$s · El %2$s se hunde en el caos: sus tierras quedan sin señor."),
-			Map.entry(Suceso.Tipo.expansion, "⚜ Año %1$s · El %2$s reclama %4$s, antes tierra salvaje."));
+			Map.entry(Suceso.Tipo.expansion, "⚜ Año %1$s · El %2$s reclama %4$s, antes tierra salvaje."),
+			Map.entry(Suceso.Tipo.capital, "♛ Año %1$s · ¡El %2$s toma %4$s, la capital del %3$s!"),
+			Map.entry(Suceso.Tipo.union, "❖ Año %1$s · El %2$s y el %3$s se unen: nace la %4$s."),
+			Map.entry(Suceso.Tipo.fin_union, "✧ Año %1$s · Se rompe la %4$s: el %2$s y el %3$s vuelven a ir cada uno por su lado."));
+
+	private static final String[] UNIONES = {"Corona de %s y %s", "Unión de %s y %s", "Liga de %s y %s",
+		"Mancomunidad de %s y %s"};
+
+	/** Nombre a secas de un reino ("Valmora"), con su color. */
+	private Component nombre(MinecraftServer server, long reino) {
+		CompoundTag r = registros(server, "reinos").getCompoundOrEmpty("k" + Grafo.x(reino) + "_" + Grafo.z(reino));
+		if (!r.contains("nombre")) {
+			return Component.translatableWithFallback("destinos.politica.lejano", "reino lejano");
+		}
+		return Component.literal(r.getStringOr("nombre", "?")).withColor(color(r.getStringOr("color", "white"), 0xffffff));
+	}
+
+	/** "Corona de A y B": el tipo de unión sale del par, así que siempre se llama igual. */
+	Component nombreUnion(MinecraftServer server, long primero, long segundo) {
+		long x = primero ^ segundo;
+		int i = Math.floorMod(Geo.hash((int) x, (int) (x >>> 32), politica.sal() + 13), UNIONES.length);
+		return Component.translatableWithFallback("destinos.union." + i, UNIONES[i], nombre(server, primero), nombre(server, segundo));
+	}
 
 	private static boolean menor(Suceso.Tipo t) {
 		return t == Suceso.Tipo.alianza || t == Suceso.Tipo.ruptura || t == Suceso.Tipo.expansion;
@@ -348,7 +400,9 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	Component texto(MinecraftServer server, Suceso s) {
 		Component a = s.reinoA() == Politica.NADIE ? Component.empty() : reino(server, s.reinoA());
 		Component b = s.reinoB() == Politica.NADIE ? Component.empty() : reino(server, s.reinoB());
-		Component d = s.ducado() == Politica.NADIE ? Component.empty() : ducado(server, s.ducado());
+		Component d = s.tipo() == Suceso.Tipo.union || s.tipo() == Suceso.Tipo.fin_union
+				? nombreUnion(server, s.reinoA(), s.reinoB())
+				: s.ducado() == Politica.NADIE ? Component.empty() : ducado(server, s.ducado());
 		MutableComponent t = Component.translatableWithFallback("destinos.politica." + s.tipo().name(),
 				RESPALDO.get(s.tipo()), s.anio(), a, b, d);
 		return t.withStyle(menor(s.tipo()) ? ChatFormatting.GRAY : ChatFormatting.WHITE);
@@ -417,6 +471,22 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		int estabilidad = e == null ? 60 : e.estabilidad;
 		fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.reino", "%s · estabilidad %s/100",
 				reino(server, id), estabilidad), false);
+		int[] res = politica.resumen(grafo, id);
+		fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.poder",
+				"Poder %s · unos %s habitantes · %s ducados · comida %s, mineral %s, madera %s",
+				res[0], redondea(res[1]), res[5], res[2], res[3], res[4]).withStyle(ChatFormatting.YELLOW), false);
+		Component capital = capital(server, id);
+		if (capital != null) {
+			fuente.sendSuccess(() -> capital, false);
+		}
+		Politica.Par union = politica.unionDe(id);
+		if (union != null) {
+			long otro = union.otro(id);
+			boolean primero = politica.resumen(grafo, id)[0] >= politica.resumen(grafo, otro)[0];
+			Component nombre = nombreUnion(server, primero ? id : otro, primero ? otro : id);
+			fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.en_union", "❖ Forma parte de la %s",
+					nombre).withStyle(ChatFormatting.LIGHT_PURPLE), false);
+		}
 		if (e != null && e.senor != Politica.NADIE) {
 			fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.vasallo", "Vasallo del %s",
 					reino(server, e.senor)).withStyle(ChatFormatting.GRAY), false);
@@ -444,6 +514,65 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 			fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.relaciones",
 					"Vecinos (relación de -100 a 100): %s", lista(relaciones)).withStyle(ChatFormatting.GRAY), false);
 		}
+	}
+
+	/** "♛ Capital: X (x, z)", o en manos de quién está si se ha perdido; null si aún no se sabe. */
+	private Component capital(MinecraftServer server, long reino) {
+		MapaTerreno.Capital c = capitales.get(reino);
+		if (c == null) {
+			return null;
+		}
+		long ducado = Grafo.id(c.dcx(), c.dcz());
+		aseguraDucado(server, ducado);
+		Component pista = Component.translatableWithFallback("destinos.politica.coordenadas", "Centro: %s, %s", c.x(), c.z());
+		MutableComponent sitio = Component.empty().append(ducado(server, ducado))
+				.append(Component.literal(" (" + c.x() + ", " + c.z() + ")").withStyle(ChatFormatting.DARK_GRAY))
+				.withStyle(st -> st.withHoverEvent(new HoverEvent.ShowText(pista)));
+		Component nombre = c.montana()
+				? Component.translatableWithFallback("destinos.politica.capital_montana", "%s (en las montañas)", sitio)
+				: sitio;
+		Grafo.Ducado d = grafo.ducado(ducado);
+		long dueno = d == null ? reino : politica.dueno(d);
+		if (dueno != reino && dueno != Politica.SALVAJE) {
+			return Component.translatableWithFallback("destinos.politica.capital_perdida", "♛ Capital: %s, en manos del %s",
+					nombre, reino(server, dueno)).withStyle(ChatFormatting.RED);
+		}
+		return Component.translatableWithFallback("destinos.politica.capital", "♛ Capital: %s", nombre)
+				.withStyle(ChatFormatting.GOLD);
+	}
+
+	/** Los reinos conocidos más poderosos. */
+	void ranking(CommandSourceStack fuente) {
+		MinecraftServer server = fuente.getServer();
+		Set<Long> vivos = new HashSet<>();
+		for (Grafo.Ducado d : grafo.ducados().values()) {
+			long r = politica.dueno(d);
+			if (r != Politica.SALVAJE) {
+				vivos.add(r);
+			}
+		}
+		List<long[]> filas = new ArrayList<>();
+		for (long r : vivos) {
+			int[] res = politica.resumen(grafo, r);
+			filas.add(new long[] {r, res[0], res[1], res[5]});
+		}
+		filas.sort((a, b) -> Long.compare(b[1], a[1]));
+		fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.ranking",
+				"♛ Reinos más poderosos que se conocen").withStyle(ChatFormatting.GOLD), false);
+		for (int i = 0; i < filas.size() && i < 10; i++) {
+			long[] f = filas.get(i);
+			aseguraReino(server, f[0]);
+			int puesto = i + 1;
+			Component linea = Component.translatableWithFallback("destinos.politica.ranking_linea",
+					"%s. %s · poder %s · unos %s habitantes · %s ducados", puesto, reino(server, f[0]), f[1],
+					redondea((int) f[2]), f[3]);
+			fuente.sendSuccess(() -> linea, false);
+		}
+	}
+
+	/** Habitantes redondeados a centenas (son una estimación). */
+	private static int redondea(int n) {
+		return n < 100 ? n : Math.round(n / 100f) * 100;
 	}
 
 	void cronica(CommandSourceStack fuente) {

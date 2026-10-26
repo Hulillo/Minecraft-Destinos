@@ -9,9 +9,10 @@ import net.minecraft.resources.Identifier;
 
 /**
  * Servidor → cliente: el estado político que no va en las zonas. El turno de ahora (para marcar en el mapa los
- * ducados que acaban de cambiar de dueño) y las guerras abiertas (para pintar los frentes en rojo).
+ * ducados que acaban de cambiar de dueño), las guerras abiertas (para pintar los frentes en rojo) y las capitales
+ * (para poner su corona).
  */
-public record PaquetePolitica(int turno, List<Guerra> guerras) implements CustomPacketPayload {
+public record PaquetePolitica(int turno, List<Guerra> guerras, List<Capital> capitales) implements CustomPacketPayload {
 	public static final CustomPacketPayload.Type<PaquetePolitica> TIPO =
 			new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "politica"));
 	public static final StreamCodec<FriendlyByteBuf, PaquetePolitica> CODEC =
@@ -23,6 +24,10 @@ public record PaquetePolitica(int turno, List<Guerra> guerras) implements Custom
 	public record Guerra(int akx, int akz, int bkx, int bkz) {
 	}
 
+	/** Capital del reino (kx, kz) en el bloque (x, z). perdida: hoy la tiene otro reino. */
+	public record Capital(int x, int z, int kx, int kz, boolean perdida) {
+	}
+
 	private void escribe(FriendlyByteBuf buf) {
 		buf.writeVarInt(turno);
 		buf.writeVarInt(guerras.size());
@@ -31,6 +36,14 @@ public record PaquetePolitica(int turno, List<Guerra> guerras) implements Custom
 			buf.writeVarInt(g.akz());
 			buf.writeVarInt(g.bkx());
 			buf.writeVarInt(g.bkz());
+		}
+		buf.writeVarInt(capitales.size());
+		for (Capital c : capitales) {
+			buf.writeVarInt(c.x());
+			buf.writeVarInt(c.z());
+			buf.writeVarInt(c.kx());
+			buf.writeVarInt(c.kz());
+			buf.writeBoolean(c.perdida());
 		}
 	}
 
@@ -44,7 +57,15 @@ public record PaquetePolitica(int turno, List<Guerra> guerras) implements Custom
 		for (int i = 0; i < n; i++) {
 			guerras.add(new Guerra(buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt()));
 		}
-		return new PaquetePolitica(turno, guerras);
+		int m = buf.readVarInt();
+		if (m < 0 || m > 100000) {
+			throw new IllegalArgumentException("Destinos Core: demasiadas capitales en el paquete");
+		}
+		List<Capital> capitales = new ArrayList<>(m);
+		for (int i = 0; i < m; i++) {
+			capitales.add(new Capital(buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt(), buf.readBoolean()));
+		}
+		return new PaquetePolitica(turno, guerras, capitales);
 	}
 
 	@Override

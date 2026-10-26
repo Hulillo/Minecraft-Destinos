@@ -2,6 +2,7 @@ package es.hulillo.destinos.cliente.journeymap;
 
 import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.MapaTerreno;
+import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTerritorio;
 import es.hulillo.destinos.cliente.TerritoriosCliente;
 import java.awt.Rectangle;
@@ -52,6 +53,9 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 	/** Frentes de guerra: una línea roja sobre la frontera con una X en cada tramo, como una trinchera. */
 	private final List<PolygonOverlay> frentes = new ArrayList<>();
 	private boolean frentesSucios;
+	/** Coronas de las capitales: solo cambian con el estado político. */
+	private final List<PolygonOverlay> coronas = new ArrayList<>();
+	private boolean coronasSucias;
 
 	CapaJourneyMap(IClientAPI api) {
 		this.api = api;
@@ -88,6 +92,7 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 	public void politica() {
 		areas.keySet().stream().filter(d -> d.cambio() >= 0).forEach(pendientes::add);
 		frentesSucios = true;
+		coronasSucias = true;
 	}
 
 	@Override
@@ -95,17 +100,19 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		if (visible) {
 			pendientes.addAll(areas.keySet());
 			frentesSucios = true;
+			coronasSucias = true;
 		} else {
 			api.removeAll(DestinosCore.MOD_ID);
 			capas.clear();
 			frentes.clear();
+			coronas.clear();
 			pendientes.clear();
 		}
 	}
 
 	private void rehaz() {
 		// apagado: las áreas se siguen juntando, pero no se pinta nada hasta que se encienda
-		if (!TerritoriosCliente.visible() || (pendientes.isEmpty() && !frentesSucios)) {
+		if (!TerritoriosCliente.visible() || (pendientes.isEmpty() && !frentesSucios && !coronasSucias)) {
 			return;
 		}
 		// los reinos al final, para que su borde quede por encima de los ducados
@@ -115,6 +122,43 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		if (frentesSucios) {
 			frentesSucios = false;
 			redibujaFrentes();
+		}
+		if (coronasSucias) {
+			coronasSucias = false;
+			redibujaCoronas();
+		}
+	}
+
+	/** Forma de la corona en bloques alrededor de la capital (z hacia el sur): base y tres puntas. */
+	private static final double[] CORONA = {-64, 32, -64, -36, -32, 0, 0, -48, 32, 0, 64, -36, 64, 32};
+
+	/** Una corona dorada sobre cada capital (gris si hoy la tiene otro reino), por encima de todo lo demás. */
+	private void redibujaCoronas() {
+		coronas.forEach(api::remove);
+		coronas.clear();
+		for (PaquetePolitica.Capital c : TerritoriosCliente.capitales()) {
+			Path2D forma = new Path2D.Double();
+			forma.moveTo(c.x() + CORONA[0], c.z() + CORONA[1]);
+			for (int k = 2; k < CORONA.length; k += 2) {
+				forma.lineTo(c.x() + CORONA[k], c.z() + CORONA[k + 1]);
+			}
+			forma.closePath();
+			ShapeProperties estilo = new ShapeProperties()
+					.setFillColor(c.perdida() ? 0x9e9e9e : ORO)
+					.setFillOpacity(0.95F)
+					.setStrokeColor(0x000000)
+					.setStrokeOpacity(1.0F)
+					.setStrokeWidth(2.0F);
+			for (MapPolygonWithHoles poligono : PolygonHelper.createPolygonFromArea(new Area(forma), Y)) {
+				PolygonOverlay capa = new PolygonOverlay(DestinosCore.MOD_ID, Level.OVERWORLD, estilo, poligono);
+				capa.setOverlayGroupName(GRUPO);
+				try {
+					api.show(capa);
+					coronas.add(capa);
+				} catch (Exception e) {
+					DestinosCore.LOG.warn("Destinos Core: JourneyMap no ha aceptado la corona de una capital", e);
+				}
+			}
 		}
 	}
 
@@ -236,6 +280,7 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		areas.clear();
 		capas.clear();
 		frentes.clear();
+		coronas.clear();
 		pendientes.clear();
 	}
 

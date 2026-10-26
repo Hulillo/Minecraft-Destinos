@@ -14,6 +14,9 @@ open(os.path.join(RUN, "server.properties"), "w").write(
 ESPERA = ["scoreboard players set #vx dr.calc 1234", "scoreboard players set #vz dr.calc -5678",
           "function destinos:geo/territorio", "scoreboard players get #tlisto dr.calc"]
 COMANDOS = [
+    # la capital de prueba necesita cargados los chunks que puede ocupar (hasta 128 bloques del centro)
+    "forceload add -160 440 0 760",
+    "forceload add 16 440 160 760",
     "destinoscore estado",
     "scoreboard players get #tdx dr.calc",
     "scoreboard players get #tkx dr.calc",
@@ -21,11 +24,15 @@ COMANDOS = [
     "destinoscore estado",
     "destinoscore politica",
     "destinoscore turno 16",
+    "destinoscore politica reinos",
     "destinoscore cronica",
     "data get storage destinos:politica turno",
+    # la capital (el pueblo del bioma, agrandado): que se pueda generar
+    "place structure destinos_core:capital 0 80 600",
 ]
 # Frases que Minecraft escribe cuando algo del datapack falla
 MALO = re.compile(r"Failed to (load|parse) function|Couldn't load function|Unknown or incomplete command|"
+                  r"Failed to place structure|Failed to parse|Couldn't parse element|"
                   r"Failed to load datapacks|Exception|ERROR\]|Unknown function", re.I)
 
 gradlew = os.path.join(RAIZ, "gradlew")
@@ -70,6 +77,14 @@ if malas:
     print("\n=== FALLOS DEL DATAPACK / MOD ===")
     print("\n".join(dict.fromkeys(malas)))
     sys.exit(1)
+capitales = len(re.findall(r"Generated structure \S*destinos_core:capital", salida))
+if "agrandado no es válido" in salida:
+    sys.exit("la capital no ha podido agrandar el pueblo (ver el aviso de arriba)")
+if "antes de que el datapack ponga la sal" in salida:
+    sys.exit("se han generado chunks sin sal (ahí no habría capitales)")
+if capitales < 1:
+    print("\n".join(l.rstrip() for l in lineas if "capital" in l or "structure" in l.lower())[-3000:])
+    sys.exit("la capital de prueba no se ha generado")
 if not ok_terr:
     sys.exit("geo/territorio no devolvió #tdx: el mod no respondió")
 print("\nOK: el servidor carga Destinos Core y el datapack sin errores")

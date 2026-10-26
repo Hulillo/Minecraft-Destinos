@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
@@ -59,6 +60,28 @@ public final class MapaTerreno {
 		default boolean hayPueblo(int bloqueX, int bloqueZ, int radio) {
 			return false;
 		}
+
+		/** Sitios {x, z} donde saldrá un pueblo dentro del rectángulo [x0, x1) × [z0, z1). */
+		default List<int[]> pueblos(int x0, int z0, int x1, int z1) {
+			return List.of();
+		}
+
+		/** Si en (x, z) hay agua (mar, río o lago) en vez de tierra donde construir. */
+		default boolean agua(int bloqueX, int bloqueZ) {
+			return muestra(bloqueX, bloqueZ).oceano();
+		}
+
+		/** Si en (x, z) hay una cultura de montaña (nórdica, andina o de la estepa), como la elige el datapack. */
+		default boolean culturaDeMontana(int bloqueX, int bloqueZ) {
+			return false;
+		}
+	}
+
+	/**
+	 * La capital de un reino: el ducado donde está y el sitio en bloques. montana: el reino es de cultura de
+	 * montaña y ha preferido levantarla en las alturas.
+	 */
+	public record Capital(int dcx, int dcz, int x, int z, boolean montana) {
 	}
 
 	/** Territorio de un punto: ducado (celda), reino (celda), salvaje y si la casilla es mar. */
@@ -68,12 +91,20 @@ public final class MapaTerreno {
 	private record Semilla(int cx, int cz, int ctx, int ctz, Geo.Reino reino, boolean salvaje) {
 	}
 
+	/**
+	 * recurso: comida, mineral y madera de cada casilla, juntos en un byte (ver recurso()). pueblos: casillas del
+	 * núcleo donde sale un pueblo.
+	 */
 	private record Ventana(int[] dueno, boolean[] isla, boolean[] oceano, boolean[] dificil, int[] mar, int[] altura,
-			List<Semilla> semillas) {
+			byte[] recurso, List<Semilla> semillas, int[] pueblos) {
 	}
 
-	/** Un ducado visto en el núcleo de una ventana: su reino del mapa base y cuántas casillas de tierra tiene ahí. */
-	public record DucadoVisto(int dcx, int dcz, int kx, int kz, boolean salvaje, int casillas) {
+	/**
+	 * Un ducado visto en el núcleo de una ventana: su reino del mapa base, cuántas casillas de tierra tiene ahí,
+	 * lo que dan esas casillas (comida, mineral, madera) y cuántos pueblos hay en ellas.
+	 */
+	public record DucadoVisto(int dcx, int dcz, int kx, int kz, boolean salvaje, int casillas, int comida, int mineral,
+			int madera, int pueblos) {
 	}
 
 	/** Dos ducados que se tocan por tierra: casillas de frontera y cuántas cruzan un río o una montaña. */
@@ -99,6 +130,7 @@ public final class MapaTerreno {
 	private final int sal;
 	private final ExecutorService hilo;
 	private final ConcurrentHashMap<Long, CompletableFuture<Ventana>> ventanas = new ConcurrentHashMap<>();
+	private final ConcurrentHashMap<Long, CompletableFuture<Capital>> capitales = new ConcurrentHashMap<>();
 
 	public MapaTerreno(Muestreador muestreador, int sal, ExecutorService hilo) {
 		this.muestreador = muestreador;
@@ -219,6 +251,7 @@ public final class MapaTerreno {
 		Ventana v = f.join();
 		int ns = v.semillas().size();
 		int[] casillas = new int[ns];
+		int[][] recursos = new int[ns][4];
 		Map<Long, int[]> pares = new TreeMap<>();
 		for (int j = MARGEN; j < MARGEN + NUCLEO; j++) {
 			for (int i = MARGEN; i < MARGEN + NUCLEO; i++) {
@@ -228,6 +261,10 @@ public final class MapaTerreno {
 					continue;
 				}
 				casillas[a]++;
+				int rec = v.recurso()[k];
+				recursos[a][0] += rec & 7;
+				recursos[a][1] += rec >> 3 & 3;
+				recursos[a][2] += rec >> 5 & 3;
 				// este y sur siempre; oeste y norte solo si el vecino es margen (si es núcleo ya se contó desde él)
 				for (int[] d : new int[][] {{1, 0}, {0, 1}, {-1, 0}, {0, -1}}) {
 					int ni = i + d[0];
@@ -249,11 +286,19 @@ public final class MapaTerreno {
 				}
 			}
 		}
+		for (int k : v.pueblos()) {
+			int a = v.dueno()[k];
+			if (a >= 0 && !v.oceano()[k]) {
+				recursos[a][3]++;
+			}
+		}
 		List<DucadoVisto> ducados = new ArrayList<>();
 		for (int s = 0; s < ns; s++) {
 			Semilla se = v.semillas().get(s);
 			if (casillas[s] > 0) {
-				ducados.add(new DucadoVisto(se.cx(), se.cz(), se.reino().kx(), se.reino().kz(), se.salvaje(), casillas[s]));
+				int[] r = recursos[s];
+				ducados.add(new DucadoVisto(se.cx(), se.cz(), se.reino().kx(), se.reino().kz(), se.salvaje(), casillas[s],
+						r[0], r[1], r[2], r[3]));
 			}
 		}
 		List<Frontera> fronteras = new ArrayList<>();
@@ -376,13 +421,185 @@ public final class MapaTerreno {
 		boolean[] oceano = new boolean[total];
 		int[] altura = new int[total];
 		boolean[] dificil = new boolean[total];
+		byte[] recurso = new byte[total];
 		for (int k = 0; k < total; k++) {
 			oceano[k] = terreno[k].oceano();
 			altura[k] = terreno[k].altura();
 			dificil[k] = terreno[k].rio() || terreno[k].montana();
+			recurso[k] = recurso(terreno[k]);
 		}
-		return new Ventana(dueno, isla, oceano, dificil, mar, altura, semillas);
+		// pueblos del núcleo (los del margen ya los contará la ventana vecina)
+		int x0 = (bx + MARGEN) * CASILLA;
+		int z0 = (bz + MARGEN) * CASILLA;
+		List<int[]> sitios = muestreador.pueblos(x0, z0, x0 + NUCLEO * CASILLA, z0 + NUCLEO * CASILLA);
+		int[] pueblos = new int[sitios.size()];
+		for (int p = 0; p < pueblos.length; p++) {
+			pueblos[p] = (Math.floorDiv(sitios.get(p)[0], CASILLA) - bx) + (Math.floorDiv(sitios.get(p)[1], CASILLA) - bz) * N;
+		}
+		return new Ventana(dueno, isla, oceano, dificil, mar, altura, recurso, semillas, pueblos);
 	}
+
+	// Familias de MuestreadorMundo.FAMILIAS (+1): 1 océano, 2 río, 3 nieve, 4 badlands, 5 desierto, 6 selva,
+	// 7 sabana, 8 pantano, 9 taiga, 10 montaña, 11 bosque, 12 llanura; 0 otra cosa
+	private static final int[] COMIDA = {2, 0, 3, 0, 0, 0, 2, 2, 2, 1, 0, 2, 3};
+	private static final int[] MADERA = {1, 0, 0, 0, 0, 0, 3, 1, 2, 3, 0, 3, 0};
+
+	/**
+	 * Lo que da una casilla: comida (0-4, llanuras y ríos), mineral (0-3, montañas y badlands) y madera (0-3,
+	 * bosques). Va en un byte: comida en los bits 0-2, mineral en 3-4 y madera en 5-6.
+	 */
+	static byte recurso(Casilla c) {
+		if (c.oceano()) {
+			return 0;
+		}
+		int f = c.familia() >= 0 && c.familia() < COMIDA.length ? c.familia() : 0;
+		int comida = COMIDA[f] + (c.rio() ? 2 : 0);
+		int mineral = f == 4 ? 3 : f == 3 || f == 5 ? 1 : 0;
+		if (c.montana()) {
+			comida--;
+			mineral = 3;
+		}
+		comida = Math.max(0, Math.min(4, comida));
+		return (byte) (comida | mineral << 3 | MADERA[f] << 5);
+	}
+
+	// ------------------------------------------------------------------ capitales
+
+	/** Ducados alrededor del centro del reino entre los que se elige la capital (en cada eje, a cada lado). */
+	private static final int RADIO_CAPITAL = 3;
+	/** Las culturas de montaña la levantan en las alturas una de cada tantas veces (en %). */
+	private static final int PROB_CAPITAL_MONTANA = 50;
+	private static final int K_CAPITAL = 7368787;
+	private static final int PASO_CAPITAL = 128;
+	/** Ducados mejor puntuados en los que se mira el agua de cerca, y separación de esos puntos. */
+	private static final int CANDIDATAS_CAPITAL = 4;
+	private static final int PASO_AGUA = 40;
+
+	/**
+	 * La capital del reino (kx, kz) sin bloquear: null si aún se está eligiendo (y la pide), vacío si el reino no
+	 * tiene ningún ducado donde ponerla.
+	 */
+	public Optional<Capital> capitalSiLista(int kx, int kz) {
+		CompletableFuture<Capital> f = capitales.computeIfAbsent(clave(kx, kz),
+				k -> CompletableFuture.supplyAsync(() -> calculaCapital(kx, kz), hilo));
+		if (!f.isDone()) {
+			return null;
+		}
+		return f.isCompletedExceptionally() ? Optional.empty() : Optional.ofNullable(f.join());
+	}
+
+	/**
+	 * Capital del reino, ya calculada o calculándola aquí mismo (para la generación del mundo, pruebas y
+	 * herramientas). No espera al hilo del terreno, que puede estar ocupado con zonas enteras: si la está
+	 * calculando él, se calcula otra vez aquí (sale igual).
+	 */
+	public Capital capital(int kx, int kz) {
+		CompletableFuture<Capital> f = capitales.get(clave(kx, kz));
+		if (f != null && f.isDone() && !f.isCompletedExceptionally()) {
+			return f.join();
+		}
+		Capital c = calculaCapital(kx, kz);
+		capitales.putIfAbsent(clave(kx, kz), CompletableFuture.completedFuture(c));
+		return c;
+	}
+
+	/**
+	 * Elige la capital mirando los ducados con señor del reino cerca de su centro: gana el que tiene más tierra
+	 * llana, río y comida, y está más cerca del centro. Si el reino es de cultura de montaña, a veces prefiere las
+	 * alturas. Solo depende de la sal y del terreno, así que sale igual se explore como se explore.
+	 */
+	private Capital calculaCapital(int kx, int kz) {
+		int[] k = Geo.centro(kx, kz, Geo.S_REINO, sal + Geo.K_REINO);
+		boolean montana = muestreador.culturaDeMontana(k[0], k[1])
+				&& Math.floorMod(Geo.hash(kx, kz, sal + K_CAPITAL), 100) < PROB_CAPITAL_MONTANA;
+		int c0x = Math.floorDiv(k[0], Geo.S_DUCADO);
+		int c0z = Math.floorDiv(k[1], Geo.S_DUCADO);
+		List<Candidata> candidatas = new ArrayList<>();
+		for (int cx = c0x - RADIO_CAPITAL; cx <= c0x + RADIO_CAPITAL; cx++) {
+			for (int cz = c0z - RADIO_CAPITAL; cz <= c0z + RADIO_CAPITAL; cz++) {
+				int[] c = Geo.centro(cx, cz, Geo.S_DUCADO, sal);
+				Geo.Reino r = Geo.reinoDeDucado(cx, cz, c[0], c[1], sal);
+				if (r.kx() != kx || r.kz() != kz || r.salvaje()) {
+					continue;
+				}
+				// 3×3 puntos alrededor del centro del ducado
+				double puntos = 0;
+				int tierra = 0;
+				int alta = Integer.MIN_VALUE;
+				int baja = Integer.MAX_VALUE;
+				List<int[]> sitios = new ArrayList<>();
+				for (int dz = -1; dz <= 1; dz++) {
+					for (int dx = -1; dx <= 1; dx++) {
+						int x = c[0] + dx * PASO_CAPITAL;
+						int z = c[1] + dz * PASO_CAPITAL;
+						Casilla t = muestreador.muestra(x, z);
+						if (t.oceano()) {
+							continue;
+						}
+						tierra++;
+						alta = Math.max(alta, t.altura());
+						baja = Math.min(baja, t.altura());
+						int rec = recurso(t);
+						puntos += (rec & 7) * 0.5;
+						if (t.rio()) {
+							puntos += 1;
+						}
+						if (t.montana()) {
+							puntos += montana ? 2 : -1;
+						}
+						sitios.add(new int[] {x, z, t.montana() ? 1 : 0});
+					}
+				}
+				if (tierra < 5) {
+					continue;
+				}
+				if (!montana) {
+					puntos -= (alta - baja) / 12.0;
+				}
+				double dx = c[0] - k[0];
+				double dz = c[1] - k[1];
+				puntos += tierra * 0.5 - Math.sqrt(dx * dx + dz * dz) / 600.0;
+				candidatas.add(new Candidata(cx, cz, puntos, sitios));
+			}
+		}
+		// las mejores, mirando de cerca el agua alrededor de cada sitio posible: una capital entre islas o junto a
+		// un lago se queda en la plaza, porque las calles sobre el agua no se ponen
+		candidatas.sort((a, b) -> Double.compare(b.puntos(), a.puntos()));
+		Capital mejor = null;
+		double puntosMejor = Double.NEGATIVE_INFINITY;
+		for (int i = 0; i < Math.min(CANDIDATAS_CAPITAL, candidatas.size()); i++) {
+			Candidata cand = candidatas.get(i);
+			boolean hayMontana = cand.sitios().stream().anyMatch(s -> s[2] == 1);
+			for (int[] s : cand.sitios()) {
+				if (montana && hayMontana && s[2] == 0) {
+					continue;
+				}
+				double puntos = cand.puntos() - aguaAlrededor(s[0], s[1]) * 0.6;
+				if (puntos > puntosMejor) {
+					puntosMejor = puntos;
+					mejor = new Capital(cand.cx(), cand.cz(), s[0], s[1], montana && s[2] == 1);
+				}
+			}
+		}
+		return mejor;
+	}
+
+	private record Candidata(int cx, int cz, double puntos, List<int[]> sitios) {
+	}
+
+	/** Cuántos de los 5×5 puntos alrededor de (x, z), hasta donde llega la capital, son agua. */
+	private int aguaAlrededor(int x, int z) {
+		int agua = 0;
+		for (int dz = -2; dz <= 2; dz++) {
+			for (int dx = -2; dx <= 2; dx++) {
+				if (muestreador.agua(x + dx * PASO_AGUA, z + dz * PASO_AGUA)) {
+					agua++;
+				}
+			}
+		}
+		return agua;
+	}
+
 
 	/** Terreno en el centro de cada casilla de la ventana (con margen). */
 	private Casilla[] muestrea(int bx, int bz) {
