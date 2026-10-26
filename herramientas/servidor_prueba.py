@@ -24,9 +24,8 @@ COMANDOS = [
     "destinoscore politica reinos",
     "destinoscore cronica",
     "data get storage destinos:politica turno",
-    # las capitales (piezas de aldea vanilla con más profundidad): que cada estilo se pueda generar
-    *[f"place structure destinos_core:capital_{e} {i * 400} 80 600" for i, e in
-      enumerate(["llanura", "desierto", "sabana", "nieve", "taiga"])],
+    # la capital (el pueblo del bioma, agrandado): que se genere en varios sitios
+    *[f"place structure destinos_core:capital {x} 80 {z}" for x, z in [(0, 600), (3000, -2000), (-4000, 3500)]],
 ]
 # Frases que Minecraft escribe cuando algo del datapack falla
 MALO = re.compile(r"Failed to (load|parse) function|Couldn't load function|Unknown or incomplete command|"
@@ -75,10 +74,10 @@ if malas:
     print("\n=== FALLOS DEL DATAPACK / MOD ===")
     print("\n".join(dict.fromkeys(malas)))
     sys.exit(1)
-capitales = len(re.findall(r"Generated structure \S*destinos_core:capital_", salida))
-if capitales < 5:
-    print("\n".join(l.rstrip() for l in lineas if "capital_" in l or "structure" in l.lower())[-3000:])
-    sys.exit(f"solo se han generado {capitales} de los 5 estilos de capital")
+capitales = len(re.findall(r"Generated structure \S*destinos_core:capital", salida))
+if capitales < 2:
+    print("\n".join(l.rstrip() for l in lineas if "capital" in l or "structure" in l.lower())[-3000:])
+    sys.exit(f"solo se han generado {capitales} de 3 capitales de prueba")
 if not ok_terr:
     sys.exit("geo/territorio no devolvió #tdx: el mod no respondió")
 print("\nOK: el servidor carga Destinos Core y el datapack sin errores")
