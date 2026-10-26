@@ -55,6 +55,7 @@ public final class DestinosCore implements ModInitializer {
 						.then(Commands.literal("territorio").executes(ctx -> territorio(ctx.getSource())))
 						.then(Commands.literal("estado").executes(ctx -> estado(ctx.getSource())))
 						.then(Commands.literal("politica").executes(ctx -> politica(ctx.getSource()))
+								.then(Commands.literal("reinos").executes(ctx -> ranking(ctx.getSource())))
 								.then(Commands.literal("ritmo")
 										.then(Commands.argument("dias", IntegerArgumentType.integer(1, 30))
 												.executes(ctx -> ritmo(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "dias"))))))
@@ -107,7 +108,10 @@ public final class DestinosCore implements ModInitializer {
 			mapaEnviado = m;
 		}
 		PoliticaMundo pol = politica;
-		pol.alimenta(server, m);
+		if (pol.alimenta(server, m)) {
+			// capitales nuevas: el estado político (con sus coronas) otra vez a todos
+			ENVIO.olvidaPolitica();
+		}
 		PaquetePolitica estado = pol.estadoMapas();
 		for (ServerPlayer p : server.getPlayerList().getPlayers()) {
 			if (p.level().dimension() == Level.OVERWORLD) {
@@ -219,6 +223,14 @@ public final class DestinosCore implements ModInitializer {
 		politica.ritmo(fuente.getServer(), dias);
 		fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.ritmo",
 				"Ahora pasa un turno de política cada %s días de juego.", dias), false);
+		return 1;
+	}
+
+	private static int ranking(CommandSourceStack fuente) {
+		if (mapa(fuente.getServer()) == null) {
+			return 0;
+		}
+		politica.ranking(fuente);
 		return 1;
 	}
 

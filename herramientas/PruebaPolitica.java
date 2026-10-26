@@ -33,10 +33,28 @@ public final class PruebaPolitica {
 			for (int cz = 0; cz < LADO; cz++) {
 				int[] c = Geo.centro(cx, cz, Geo.S_DUCADO, sal);
 				Geo.Reino r = Geo.reinoDeDucado(cx, cz, c[0], c[1], sal);
-				g.agrega(new Grafo.Ducado(Grafo.id(cx, cz), cx, cz, Grafo.id(r.kx(), r.kz()), r.salvaje()),
+				long id = Grafo.id(cx, cz);
+				g.agrega(new Grafo.Ducado(id, cx, cz, Grafo.id(r.kx(), r.kz()), r.salvaje()),
 						300 + Math.floorMod(Geo.hash(cx, cz, sal + 3), 400));
+				g.recursos(id, Math.floorMod(Geo.hash(cx, cz, sal + 5), 1200), Math.floorMod(Geo.hash(cx, cz, sal + 6), 900),
+						Math.floorMod(Geo.hash(cx, cz, sal + 7), 900), Math.floorMod(Geo.hash(cx, cz, sal + 8), 4));
 			}
 		}
+		// capital: el ducado con señor más cerca del centro de su reino
+		java.util.Map<Long, long[]> mejor = new java.util.HashMap<>();
+		for (Grafo.Ducado d : g.ducados().values()) {
+			if (d.salvajeBase()) {
+				continue;
+			}
+			int[] k = Geo.centro(Grafo.x(d.reinoBase()), Grafo.z(d.reinoBase()), Geo.S_REINO, sal + Geo.K_REINO);
+			int[] c = Geo.centro(d.dcx(), d.dcz(), Geo.S_DUCADO, sal);
+			long dist = (long) (c[0] - k[0]) * (c[0] - k[0]) + (long) (c[1] - k[1]) * (c[1] - k[1]);
+			long[] m = mejor.get(d.reinoBase());
+			if (m == null || dist < m[1]) {
+				mejor.put(d.reinoBase(), new long[] {d.id(), dist});
+			}
+		}
+		mejor.forEach((reino, m) -> g.fijaCapital(reino, m[0]));
 		for (int cx = 0; cx < LADO; cx++) {
 			for (int cz = 0; cz < LADO; cz++) {
 				int dif = Math.floorMod(Geo.hash(cx, cz, sal + 11), 10);

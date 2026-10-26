@@ -22,6 +22,11 @@ public final class Grafo {
 
 	private final Map<Long, Ducado> ducados = new TreeMap<>();
 	private final Map<Long, Integer> casillas = new HashMap<>();
+	/** comida, mineral, madera y pueblos de cada ducado (lo que se ha visto de él). */
+	private final Map<Long, int[]> recursos = new HashMap<>();
+	/** Capital de cada reino (por su ducado) y al revés. */
+	private final Map<Long, Long> capitales = new HashMap<>();
+	private final Map<Long, Long> capitalDe = new HashMap<>();
 	private final Map<Long, Map<Long, int[]>> vecinos = new HashMap<>();
 	private final Set<Long> ventanas = new HashSet<>();
 	/** En qué ventanas sale cada ducado (para reenviar a los mapas solo las que cambian). */
@@ -53,6 +58,11 @@ public final class Grafo {
 			long id = id(d.dcx(), d.dcz());
 			ducados.putIfAbsent(id, new Ducado(id, d.dcx(), d.dcz(), id(d.kx(), d.kz()), d.salvaje()));
 			casillas.merge(id, d.casillas(), Integer::sum);
+			int[] r = recursos.computeIfAbsent(id, k -> new int[4]);
+			r[0] += d.comida();
+			r[1] += d.mineral();
+			r[2] += d.madera();
+			r[3] += d.pueblos();
 			ventanasDe.computeIfAbsent(id, k -> new HashSet<>()).add(ventana);
 		}
 		for (MapaTerreno.Frontera f : v.fronteras()) {
@@ -74,6 +84,41 @@ public final class Grafo {
 	public void agrega(Ducado d, int tamano) {
 		ducados.put(d.id(), d);
 		casillas.merge(d.id(), tamano, Integer::sum);
+	}
+
+	/** Pone a mano lo que da un ducado (para las pruebas). */
+	public void recursos(long id, int comida, int mineral, int madera, int pueblos) {
+		recursos.put(id, new int[] {comida, mineral, madera, pueblos});
+	}
+
+	/** comida, mineral, madera y pueblos del ducado. No se debe modificar. */
+	public int[] recursos(long id) {
+		return recursos.getOrDefault(id, VACIO);
+	}
+
+	private static final int[] VACIO = new int[4];
+
+	/** Apunta la capital de un reino (solo la primera vez: no cambia aunque se conquiste). */
+	public boolean fijaCapital(long reino, long ducado) {
+		if (capitales.putIfAbsent(reino, ducado) != null) {
+			return false;
+		}
+		capitalDe.put(ducado, reino);
+		return true;
+	}
+
+	public boolean tieneCapital(long reino) {
+		return capitales.containsKey(reino);
+	}
+
+	/** Ducado de la capital del reino, o null si no se sabe. */
+	public Long capital(long reino) {
+		return capitales.get(reino);
+	}
+
+	/** Reino del que es capital el ducado, o null. */
+	public Long capitalDe(long ducado) {
+		return capitalDe.get(ducado);
 	}
 
 	/** Une dos ducados a mano (para las pruebas). */

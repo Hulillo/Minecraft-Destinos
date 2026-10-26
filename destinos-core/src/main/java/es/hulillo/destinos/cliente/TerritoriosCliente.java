@@ -46,6 +46,8 @@ public final class TerritoriosCliente {
 	private static final Set<Long> GUERRAS = new HashSet<>();
 	/** Reinos que están en alguna guerra. */
 	private static final Set<Long> EN_GUERRA = new HashSet<>();
+	/** Capitales de los reinos conocidos, para poner su corona en los mapas. */
+	private static List<PaquetePolitica.Capital> capitales = List.of();
 	/** Si se pintan los reinos en los mapas (la tecla del mapa político lo cambia). */
 	private static boolean visible = Ajustes.leeVisible();
 
@@ -72,6 +74,7 @@ public final class TerritoriosCliente {
 
 	static void politica(PaquetePolitica p) {
 		turno = p.turno();
+		capitales = List.copyOf(p.capitales());
 		GUERRAS.clear();
 		EN_GUERRA.clear();
 		for (PaquetePolitica.Guerra g : p.guerras()) {
@@ -96,6 +99,10 @@ public final class TerritoriosCliente {
 		return d.cambio() >= 0 && turno - d.cambio() < PaquetePolitica.TURNOS_RECIENTE;
 	}
 
+	public static List<PaquetePolitica.Capital> capitales() {
+		return capitales;
+	}
+
 	/** Si hay alguna guerra abierta: sin guerras no hace falta buscar frentes. */
 	public static boolean hayGuerras() {
 		return !GUERRAS.isEmpty();
@@ -118,6 +125,7 @@ public final class TerritoriosCliente {
 		ZONAS.clear();
 		GUERRAS.clear();
 		EN_GUERRA.clear();
+		capitales = List.of();
 		turno = 0;
 		ultima = null;
 		OYENTES.forEach(Oyente::borrado);

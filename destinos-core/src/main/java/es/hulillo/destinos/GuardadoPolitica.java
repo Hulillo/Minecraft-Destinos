@@ -55,6 +55,12 @@ final class GuardadoPolitica {
 			alianzas.add(par(par));
 		}
 		t.put("alianzas", alianzas);
+		t.put("alianza_desde", pares(p.alianzaDesde(), "turno"));
+		ListTag uniones = new ListTag();
+		for (Politica.Par par : p.uniones()) {
+			uniones.add(par(par));
+		}
+		t.put("uniones", uniones);
 		ListTag cronica = new ListTag();
 		for (Suceso s : p.cronica()) {
 			CompoundTag c = new CompoundTag();
@@ -98,6 +104,12 @@ final class GuardadoPolitica {
 		for (int i = 0; i < alianzas.size(); i++) {
 			CompoundTag c = alianzas.getCompoundOrEmpty(i);
 			p.alianzas().add(Politica.Par.de(c.getLongOr("a", 0), c.getLongOr("b", 0)));
+		}
+		leePares(t.getListOrEmpty("alianza_desde"), "turno", p.alianzaDesde());
+		ListTag uniones = t.getListOrEmpty("uniones");
+		for (int i = 0; i < uniones.size(); i++) {
+			CompoundTag c = uniones.getCompoundOrEmpty(i);
+			p.uniones().add(Politica.Par.de(c.getLongOr("a", 0), c.getLongOr("b", 0)));
 		}
 		ListTag cronica = t.getListOrEmpty("cronica");
 		for (int i = 0; i < cronica.size(); i++) {
