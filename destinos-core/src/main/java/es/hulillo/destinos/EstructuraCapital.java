@@ -145,6 +145,9 @@ public final class EstructuraCapital extends Structure {
 				}
 			}
 			calles.forEach(piezas::addPiece);
+			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {}: {} de {} piezas del centro, {} barrios, {} piezas en total",
+					principal.position().getX(), principal.position().getY(), principal.position().getZ(), delCentro.stream()
+							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + calles.size());
 		}));
 	}
 
