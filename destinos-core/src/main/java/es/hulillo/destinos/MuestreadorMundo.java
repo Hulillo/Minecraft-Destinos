@@ -115,6 +115,14 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 		return new MapaTerreno.Casilla(y, oceano, rio, montana, familia(b));
 	}
 
+	@Override
+	public boolean agua(int x, int z) {
+		// el bioma (mar, río) y, para lagos y charcas, el suelo estimado claramente por debajo del mar
+		int suelo = altura(x, z);
+		Holder<Biome> b = bioma(x, Math.max(suelo, nivelMar), z);
+		return b.is(BiomeTags.IS_OCEAN) || b.is(BiomeTags.IS_RIVER) || b.is(BiomeTags.IS_BEACH) || suelo < nivelMar - 2;
+	}
+
 	private boolean hayRioCerca(int x, int y, int z) {
 		for (int[] d : CRUZ) {
 			if (bioma(x + d[0] * RADIO_RIO, y, z + d[1] * RADIO_RIO).is(BiomeTags.IS_RIVER)) {

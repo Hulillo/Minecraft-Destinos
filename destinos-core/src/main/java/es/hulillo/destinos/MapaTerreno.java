@@ -66,6 +66,11 @@ public final class MapaTerreno {
 			return List.of();
 		}
 
+		/** Si en (x, z) hay agua (mar, río o lago) en vez de tierra donde construir. */
+		default boolean agua(int bloqueX, int bloqueZ) {
+			return muestra(bloqueX, bloqueZ).oceano();
+		}
+
 		/** Si en (x, z) hay una cultura de montaña (nórdica, andina o de la estepa), como la elige el datapack. */
 		default boolean culturaDeMontana(int bloqueX, int bloqueZ) {
 			return false;
@@ -466,6 +471,9 @@ public final class MapaTerreno {
 	private static final int PROB_CAPITAL_MONTANA = 50;
 	private static final int K_CAPITAL = 7368787;
 	private static final int PASO_CAPITAL = 128;
+	/** Ducados mejor puntuados en los que se mira el agua de cerca, y separación de esos puntos. */
+	private static final int CANDIDATAS_CAPITAL = 4;
+	private static final int PASO_AGUA = 40;
 
 	/**
 	 * La capital del reino (kx, kz) sin bloquear: null si aún se está eligiendo (y la pide), vacío si el reino no
@@ -506,8 +514,7 @@ public final class MapaTerreno {
 				&& Math.floorMod(Geo.hash(kx, kz, sal + K_CAPITAL), 100) < PROB_CAPITAL_MONTANA;
 		int c0x = Math.floorDiv(k[0], Geo.S_DUCADO);
 		int c0z = Math.floorDiv(k[1], Geo.S_DUCADO);
-		Capital mejor = null;
-		double puntosMejor = Double.NEGATIVE_INFINITY;
+		List<Candidata> candidatas = new ArrayList<>();
 		for (int cx = c0x - RADIO_CAPITAL; cx <= c0x + RADIO_CAPITAL; cx++) {
 			for (int cz = c0z - RADIO_CAPITAL; cz <= c0z + RADIO_CAPITAL; cz++) {
 				int[] c = Geo.centro(cx, cz, Geo.S_DUCADO, sal);
@@ -520,8 +527,7 @@ public final class MapaTerreno {
 				int tierra = 0;
 				int alta = Integer.MIN_VALUE;
 				int baja = Integer.MAX_VALUE;
-				int[] sitio = null;
-				boolean sitioMontana = false;
+				List<int[]> sitios = new ArrayList<>();
 				for (int dz = -1; dz <= 1; dz++) {
 					for (int dx = -1; dx <= 1; dx++) {
 						int x = c[0] + dx * PASO_CAPITAL;
@@ -541,12 +547,7 @@ public final class MapaTerreno {
 						if (t.montana()) {
 							puntos += montana ? 2 : -1;
 						}
-						// el sitio: el centro si es tierra; si no, el primer punto de tierra (o de montaña si la busca)
-						boolean centro = dx == 0 && dz == 0;
-						if (sitio == null || centro || (montana && t.montana() && !sitioMontana)) {
-							sitio = new int[] {x, z};
-							sitioMontana = t.montana();
-						}
+						sitios.add(new int[] {x, z, t.montana() ? 1 : 0});
 					}
 				}
 				if (tierra < 5) {
@@ -558,14 +559,47 @@ public final class MapaTerreno {
 				double dx = c[0] - k[0];
 				double dz = c[1] - k[1];
 				puntos += tierra * 0.5 - Math.sqrt(dx * dx + dz * dz) / 600.0;
+				candidatas.add(new Candidata(cx, cz, puntos, sitios));
+			}
+		}
+		// las mejores, mirando de cerca el agua alrededor de cada sitio posible: una capital entre islas o junto a
+		// un lago se queda en la plaza, porque las calles sobre el agua no se ponen
+		candidatas.sort((a, b) -> Double.compare(b.puntos(), a.puntos()));
+		Capital mejor = null;
+		double puntosMejor = Double.NEGATIVE_INFINITY;
+		for (int i = 0; i < Math.min(CANDIDATAS_CAPITAL, candidatas.size()); i++) {
+			Candidata cand = candidatas.get(i);
+			boolean hayMontana = cand.sitios().stream().anyMatch(s -> s[2] == 1);
+			for (int[] s : cand.sitios()) {
+				if (montana && hayMontana && s[2] == 0) {
+					continue;
+				}
+				double puntos = cand.puntos() - aguaAlrededor(s[0], s[1]) * 0.6;
 				if (puntos > puntosMejor) {
 					puntosMejor = puntos;
-					mejor = new Capital(cx, cz, sitio[0], sitio[1], montana && sitioMontana);
+					mejor = new Capital(cand.cx(), cand.cz(), s[0], s[1], montana && s[2] == 1);
 				}
 			}
 		}
 		return mejor;
 	}
+
+	private record Candidata(int cx, int cz, double puntos, List<int[]> sitios) {
+	}
+
+	/** Cuántos de los 5×5 puntos alrededor de (x, z), hasta donde llega la capital, son agua. */
+	private int aguaAlrededor(int x, int z) {
+		int agua = 0;
+		for (int dz = -2; dz <= 2; dz++) {
+			for (int dx = -2; dx <= 2; dx++) {
+				if (muestreador.agua(x + dx * PASO_AGUA, z + dz * PASO_AGUA)) {
+					agua++;
+				}
+			}
+		}
+		return agua;
+	}
+
 
 	/** Terreno en el centro de cada casilla de la ventana (con margen). */
 	private Casilla[] muestrea(int bx, int bz) {
