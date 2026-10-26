@@ -14,7 +14,7 @@ final class GuardadoPolitica {
 	private GuardadoPolitica() {
 	}
 
-	/** Estado guardado: la política y cuándo toca el siguiente turno (tiempo de juego, en ticks). */
+	/** Estado guardado: la política y cuándo toca el siguiente turno (hora del mundo, en ticks). */
 	record Cargado(Politica politica, long siguiente, int ticksTurno) {
 	}
 
