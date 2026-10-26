@@ -52,6 +52,8 @@ public final class EstructuraCapital extends Structure {
 	private static final int SEPARACION_BARRIO = 64;
 	/** Largo de cada tramo de calle entre el centro y un barrio. */
 	private static final int TRAMO = 16;
+	/** Agua seguida que puede cruzar una calle (con tablones); más, y esa calle no se hace. */
+	private static final int MAX_AGUA_CALLE = 8;
 
 	/** Pueblos agrandados ya preparados (por pueblo, profundidad y distancia), para los registros del mundo abierto. */
 	private static final Map<String, Optional<Structure>> COPIAS = new ConcurrentHashMap<>();
@@ -131,9 +133,11 @@ public final class EstructuraCapital extends Structure {
 		}
 		Structure.GenerationStub principal = plaza.get();
 		// calles del centro a cada barrio, para que no queden como pueblos sueltos
-		List<CalleCapital> calles = new ArrayList<>();
+		// (solo por tierra: una calle que tendría que cruzar un lago o un brazo de mar no se hace)
+		List<List<CalleCapital>> calles = new ArrayList<>();
 		for (Structure.GenerationStub b : barrios) {
-			calles(ctx, principal.position().getX(), principal.position().getZ(), b.position().getX(), b.position().getZ(), calles);
+			calles.add(calles(ctx, agua, principal.position().getX(), principal.position().getZ(), b.position().getX(),
+					b.position().getZ()));
 		}
 		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
 			List<StructurePiece> puestas = new ArrayList<>();
@@ -145,25 +149,39 @@ public final class EstructuraCapital extends Structure {
 					piezas.addPiece(delCentro.get(i));
 				}
 			}
-			for (Structure.GenerationStub b : barrios) {
-				for (StructurePiece pieza : b.getPiecesBuilder().build().pieces()) {
+			int enCalles = 0;
+			for (int i = 0; i < barrios.size(); i++) {
+				int antes = puestas.size();
+				for (StructurePiece pieza : barrios.get(i).getPiecesBuilder().build().pieces()) {
 					// una pieza de barrio que choca con algo ya puesto o cae en el agua se queda fuera
 					if (!agua.tapa(pieza) && puestas.stream().noneMatch(otra -> otra.getBoundingBox().intersects(pieza.getBoundingBox()))) {
 						puestas.add(pieza);
 						piezas.addPiece(pieza);
 					}
 				}
+				// la calle, solo hasta barrios que de verdad tienen casas
+				if (puestas.size() - antes >= 3) {
+					calles.get(i).forEach(piezas::addPiece);
+					enCalles += calles.get(i).size();
+				}
 			}
-			calles.forEach(piezas::addPiece);
 			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {}: {} de {} piezas del centro, {} barrios, {} piezas en total",
 					principal.position().getX(), principal.position().getY(), principal.position().getZ(), delCentro.stream()
-							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + calles.size());
+							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + enCalles);
 		}));
 	}
 
 	/** Tramos de calle de (x0, z0) a (x1, z1), cada uno a la altura del suelo en su mitad. */
-	private static void calles(Structure.GenerationContext ctx, int x0, int z0, int x1, int z1, List<CalleCapital> calles) {
+	private static List<CalleCapital> calles(Structure.GenerationContext ctx, Agua agua, int x0, int z0, int x1, int z1) {
+		List<CalleCapital> calles = new ArrayList<>();
 		int largo = Math.max(Math.abs(x1 - x0), Math.abs(z1 - z0));
+		int seguidos = 0;
+		for (int d = 0; d <= largo; d += 4) {
+			seguidos = agua.en(x0 + (x1 - x0) * d / Math.max(1, largo), z0 + (z1 - z0) * d / Math.max(1, largo)) ? seguidos + 1 : 0;
+			if (seguidos > MAX_AGUA_CALLE / 4) {
+				return calles;
+			}
+		}
 		int tramos = Math.max(1, (largo + TRAMO - 1) / TRAMO);
 		for (int i = 0; i < tramos; i++) {
 			int ax = x0 + (x1 - x0) * i / tramos;
@@ -174,6 +192,7 @@ public final class EstructuraCapital extends Structure {
 					ctx.heightAccessor(), ctx.randomState());
 			calles.add(new CalleCapital(ax, az, bx, bz, y));
 		}
+		return calles;
 	}
 
 	/** Dónde hay agua en vez de tierra (fondo por debajo del nivel del mar), mirado por casillas de 8 bloques. */
