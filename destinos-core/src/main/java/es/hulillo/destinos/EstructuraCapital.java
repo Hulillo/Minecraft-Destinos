@@ -18,16 +18,19 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.tags.StructureTags;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructureType;
 import net.minecraft.world.level.levelgen.structure.structures.JigsawStructure;
 
 /**
  * La capital de un reino: el pueblo que tocaría en ese bioma (de vanilla o de cualquier mod, como Towns and
- * Towers), pero más grande. No tiene piezas propias: copia la estructura de pueblo, le sube la profundidad y la
- * distancia máxima, y la genera. Sale donde dice ColocacionCapital.
+ * Towers), pero mucho más grande. No tiene piezas propias: copia la estructura de pueblo con más profundidad y
+ * la genera en el centro y en cuatro barrios alrededor, sin que las piezas de un barrio pisen las de otro.
+ * Sale donde dice ColocacionCapital.
  *
  * La copia se hace con el codec de las estructuras (JSON de ida y vuelta) para no depender de los campos internos
  * de JigsawStructure, que cambian entre versiones.
@@ -35,13 +38,20 @@ import net.minecraft.world.level.levelgen.structure.structures.JigsawStructure;
 public final class EstructuraCapital extends Structure {
 	public static final MapCodec<EstructuraCapital> CODEC = simpleCodec(EstructuraCapital::new);
 	public static final StructureType<EstructuraCapital> TIPO = () -> CODEC;
-	/** Profundidad extra sobre la del pueblo (el máximo del juego es 20) y hasta dónde llegan sus calles. */
+	/** Profundidad extra del centro y de los barrios sobre la del pueblo (el máximo del juego es 20). */
 	private static final int MAS_PROFUNDIDAD = 4;
-	/** El juego no deja pasar de 128 contando los 12 bloques que allana el terreno alrededor (terrain_adaptation). */
-	private static final int DISTANCIA = 116;
+	private static final int MAS_PROFUNDIDAD_BARRIO = 2;
+	/**
+	 * Hasta dónde llegan las calles del centro y de cada barrio, y a qué distancia del centro (en cada eje) nace
+	 * cada barrio. Todo tiene que quedar a menos de 128 bloques del chunk de la capital: más lejos el juego ya no
+	 * pone las piezas.
+	 */
+	private static final int DISTANCIA = 80;
+	private static final int DISTANCIA_BARRIO = 48;
+	private static final int SEPARACION_BARRIO = 64;
 
-	/** Pueblos agrandados ya preparados, por estructura de pueblo, para los registros del mundo abierto. */
-	private static final Map<Identifier, Optional<Structure>> COPIAS = new ConcurrentHashMap<>();
+	/** Pueblos agrandados ya preparados (por pueblo, profundidad y distancia), para los registros del mundo abierto. */
+	private static final Map<String, Optional<Structure>> COPIAS = new ConcurrentHashMap<>();
 	private static volatile RegistryAccess registrosCopias;
 
 	public EstructuraCapital(Structure.StructureSettings ajustes) {
@@ -82,8 +92,41 @@ public final class EstructuraCapital extends Structure {
 			}
 			pueblo = h.get();
 		}
-		Optional<Structure> grande = agrandado(ctx.registryAccess(), estructuras.getKey(pueblo.value()), pueblo.value());
-		return grande.flatMap(s -> s.findValidGenerationPoint(ctx));
+		Identifier id = estructuras.getKey(pueblo.value());
+		Optional<Structure> centro = agrandado(ctx.registryAccess(), id, pueblo.value(), MAS_PROFUNDIDAD, DISTANCIA);
+		Optional<Structure.GenerationStub> plaza = centro.flatMap(s -> s.findValidGenerationPoint(ctx));
+		if (plaza.isEmpty()) {
+			DestinosCore.LOG.warn("Destinos Core: la capital del chunk {} ({}) no ha podido empezar su pueblo {}",
+					ctx.chunkPos(), bioma.unwrapKey().map(Object::toString).orElse("?"), id);
+			return Optional.empty();
+		}
+		// los barrios: el mismo pueblo, en las cuatro diagonales
+		List<Structure.GenerationStub> barrios = new ArrayList<>();
+		Optional<Structure> barrio = agrandado(ctx.registryAccess(), id, pueblo.value(), MAS_PROFUNDIDAD_BARRIO, DISTANCIA_BARRIO);
+		if (barrio.isPresent()) {
+			for (int[] d : new int[][] {{1, 1}, {-1, 1}, {1, -1}, {-1, -1}}) {
+				ChunkPos sitio = new ChunkPos(ctx.chunkPos().x + d[0] * SEPARACION_BARRIO / 16,
+						ctx.chunkPos().z + d[1] * SEPARACION_BARRIO / 16);
+				Structure.GenerationContext otro = new Structure.GenerationContext(ctx.registryAccess(), ctx.chunkGenerator(),
+						ctx.biomeSource(), ctx.randomState(), ctx.structureTemplateManager(), ctx.seed(), sitio,
+						ctx.heightAccessor(), ctx.validBiome());
+				barrio.get().findValidGenerationPoint(otro).ifPresent(barrios::add);
+			}
+		}
+		Structure.GenerationStub principal = plaza.get();
+		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
+			List<StructurePiece> puestas = new ArrayList<>(principal.getPiecesBuilder().build().pieces());
+			puestas.forEach(piezas::addPiece);
+			for (Structure.GenerationStub b : barrios) {
+				for (StructurePiece pieza : b.getPiecesBuilder().build().pieces()) {
+					// una pieza de barrio que choca con algo ya puesto se queda fuera
+					if (puestas.stream().noneMatch(otra -> otra.getBoundingBox().intersects(pieza.getBoundingBox()))) {
+						puestas.add(pieza);
+						piezas.addPiece(pieza);
+					}
+				}
+			}
+		}));
 	}
 
 	private static boolean esPueblo(Registry<Structure> estructuras, Holder.Reference<Structure> h) {
@@ -92,13 +135,14 @@ public final class EstructuraCapital extends Structure {
 				&& (h.is(StructureTags.VILLAGE) || id.getPath().contains("village"));
 	}
 
-	/** El pueblo con más profundidad, más alcance y válido en cualquier bioma del mundo normal. */
-	private static Optional<Structure> agrandado(RegistryAccess registros, Identifier k, Structure pueblo) {
+	/** El pueblo con más profundidad, el alcance dado y válido en cualquier bioma del mundo normal. */
+	private static Optional<Structure> agrandado(RegistryAccess registros, Identifier k, Structure pueblo, int mas,
+			int alcance) {
 		if (registrosCopias != registros) {
 			COPIAS.clear();
 			registrosCopias = registros;
 		}
-		return COPIAS.computeIfAbsent(k, clave -> {
+		return COPIAS.computeIfAbsent(k + "|" + mas + "|" + alcance, clave -> {
 			RegistryOps<JsonElement> ops = RegistryOps.create(JsonOps.INSTANCE, registros);
 			Optional<JsonElement> json = Structure.DIRECT_CODEC.encodeStart(ops, pueblo).result();
 			if (json.isEmpty() || !json.get().isJsonObject()) {
@@ -107,22 +151,22 @@ public final class EstructuraCapital extends Structure {
 			}
 			JsonObject o = json.get().getAsJsonObject().deepCopy();
 			int profundidad = o.has("size") ? o.get("size").getAsInt() : 6;
-			o.addProperty("size", Math.min(20, profundidad + MAS_PROFUNDIDAD));
+			o.addProperty("size", Math.min(20, profundidad + mas));
 			JsonElement distancia = o.get("max_distance_from_center");
 			if (distancia != null && distancia.isJsonObject()) {
-				distancia.getAsJsonObject().addProperty("horizontal", DISTANCIA);
+				distancia.getAsJsonObject().addProperty("horizontal", alcance);
 			} else {
-				o.addProperty("max_distance_from_center", DISTANCIA);
+				o.addProperty("max_distance_from_center", alcance);
 			}
 			// el bioma ya lo ha mirado findGenerationPoint (o es el pueblo de respaldo): que no lo vuelva a mirar
-			o.addProperty("biomes", "#minecraft:is_overworld");
+			o.addProperty("biomes", "#destinos_core:capital");
 			Optional<Structure> copia = Structure.DIRECT_CODEC.parse(ops, o).resultOrPartial(error ->
 					DestinosCore.LOG.warn("Destinos Core: el pueblo {} agrandado no es válido ({}); la capital usará el normal", k, error));
 			if (copia.isEmpty()) {
 				return Optional.of(pueblo);
 			}
-			DestinosCore.LOG.info("Destinos Core: capitales con el estilo de {} (profundidad {})", k,
-					Math.min(20, profundidad + MAS_PROFUNDIDAD));
+			DestinosCore.LOG.info("Destinos Core: capitales con el estilo de {} (profundidad {}, {} bloques)", k,
+					Math.min(20, profundidad + mas), alcance);
 			return copia;
 		});
 	}

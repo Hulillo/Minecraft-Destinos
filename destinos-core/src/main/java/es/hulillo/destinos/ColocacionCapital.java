@@ -30,6 +30,7 @@ public final class ColocacionCapital extends StructurePlacement {
 			StructurePlacement.ExclusionZone.CODEC.optionalFieldOf("exclusion_zone").forGetter(ColocacionCapital::exclusionZone)
 	).apply(i, ColocacionCapital::new));
 	public static final StructurePlacementType<ColocacionCapital> TIPO = () -> CODEC;
+	private static volatile boolean avisado;
 
 	public ColocacionCapital(Vec3i locateOffset, StructurePlacement.FrequencyReductionMethod reduccion, float frecuencia,
 			int sal, Optional<StructurePlacement.ExclusionZone> exclusion) {
@@ -48,6 +49,10 @@ public final class ColocacionCapital extends StructurePlacement {
 	protected boolean isPlacementChunk(ChunkGeneratorStructureState estado, int cx, int cz) {
 		MapaTerreno mapa = DestinosCore.mapaActual();
 		if (mapa == null) {
+			if (!avisado) {
+				avisado = true;
+				DestinosCore.LOG.info("Destinos Core: se generan chunks antes de que el datapack ponga la sal; ahí no habrá capitales");
+			}
 			return false;
 		}
 		int sal = mapa.sal();
@@ -73,6 +78,8 @@ public final class ColocacionCapital extends StructurePlacement {
 				vistos[n++] = reino;
 				MapaTerreno.Capital capital = mapa.capital(r.kx(), r.kz());
 				if (capital != null && capital.x() >> 4 == cx && capital.z() >> 4 == cz) {
+					DestinosCore.LOG.info("Destinos Core: toca generar la capital del reino {},{} en {}, {}", r.kx(), r.kz(),
+							capital.x(), capital.z());
 					return true;
 				}
 			}
