@@ -63,6 +63,7 @@ public final class DestinosCore implements ModInitializer {
 								.then(Commands.argument("n", IntegerArgumentType.integer(1, 500))
 										.executes(ctx -> turno(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "n")))))
 						.then(Commands.literal("cronica").executes(ctx -> cronica(ctx.getSource())))));
+		ColocacionCapital.registra();
 		PayloadTypeRegistry.playS2C().register(PaqueteTerritorio.TIPO, PaqueteTerritorio.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaquetePolitica.TIPO, PaquetePolitica.CODEC);
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ENVIO.olvida(handler.getPlayer().getUUID()));
@@ -120,6 +121,11 @@ public final class DestinosCore implements ModInitializer {
 				ENVIO.envia(m, pol, estado, p);
 			}
 		}
+	}
+
+	/** El mapa del mundo que está abierto, o null (para la generación del mundo, que no sabe del servidor). */
+	static MapaTerreno mapaActual() {
+		return mapa;
 	}
 
 	/** El mapa del mundo actual. Se rehace si cambia la sal (otro mundo). Null si el datapack aún no ha cargado. */
