@@ -15,7 +15,8 @@ public final class PruebaGeo {
 			}
 			int[] g = Geo.territorioGeometrico(v[1], v[2], v[0]);
 			for (int i = 0; i < 5; i++) {
-				if (g[i] != v[3 + i] || Geo.colorReino(g[2], g[3], v[0]) != v[8]) {
+				if (g[i] != v[3 + i] || Geo.colorReino(g[2], g[3], v[0]) != v[8]
+						|| Geo.rasgoReino(g[2], g[3], v[0]) != v[9]) {
 					System.err.println("DISTINTO en sal=" + v[0] + " x=" + v[1] + " z=" + v[2]);
 					System.exit(1);
 				}

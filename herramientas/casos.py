@@ -1,9 +1,9 @@
-"""Genera casos de prueba con el simulador: sal x z dx dz kx kz salvaje color (uno por línea).
+"""Genera casos de prueba con el simulador: sal x z dx dz kx kz salvaje color rasgo (uno por línea).
 PruebaGeo.java los lee y comprueba que Geo.java da exactamente lo mismo."""
 import os, random, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sim
-from constantes import COLORES, SAL_COLOR
+from constantes import COLORES, SAL_COLOR, SAL_RASGO, N_RASGOS
 
 rnd = random.Random(2)
 with open(sys.argv[1], "w") as f:
@@ -12,4 +12,5 @@ with open(sys.argv[1], "w") as f:
             x, z = rnd.randint(-60000, 60000), rnd.randint(-60000, 60000)
             (dx, dz), (kx, kz), w = sim.territorio(x, z, sal)
             color = int(COLORES[sim.hash_(kx, kz, sal + SAL_COLOR) % len(COLORES)][1:], 16)
-            f.write(f"{sal} {x} {z} {dx} {dz} {kx} {kz} {int(w)} {color}\n")
+            rasgo = sim.hash_(kx, kz, sal + SAL_RASGO) % N_RASGOS
+            f.write(f"{sal} {x} {z} {dx} {dz} {kx} {kz} {int(w)} {color} {rasgo}\n")
