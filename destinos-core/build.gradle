@@ -2,7 +2,8 @@ plugins {
 	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
 }
 
-version = project.version
+// En la CI se añade el número de compilación (0.3.0+build.57) para distinguir un jar de otro
+version = System.getenv("GITHUB_RUN_NUMBER") ? "${project.version}+build.${System.getenv("GITHUB_RUN_NUMBER")}" : project.version
 group = project.group
 
 base {
