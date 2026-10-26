@@ -4,6 +4,7 @@ import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.MapaTerreno;
 import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTerritorio;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -126,6 +127,11 @@ public final class TerritoriosCliente {
 		visible = !visible;
 		Ajustes.guardaVisible(visible);
 		OYENTES.forEach(o -> o.visibilidad(visible));
+	}
+
+	/** Todas las zonas recibidas (para recorrer los frentes de guerra). */
+	public static Collection<PaqueteTerritorio> zonasRecibidas() {
+		return ZONAS.values();
 	}
 
 	public static int zonas() {
