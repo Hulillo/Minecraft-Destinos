@@ -30,7 +30,7 @@ import net.minecraft.world.phys.Vec3;
 final class PoliticaMundo {
 	private static final Identifier STORAGE = Identifier.fromNamespaceAndPath("destinos", "politica");
 	private static final Identifier MUNDO = Identifier.fromNamespaceAndPath("destinos", "mundo");
-	/** Un turno por día de juego: 8 turnos son un año del mundo. */
+	/** Un turno por día de juego, al amanecer. El año del mundo es el de las estaciones (Estaciones). */
 	static final int TICKS_TURNO = 24000;
 	/** Anuncios como mucho por tanda (al forzar varios turnos); el resto queda en la crónica. */
 	private static final int MAX_ANUNCIOS = 10;
@@ -50,14 +50,22 @@ final class PoliticaMundo {
 	/** Carga la política guardada de esta sal, o empieza una nueva. */
 	static PoliticaMundo de(MinecraftServer server, int sal) {
 		GuardadoPolitica.Cargado c = GuardadoPolitica.carga(server.getCommandStorage().get(STORAGE), sal);
-		long ahora = server.overworld().getGameTime();
+		long ahora = server.overworld().getDayTime();
 		if (c == null) {
-			return new PoliticaMundo(new Politica(sal), ahora + TICKS_TURNO, TICKS_TURNO);
+			return new PoliticaMundo(new Politica(sal), proximo(ahora, TICKS_TURNO), TICKS_TURNO);
 		}
 		DestinosCore.LOG.info("Destinos Core: política cargada (año {}, {} ducados con otro dueño)",
 				c.politica().anio(), c.politica().cambios().size());
 		int ticks = c.ticksTurno() > 0 ? c.ticksTurno() : TICKS_TURNO;
-		return new PoliticaMundo(c.politica(), Math.min(c.siguiente(), ahora + ticks), ticks);
+		return new PoliticaMundo(c.politica(), Math.min(c.siguiente(), proximo(ahora, ticks)), ticks);
+	}
+
+	/**
+	 * El amanecer en que toca el siguiente turno. Se mide con la hora del mundo (no con los ticks jugados) para que
+	 * dormir también haga pasar los días, igual que las estaciones.
+	 */
+	private static long proximo(long ahora, int ticksTurno) {
+		return (Math.floorDiv(ahora, TICKS_TURNO) + ticksTurno / TICKS_TURNO) * TICKS_TURNO;
 	}
 
 	int sal() {
@@ -101,12 +109,16 @@ final class PoliticaMundo {
 		if (grafo.ducados().isEmpty()) {
 			return Set.of();
 		}
-		long ahora = server.overworld().getGameTime();
+		long ahora = server.overworld().getDayTime();
 		int turnos = forzados;
 		forzados = 0;
+		if (siguiente - ahora > ticksTurno) {
+			// alguien ha echado el reloj atrás con /time set
+			siguiente = proximo(ahora, ticksTurno);
+		}
 		if (ahora >= siguiente) {
 			turnos++;
-			siguiente = ahora + ticksTurno;
+			siguiente = proximo(ahora, ticksTurno);
 		}
 		return turnos > 0 ? juega(server, turnos) : Set.of();
 	}
@@ -118,13 +130,14 @@ final class PoliticaMundo {
 
 	void ritmo(MinecraftServer server, int dias) {
 		ticksTurno = dias * TICKS_TURNO;
-		siguiente = server.overworld().getGameTime() + ticksTurno;
+		siguiente = proximo(server.overworld().getDayTime(), ticksTurno);
 		guarda(server);
 	}
 
 	private Set<Long> juega(MinecraftServer server, int turnos) {
 		Map<Long, Politica.Cambio> antes = new HashMap<>(politica.cambios());
 		List<Suceso> sucesos = new ArrayList<>();
+		politica.fijaAnio(Estaciones.anio(server.overworld()));
 		for (int i = 0; i < turnos; i++) {
 			politica.turno(grafo, sucesos::add);
 		}
@@ -300,10 +313,10 @@ final class PoliticaMundo {
 
 	void estado(CommandSourceStack fuente, MapaTerreno mapa) {
 		MinecraftServer server = fuente.getServer();
-		long faltan = Math.max(0, siguiente - server.overworld().getGameTime());
+		long faltan = Math.max(0, siguiente - server.overworld().getDayTime());
 		fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.estado",
 				"Año %s · turno %s · siguiente turno en %s min · %s ducados y %s reinos conocidos",
-				politica.anio(), politica.turno(), (faltan + 1199) / 1200, grafo.ducados().size(), reinosVivos())
+				Estaciones.anio(server.overworld()), politica.turno(), (faltan + 1199) / 1200, grafo.ducados().size(), reinosVivos())
 				.withStyle(ChatFormatting.GOLD), false);
 		ServerPlayer p = fuente.getPlayer();
 		if (p == null || p.level().dimension() != Level.OVERWORLD) {

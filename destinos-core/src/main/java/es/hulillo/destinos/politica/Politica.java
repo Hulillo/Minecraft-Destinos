@@ -28,6 +28,7 @@ public final class Politica {
 	public static final long NADIE = Long.MIN_VALUE;
 	/** Dueño de un ducado que ha quedado sin señor. */
 	public static final long SALVAJE = Long.MIN_VALUE + 1;
+	/** Para las pruebas sin Minecraft; en el juego el año lo pone fijaAnio (el de las estaciones). */
 	public static final int TURNOS_POR_ANIO = 8;
 	/** Durante estos turnos el reino protegido (donde se empieza a jugar) no pierde tierras. */
 	public static final int TURNOS_PROTECCION = 10;
@@ -74,6 +75,7 @@ public final class Politica {
 
 	private final int sal;
 	private int turno;
+	private int anioFijo;
 	private long reinoProtegido = NADIE;
 	private final Map<Long, Reino> reinos = new TreeMap<>();
 	private final Map<Long, Cambio> cambios = new TreeMap<>();
@@ -96,7 +98,12 @@ public final class Politica {
 	}
 
 	public int anio() {
-		return 1 + turno / TURNOS_POR_ANIO;
+		return anioFijo > 0 ? anioFijo : 1 + turno / TURNOS_POR_ANIO;
+	}
+
+	/** El año del mundo que llevan los sucesos de los próximos turnos. */
+	public void fijaAnio(int anio) {
+		anioFijo = anio;
 	}
 
 	// ------------------------------------------------------------------ consultas
