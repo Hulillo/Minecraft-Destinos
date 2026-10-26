@@ -14,10 +14,15 @@ import net.minecraft.server.level.ServerPlayer;
  */
 final class EnvioTerritorios {
 	private final Map<UUID, Set<Long>> enviadas = new HashMap<>();
+	/** Jugadores que ya tienen el estado político de ahora (guerras y turno). */
+	private final Set<UUID> conPolitica = new HashSet<>();
 
-	void envia(MapaTerreno mapa, ServerPlayer jugador) {
+	void envia(MapaTerreno mapa, PaqueteTerritorio.Politica politica, PaquetePolitica estado, ServerPlayer jugador) {
 		if (!ServerPlayNetworking.canSend(jugador, PaqueteTerritorio.TIPO)) {
 			return;
+		}
+		if (conPolitica.add(jugador.getUUID()) && ServerPlayNetworking.canSend(jugador, PaquetePolitica.TIPO)) {
+			ServerPlayNetworking.send(jugador, estado);
 		}
 		Set<Long> ya = enviadas.computeIfAbsent(jugador.getUUID(), k -> new HashSet<>());
 		int wx = MapaTerreno.indiceVentana(jugador.getBlockX());
@@ -30,7 +35,7 @@ final class EnvioTerritorios {
 				}
 				MapaTerreno.Zona zona = mapa.zonaSiLista(wx + ox, wz + oz);
 				if (zona != null) {
-					ServerPlayNetworking.send(jugador, PaqueteTerritorio.de(zona, mapa.sal()));
+					ServerPlayNetworking.send(jugador, PaqueteTerritorio.de(zona, mapa.sal(), politica));
 					ya.add(clave);
 				}
 			}
@@ -39,10 +44,24 @@ final class EnvioTerritorios {
 
 	void olvida(UUID jugador) {
 		enviadas.remove(jugador);
+		conPolitica.remove(jugador);
+	}
+
+	/** Ha pasado un turno: el estado político se vuelve a mandar a todos. */
+	void olvidaPolitica() {
+		conPolitica.clear();
+	}
+
+	/** Zonas que han cambiado (conquistas): se vuelven a mandar a quien ya las tenía. */
+	void olvidaZonas(Set<Long> claves) {
+		if (!claves.isEmpty()) {
+			enviadas.values().forEach(ya -> ya.removeAll(claves));
+		}
 	}
 
 	/** Otro mundo u otra sal: hay que volver a mandarlo todo. */
 	void olvidaTodo() {
 		enviadas.clear();
+		conPolitica.clear();
 	}
 }

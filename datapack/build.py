@@ -1,4 +1,4 @@
-"""Genera el datapack y el resource pack de idiomas de Destinos: Reinos v0.1."""
+"""Genera el datapack y el resource pack de idiomas de Destinos: Reinos v0.3."""
 import json, os, shutil, sys, zipfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from culturas import CULTURAS, ORDEN, BIOMAS
@@ -16,7 +16,8 @@ C = dict(S_D=K.S_DUCADO, S_K=K.S_REINO, WARP=K.WARP, D_FRONTERA=K.D_FRONTERA, P_
          P_SALVAJE=K.P_SALVAJE, K_JZ=K.K_JZ, K_REINO=K.K_REINO, K_SALV=K.K_SALV, K_WARP=K.K_WARP)
 SALES = ["NR", "Casa", "Lema", "Rasgo", "Color", "ND", "Tipo", "Gen", "Sen", "Fama", "Geo", "Mar"]  # sal + 1..12
 assert SALES.index("Color") + 1 == K.SAL_COLOR, "Destinos Core calcula el color con K.SAL_COLOR"
-N_LEMAS, N_RASGOS, N_FAMAS, N_GEO = 12, 5, 6, 5
+assert SALES.index("Rasgo") + 1 == K.SAL_RASGO, "Destinos Core calcula el rasgo con K.SAL_RASGO"
+N_LEMAS, N_RASGOS, N_FAMAS, N_GEO = 12, K.N_RASGOS, 6, 5
 COLORES = K.COLORES
 
 files = {}
@@ -49,7 +50,7 @@ TIEMPOS_TITULO = "title @s times 10 70 20"
 
 # ---------------------------------------------------------------- init
 fn("init/load", [
-    "# Destinos: Reinos v0.1 · carga",
+    "# Destinos: Reinos v0.3 · carga",
     *[f"scoreboard objectives add {o} dummy" for o in
       ["dr.calc", "dr.const", "dr.dx", "dr.dz", "dr.kx", "dr.kz", "dr.w", "dr.init", "dr.id", "dr.hud", "dr.mar"]],
     *[f"scoreboard objectives add destinos.{t} trigger" for t in TRIGGERS],
@@ -190,6 +191,8 @@ fn("jugador/comprobar", [
     "execute unless score @s dr.mar matches 1 if biome ~ ~ ~ #minecraft:is_ocean if biome ~24 ~ ~ #minecraft:is_ocean if biome ~-24 ~ ~ #minecraft:is_ocean if biome ~ ~ ~24 #minecraft:is_ocean if biome ~ ~ ~-24 #minecraft:is_ocean run scoreboard players set #mar dr.calc 1",
     "execute unless score @s dr.mar = #mar dr.calc run scoreboard players set #cd dr.calc 1",
     "execute unless score @s dr.mar = #mar dr.calc run scoreboard players set #cr dr.calc 1",
+    "# si el ducado cambia de dueño (política viva) con el jugador dentro, también se avisa",
+    "execute if score #cr dr.calc matches 1 run scoreboard players set #cd dr.calc 1",
     "execute if score #cd dr.calc matches 1 run function destinos:jugador/cambio",
 ])
 def guarda_args(dst="a"):
@@ -243,6 +246,7 @@ fn("reino/entrar", [
     TIEMPOS_TITULO,
     "execute if score #tw dr.calc matches 1 run function destinos:hud/salvaje with storage destinos:tmp t",
     "execute if score #tw dr.calc matches 0 run function destinos:hud/noble with storage destinos:tmp t",
+    "execute if score #tw dr.calc matches 0 if data storage destinos:tmp t{conquista:1b} run function destinos:hud/noble_conquista with storage destinos:tmp t",
     "execute if score #cr dr.calc matches 1 run playsound minecraft:item.goat_horn.sound.0 master @s ~ ~ ~ 0.35 1",
     "execute if score #cr dr.calc matches 0 run playsound minecraft:block.bell.use master @s ~ ~ ~ 0.4 0.8",
     '$execute if score #tw dr.calc matches 0 if data storage destinos:mundo reinos."k$(kx)_$(kz)"{descubierto:0b} run function destinos:hud/primer_reino with storage destinos:mundo reinos."k$(kx)_$(kz)"',
@@ -317,6 +321,30 @@ fn("reino/senor", [
     *elegir("$(cultura).$(g)", 12, "Sen", "nuevo.senor"),
 ])
 
+# ---------------------------------------------------------------- política viva (las llama Destinos Core)
+fn("politica/asegurar_reino", [
+    "# Macro: kx kz · en el centro del reino (para la cultura). Crea el registro si aún no existe",
+    '$execute unless data storage destinos:mundo reinos."k$(kx)_$(kz)" run function destinos:reino/generar_reino {kx:$(kx),kz:$(kz)}',
+])
+fn("politica/asegurar_ducado", [
+    "# Macro: dx dz kx kz w · en el centro del ducado, con su dueño de hoy (w=1: sin señor)",
+    "$scoreboard players set #tw dr.calc $(w)",
+    "$data modify storage destinos:tmp a set value {dx:$(dx),dz:$(dz),kx:$(kx),kz:$(kz)}",
+    '$execute unless data storage destinos:mundo ducados."d$(dx)_$(dz)" run function destinos:reino/generar_ducado with storage destinos:tmp a',
+])
+fn("politica/cambio", [
+    "# Macro: dx dz kx kz w c · el ducado tiene dueño nuevo (c=1: ganado en guerra)",
+    "# sin señor, o tierra salvaje que pasa a un reino: se borra y se rehace al entrar con su nuevo estado",
+    "$scoreboard players set #pw dr.calc $(w)",
+    '$execute if score #pw dr.calc matches 1 run return run data remove storage destinos:mundo ducados."d$(dx)_$(dz)"',
+    '$execute if data storage destinos:mundo ducados."d$(dx)_$(dz)"{salvaje:1b} run return run data remove storage destinos:mundo ducados."d$(dx)_$(dz)"',
+    '$execute unless data storage destinos:mundo ducados."d$(dx)_$(dz)" run return 0',
+    '$data modify storage destinos:mundo ducados."d$(dx)_$(dz)".reino set value "k$(kx)_$(kz)"',
+    '$data modify storage destinos:mundo ducados."d$(dx)_$(dz)".rnombre set from storage destinos:mundo reinos."k$(kx)_$(kz)".nombre',
+    '$data modify storage destinos:mundo ducados."d$(dx)_$(dz)".color set from storage destinos:mundo reinos."k$(kx)_$(kz)".color',
+    '$data modify storage destinos:mundo ducados."d$(dx)_$(dz)".conquista set value $(c)b',
+])
+
 # ---------------------------------------------------------------- nombres
 fn("nombres/generar", [
     "# Entrada: #hx #hz #hs + destinos:tmp gen.cultura · Salida: destinos:tmp gen.nombre",
@@ -382,6 +410,11 @@ def bossbar(nombre, lugar, color):
 fn("hud/noble", [
     "# Macro: registro de ducado noble",
     "$title @s subtitle " + snbt(con(NOMBRE_REINO, color="$(color)")),
+    "$title @s title " + snbt(con(NOMBRE_DUCADO, color="$(color)")),
+])
+fn("hud/noble_conquista", [
+    "# Macro: registro de ducado noble ganado en una guerra (política viva)",
+    "$title @s subtitle " + snbt(con(T("destinos.reino_conquista", "Ahora del Reino de %s", ["$(rnombre)"]), color="$(color)")),
     "$title @s title " + snbt(con(NOMBRE_DUCADO, color="$(color)")),
 ])
 fn("hud/salvaje", [
@@ -588,6 +621,57 @@ L("destinos.primer_reino", "Entras por primera vez en el Reino de %s, bajo el es
   "You enter the Kingdom of %s for the first time, under the banner of House %s.")
 L("destinos.gobierna", "Gobierna %s · Fama: %s", "Ruled by %s · Known for: %s")
 L("destinos.info_reino", "Casa %s · Cultura %s · Reino %s", "House %s · %s culture · %s realm")
+L("key.destinos_core.mapa_politico", "Mapa político (reinos en el mapa)", "Political map (kingdoms on the map)")
+L("key.category.destinos_core.destinos", "Destinos", "Destinos")
+L("destinos.mapa_politico.on", "Mapa político: activado", "Political map: on")
+L("destinos.mapa_politico.off", "Mapa político: desactivado", "Political map: off")
+L("destinos.reino_conquista", "Ahora del Reino de %s", "Now of the Kingdom of %s")
+# política viva: los textos los escribe Destinos Core (args: año, reino A, reino B, ducado)
+POLITICA = {
+    "guerra": ("⚔ Año %1$s · El %2$s declara la guerra al %3$s.", "⚔ Year %1$s · The %2$s declares war on the %3$s."),
+    "paz": ("☮ Año %1$s · El %2$s y el %3$s firman la paz.", "☮ Year %1$s · The %2$s and the %3$s make peace."),
+    "conquista": ("⚑ Año %1$s · %4$s pasa al %2$s tras la guerra con el %3$s.",
+                  "⚑ Year %1$s · %4$s falls to the %2$s in the war against the %3$s."),
+    "cae": ("☠ Año %1$s · El %2$s ha caído: el %3$s se queda con sus últimas tierras.",
+            "☠ Year %1$s · The %2$s has fallen: the %3$s takes its last lands."),
+    "alianza": ("✦ Año %1$s · El %2$s y el %3$s sellan una alianza.", "✦ Year %1$s · The %2$s and the %3$s seal an alliance."),
+    "ruptura": ("✧ Año %1$s · Se rompe la alianza entre el %2$s y el %3$s.",
+                "✧ Year %1$s · The alliance between the %2$s and the %3$s is broken."),
+    "vasallaje": ("♛ Año %1$s · El %2$s jura vasallaje al %3$s.", "♛ Year %1$s · The %2$s swears fealty to the %3$s."),
+    "independencia": ("⚐ Año %1$s · El %2$s rompe el vasallaje y se declara libre del %3$s.",
+                      "⚐ Year %1$s · The %2$s breaks its fealty and declares itself free of the %3$s."),
+    "anexion": ("♛ Año %1$s · El %2$s se anexiona a su vasallo, el %3$s.", "♛ Year %1$s · The %2$s annexes its vassal, the %3$s."),
+    "disolucion": ("☠ Año %1$s · El %2$s se hunde en el caos: sus tierras quedan sin señor.",
+                   "☠ Year %1$s · The %2$s collapses into chaos: its lands are left without a lord."),
+    "expansion": ("⚜ Año %1$s · El %2$s reclama %4$s, antes tierra salvaje.", "⚜ Year %1$s · The %2$s claims %4$s, once wildland."),
+}
+for k, (a, b) in POLITICA.items(): L(f"destinos.politica.{k}", a, b)
+L("destinos.politica.coordenadas", "Centro: %s, %s", "Centre: %s, %s")
+L("destinos.politica.donde", " (a %s bloques al %s)", " (%s blocks to the %s)")
+L("destinos.politica.aqui", " (aquí mismo)", " (right here)")
+for k, (a_, b_) in {"n": ("N", "N"), "ne": ("NE", "NE"), "e": ("E", "E"), "se": ("SE", "SE"), "s": ("S", "S"),
+                    "so": ("SO", "SW"), "o": ("O", "W"), "no": ("NO", "NW")}.items():
+    L(f"destinos.rumbo.{k}", a_, b_)
+L("destinos.politica.resumen", "Han pasado %s turnos: %s sucesos · %s ducados y %s reinos conocidos",
+  "%s turns went by: %s events · %s duchies and %s kingdoms known")
+L("destinos.politica.pocos", "Aún se conocen pocos reinos alrededor, así que no tienen con quién pelearse ni aliarse. El mundo conocido crece solo con el tiempo y al explorar.",
+  "Few kingdoms are known around here yet, so they have no one to fight or ally with. The known world grows over time and as you explore.")
+L("destinos.politica.lejano", "reino lejano", "distant kingdom")
+L("destinos.politica.mas", "… y %s sucesos más (/destinoscore cronica)", "… and %s more events (/destinoscore cronica)")
+L("destinos.politica.estado", "Año %s · turno %s · siguiente turno en %s min · %s ducados y %s reinos conocidos",
+  "Year %s · turn %s · next turn in %s min · %s duchies and %s kingdoms known")
+L("destinos.politica.salvaje", "Aquí no manda nadie.", "No one rules here.")
+L("destinos.politica.reino", "%s · estabilidad %s/100", "%s · stability %s/100")
+L("destinos.politica.vasallo", "Vasallo del %s", "Vassal of the %s")
+L("destinos.politica.guerras", "⚔ En guerra con: %s", "⚔ At war with: %s")
+L("destinos.politica.aliados", "✦ Aliados: %s", "✦ Allies: %s")
+L("destinos.politica.relacion", "%s (%s)", "%s (%s)")
+L("destinos.politica.relaciones", "Vecinos (relación de -100 a 100): %s", "Neighbours (relations from -100 to 100): %s")
+L("destinos.politica.cronica", "📜 Crónica del mundo", "📜 Chronicle of the world")
+L("destinos.politica.cronica_vacia", "La crónica está vacía: aún no ha pasado nada.", "The chronicle is empty: nothing has happened yet.")
+L("destinos.politica.permiso", "Solo en modo creativo o desde la consola.", "Only in creative mode or from the console.")
+L("destinos.politica.forzado", "Pasan %s turnos de política…", "%s political turns go by…")
+L("destinos.politica.ritmo", "Ahora pasa un turno de política cada %s días de juego.", "A political turn now happens every %s in-game days.")
 for k, (a, b) in TIPOS.items(): L(f"destinos.tipo.{k}", a, b)
 for k, (m, f) in TITULOS.items():
     L(f"destinos.titulo.{k}.m", *m); L(f"destinos.titulo.{k}.f", *f)
@@ -609,9 +693,9 @@ def wjson(p, o):
     open(p, "w", encoding="utf-8").write(json.dumps(o, ensure_ascii=False, indent=2) + "\n")
 for p, o in files_json: wjson(p, o)
 wjson(os.path.join(DP, "data/minecraft/tags/function/load.json"), {"values": ["destinos:init/load"]})
-wjson(os.path.join(DP, "pack.mcmeta"), {"pack": {"description": "Destinos: Reinos v0.1 · reinos y ducados RNG",
+wjson(os.path.join(DP, "pack.mcmeta"), {"pack": {"description": "Destinos: Reinos v0.3 · reinos y ducados RNG",
                                                  "min_format": 88, "max_format": 99}})
-wjson(os.path.join(RP, "pack.mcmeta"), {"pack": {"description": "Destinos: Reinos v0.1 · idiomas ES/EN",
+wjson(os.path.join(RP, "pack.mcmeta"), {"pack": {"description": "Destinos: Reinos v0.3 · idiomas ES/EN",
                                                  "min_format": 69, "max_format": 99}})
 for loc in ("es_es", "es_mx", "es_ar", "es_cl", "es_ec", "es_uy", "es_ve"):
     wjson(os.path.join(RP, f"assets/destinos/lang/{loc}.json"), es)

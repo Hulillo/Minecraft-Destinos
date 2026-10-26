@@ -14,3 +14,5 @@ K_WARP = 15485863    # desplazamiento de sal para el warp del centro del ducado
 # Colores de reino (el mapa en libro, los títulos y la capa de JourneyMap/Diorama). Geo.java tiene los mismos.
 COLORES = ["#c0392b", "#2e5fa8", "#2e8b3a", "#7b3fa0", "#c9a227", "#d8d8d8", "#a0582c", "#138d90", "#b0306a", "#5b6f7c"]
 SAL_COLOR = 5        # el color del reino se tira con #salColor = sal + 5 (ver SALES en build.py)
+SAL_RASGO = 4        # el rasgo del reino (militar, mercantil…) se tira con #salRasgo = sal + 4
+N_RASGOS = 5

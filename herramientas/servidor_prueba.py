@@ -19,6 +19,10 @@ COMANDOS = [
     "scoreboard players get #tkx dr.calc",
     "scoreboard players get #tw dr.calc",
     "destinoscore estado",
+    "destinoscore politica",
+    "destinoscore turno 16",
+    "destinoscore cronica",
+    "data get storage destinos:politica turno",
 ]
 # Frases que Minecraft escribe cuando algo del datapack falla
 MALO = re.compile(r"Failed to (load|parse) function|Couldn't load function|Unknown or incomplete command|"
