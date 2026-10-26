@@ -652,6 +652,10 @@ L("destinos.politica.aqui", " (aquí mismo)", " (right here)")
 for k, (a_, b_) in {"n": ("N", "N"), "ne": ("NE", "NE"), "e": ("E", "E"), "se": ("SE", "SE"), "s": ("S", "S"),
                     "so": ("SO", "SW"), "o": ("O", "W"), "no": ("NO", "NW")}.items():
     L(f"destinos.rumbo.{k}", a_, b_)
+L("destinos.politica.resumen", "Han pasado %s turnos: %s sucesos · %s ducados y %s reinos conocidos",
+  "%s turns went by: %s events · %s duchies and %s kingdoms known")
+L("destinos.politica.pocos", "Aún se conocen pocos reinos alrededor, así que no tienen con quién pelearse ni aliarse. El mundo conocido crece solo con el tiempo y al explorar.",
+  "Few kingdoms are known around here yet, so they have no one to fight or ally with. The known world grows over time and as you explore.")
 L("destinos.politica.lejano", "reino lejano", "distant kingdom")
 L("destinos.politica.mas", "… y %s sucesos más (/destinoscore cronica)", "… and %s more events (/destinoscore cronica)")
 L("destinos.politica.estado", "Año %s · turno %s · siguiente turno en %s min · %s ducados y %s reinos conocidos",

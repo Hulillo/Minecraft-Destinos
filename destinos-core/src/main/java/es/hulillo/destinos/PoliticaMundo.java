@@ -41,6 +41,8 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	private long siguiente;
 	private int ticksTurno;
 	private int forzados;
+	/** Quien pidió los turnos forzados, para contarle cómo ha ido. */
+	private CommandSourceStack pidio;
 
 	private PoliticaMundo(Politica politica, long siguiente, int ticksTurno) {
 		this.politica = politica;
@@ -144,8 +146,9 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	}
 
 	/** Pide n turnos ya (se juegan en el siguiente tick, fuera del comando, para que el datapack responda). */
-	void fuerza(int n) {
+	void fuerza(int n, CommandSourceStack fuente) {
 		forzados += n;
+		pidio = fuente;
 	}
 
 	void ritmo(MinecraftServer server, int dias) {
@@ -161,6 +164,10 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		for (int i = 0; i < turnos; i++) {
 			politica.turno(grafo, sucesos::add);
 		}
+		if (pidio != null) {
+			resumen(pidio, turnos, sucesos.size());
+			pidio = null;
+		}
 		Set<Long> cambiados = new HashSet<>(antes.keySet());
 		cambiados.addAll(politica.cambios().keySet());
 		cambiados.removeIf(d -> Objects.equals(antes.get(d), politica.cambios().get(d)));
@@ -172,6 +179,19 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		anuncia(server, sucesos);
 		guarda(server);
 		return ventanas;
+	}
+
+	/** Tras forzar turnos: cuántos sucesos ha habido y, si ninguno, por qué. */
+	private void resumen(CommandSourceStack fuente, int turnos, int sucesos) {
+		int reinos = reinosVivos();
+		fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.resumen",
+				"Han pasado %s turnos: %s sucesos · %s ducados y %s reinos conocidos", turnos, sucesos,
+				grafo.ducados().size(), reinos).withStyle(ChatFormatting.GOLD), false);
+		if (sucesos == 0 && reinos < 3) {
+			fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.pocos",
+					"Aún se conocen pocos reinos alrededor, así que no tienen con quién pelearse ni aliarse. El mundo conocido crece solo con el tiempo y al explorar.")
+					.withStyle(ChatFormatting.GRAY), false);
+		}
 	}
 
 	void guarda(MinecraftServer server) {

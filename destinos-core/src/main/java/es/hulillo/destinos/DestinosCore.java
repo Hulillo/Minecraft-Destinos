@@ -59,7 +59,7 @@ public final class DestinosCore implements ModInitializer {
 										.then(Commands.argument("dias", IntegerArgumentType.integer(1, 30))
 												.executes(ctx -> ritmo(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "dias"))))))
 						.then(Commands.literal("turno").executes(ctx -> turno(ctx.getSource(), 1))
-								.then(Commands.argument("n", IntegerArgumentType.integer(1, 80))
+								.then(Commands.argument("n", IntegerArgumentType.integer(1, 500))
 										.executes(ctx -> turno(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "n")))))
 						.then(Commands.literal("cronica").executes(ctx -> cronica(ctx.getSource())))));
 		PayloadTypeRegistry.playS2C().register(PaqueteTerritorio.TIPO, PaqueteTerritorio.CODEC);
@@ -112,6 +112,7 @@ public final class DestinosCore implements ModInitializer {
 		for (ServerPlayer p : server.getPlayerList().getPlayers()) {
 			if (p.level().dimension() == Level.OVERWORLD) {
 				m.precarga(p.getBlockX(), p.getBlockZ());
+				m.precargaLejos(p.getBlockX(), p.getBlockZ());
 				ENVIO.envia(m, pol, estado, p);
 			}
 		}
@@ -205,7 +206,7 @@ public final class DestinosCore implements ModInitializer {
 		if (!puedeTocar(fuente) || mapa(fuente.getServer()) == null) {
 			return 0;
 		}
-		politica.fuerza(n);
+		politica.fuerza(n, fuente);
 		fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.forzado",
 				"Pasan %s turnos de política…", n), false);
 		return 1;
