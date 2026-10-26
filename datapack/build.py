@@ -646,6 +646,12 @@ POLITICA = {
     "expansion": ("⚜ Año %1$s · El %2$s reclama %4$s, antes tierra salvaje.", "⚜ Year %1$s · The %2$s claims %4$s, once wildland."),
 }
 for k, (a, b) in POLITICA.items(): L(f"destinos.politica.{k}", a, b)
+L("destinos.politica.coordenadas", "Centro: %s, %s", "Centre: %s, %s")
+L("destinos.politica.donde", " (a %s bloques al %s)", " (%s blocks to the %s)")
+L("destinos.politica.aqui", " (aquí mismo)", " (right here)")
+for k, (a_, b_) in {"n": ("N", "N"), "ne": ("NE", "NE"), "e": ("E", "E"), "se": ("SE", "SE"), "s": ("S", "S"),
+                    "so": ("SO", "SW"), "o": ("O", "W"), "no": ("NO", "NW")}.items():
+    L(f"destinos.rumbo.{k}", a_, b_)
 L("destinos.politica.lejano", "reino lejano", "distant kingdom")
 L("destinos.politica.mas", "… y %s sucesos más (/destinoscore cronica)", "… and %s more events (/destinoscore cronica)")
 L("destinos.politica.estado", "Año %s · turno %s · siguiente turno en %s min · %s ducados y %s reinos conocidos",

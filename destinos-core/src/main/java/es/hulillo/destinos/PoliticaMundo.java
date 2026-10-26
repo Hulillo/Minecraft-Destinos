@@ -14,6 +14,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
@@ -27,7 +28,7 @@ import net.minecraft.world.phys.Vec3;
  * reinos y ducados (nombres, colores) siguen siendo del datapack: se le piden con funciones de politica/.
  * Solo se usa desde el hilo del servidor.
  */
-final class PoliticaMundo {
+final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	private static final Identifier STORAGE = Identifier.fromNamespaceAndPath("destinos", "politica");
 	private static final Identifier MUNDO = Identifier.fromNamespaceAndPath("destinos", "mundo");
 	/** Un turno por día de juego, al amanecer. El año del mundo es el de las estaciones (Estaciones). */
@@ -72,9 +73,28 @@ final class PoliticaMundo {
 		return politica.sal();
 	}
 
+	int turno() {
+		return politica.turno();
+	}
+
 	/** El territorio con el dueño de hoy encima. */
-	MapaTerreno.Resultado aplica(MapaTerreno.Resultado r) {
+	@Override
+	public MapaTerreno.Resultado aplica(MapaTerreno.Resultado r) {
 		return politica.aplica(r);
+	}
+
+	@Override
+	public int turnoCambio(int dcx, int dcz) {
+		return politica.turnoCambio(dcx, dcz);
+	}
+
+	/** Turno y guerras abiertas, para que los mapas marquen cambios recientes y frentes. */
+	PaquetePolitica estadoMapas() {
+		List<PaquetePolitica.Guerra> guerras = new ArrayList<>();
+		for (Politica.Par p : politica.guerras().keySet()) {
+			guerras.add(new PaquetePolitica.Guerra(Grafo.x(p.a()), Grafo.z(p.a()), Grafo.x(p.b()), Grafo.z(p.b())));
+		}
+		return new PaquetePolitica(politica.turno(), guerras);
 	}
 
 	/** Mete en el grafo las zonas recién calculadas y fija el reino protegido. */
@@ -229,25 +249,61 @@ final class PoliticaMundo {
 	}
 
 	/** "Reino de X" con su color, o "un reino lejano" si el datapack aún no lo conoce. */
-	static Component reino(MinecraftServer server, long reino) {
+	/** "X, Z" del centro de la celda, para verlo al pasar el ratón por un nombre del chat. */
+	private static Component coordenadas(int[] c) {
+		return Component.translatableWithFallback("destinos.politica.coordenadas", "Centro: %s, %s", c[0], c[1]);
+	}
+
+	private int[] centroReino(long reino) {
+		return Geo.centro(Grafo.x(reino), Grafo.z(reino), Geo.S_REINO, politica.sal() + Geo.K_REINO);
+	}
+
+	private int[] centroDucado(long ducado) {
+		return Geo.centro(Grafo.x(ducado), Grafo.z(ducado), Geo.S_DUCADO, politica.sal());
+	}
+
+	Component reino(MinecraftServer server, long reino) {
 		CompoundTag r = registros(server, "reinos").getCompoundOrEmpty("k" + Grafo.x(reino) + "_" + Grafo.z(reino));
 		if (!r.contains("nombre")) {
 			return Component.translatableWithFallback("destinos.politica.lejano", "reino lejano");
 		}
 		String nombre = r.getStringOr("nombre", "?");
+		Component pista = coordenadas(centroReino(reino));
 		return Component.translatableWithFallback("destinos.reino", "Reino de %s", nombre)
-				.withColor(color(r.getStringOr("color", "white"), 0xffffff));
+				.withColor(color(r.getStringOr("color", "white"), 0xffffff))
+				.withStyle(st -> st.withHoverEvent(new HoverEvent.ShowText(pista)));
 	}
 
-	static Component ducado(MinecraftServer server, long ducado) {
+	Component ducado(MinecraftServer server, long ducado) {
 		CompoundTag d = registros(server, "ducados").getCompoundOrEmpty("d" + Grafo.x(ducado) + "_" + Grafo.z(ducado));
 		String nombre = d.getStringOr("nombre", "?");
-		if (d.getBooleanOr("salvaje", false)) {
-			return Component.translatableWithFallback("destinos.salvaje." + d.getIntOr("geo", 0), nombre, nombre)
-					.withColor(0x9e9e9e);
+		Component pista = coordenadas(centroDucado(ducado));
+		MutableComponent res = d.getBooleanOr("salvaje", false)
+				? Component.translatableWithFallback("destinos.salvaje." + d.getIntOr("geo", 0), nombre, nombre).withColor(0x9e9e9e)
+				: Component.translatableWithFallback("destinos.tipo." + d.getStringOr("tipo", "ducado"), nombre, nombre)
+						.withColor(color(d.getStringOr("color", "white"), 0xffffff));
+		return res.withStyle(st -> st.withHoverEvent(new HoverEvent.ShowText(pista)));
+	}
+
+	private static final String[] RUMBOS = {"e", "se", "s", "so", "o", "no", "n", "ne"};
+
+	/** " (a 1800 bloques al NE)" desde el jugador hasta donde pasa el suceso; vacío si no está en el mundo normal. */
+	private Component donde(ServerPlayer p, Suceso s) {
+		if (p.level().dimension() != Level.OVERWORLD || (s.ducado() == Politica.NADIE && s.reinoA() == Politica.NADIE)) {
+			return Component.empty();
 		}
-		return Component.translatableWithFallback("destinos.tipo." + d.getStringOr("tipo", "ducado"), nombre, nombre)
-				.withColor(color(d.getStringOr("color", "white"), 0xffffff));
+		int[] c = s.ducado() != Politica.NADIE ? centroDucado(s.ducado()) : centroReino(s.reinoA());
+		double dx = c[0] - p.getX();
+		double dz = c[1] - p.getZ();
+		int distancia = (int) Math.round(Math.sqrt(dx * dx + dz * dz) / 100) * 100;
+		if (distancia < 200) {
+			return Component.translatableWithFallback("destinos.politica.aqui", " (aquí mismo)").withStyle(ChatFormatting.DARK_GRAY);
+		}
+		// el norte es -z en Minecraft; atan2 con z hacia abajo da el rumbo en sentido horario desde el este
+		int rumbo = Math.floorMod((int) Math.round(Math.atan2(dz, dx) / (Math.PI / 4)), 8);
+		return Component.translatableWithFallback("destinos.politica.donde", " (a %s bloques al %s)", distancia,
+				Component.translatableWithFallback("destinos.rumbo." + RUMBOS[rumbo], RUMBOS[rumbo].toUpperCase()))
+				.withStyle(ChatFormatting.DARK_GRAY);
 	}
 
 	/** Textos en español por si el cliente no tiene el idioma (los de verdad están en los lang de build.py). */
@@ -269,7 +325,7 @@ final class PoliticaMundo {
 	}
 
 	/** El texto de un suceso: "⚔ Año 3 · El Reino de A declara la guerra al Reino de B." */
-	static Component texto(MinecraftServer server, Suceso s) {
+	Component texto(MinecraftServer server, Suceso s) {
 		Component a = s.reinoA() == Politica.NADIE ? Component.empty() : reino(server, s.reinoA());
 		Component b = s.reinoB() == Politica.NADIE ? Component.empty() : reino(server, s.reinoB());
 		Component d = s.ducado() == Politica.NADIE ? Component.empty() : ducado(server, s.ducado());
@@ -297,7 +353,11 @@ final class PoliticaMundo {
 		boolean grave = false;
 		for (int i = 0; i < sucesos.size() && i < MAX_ANUNCIOS; i++) {
 			Suceso s = sucesos.get(i);
-			server.getPlayerList().broadcastSystemMessage(texto(server, s), false);
+			Component t = texto(server, s);
+			server.sendSystemMessage(t);
+			for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+				p.sendSystemMessage(Component.empty().append(t).append(donde(p, s)));
+			}
 			grave |= !menor(s.tipo()) && s.tipo() != Suceso.Tipo.paz;
 		}
 		if (sucesos.size() > MAX_ANUNCIOS) {

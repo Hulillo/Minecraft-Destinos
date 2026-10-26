@@ -53,7 +53,7 @@ public final class Politica {
 	 * Un ducado que ya no es de su reino de origen. baseNoble: nació con señor (entonces ahora es "del Reino de
 	 * X" por conquista o anexión); si no, era tierra salvaje reclamada.
 	 */
-	public record Cambio(long dueno, int lealtad, int anio, boolean baseNoble) {
+	public record Cambio(long dueno, int lealtad, int anio, boolean baseNoble, int turno) {
 	}
 
 	/** Par de reinos sin orden (a < b). */
@@ -133,6 +133,12 @@ public final class Politica {
 
 	public Map<Long, Reino> reinos() {
 		return reinos;
+	}
+
+	/** Turno en que el ducado cambió de dueño por última vez, o -1 (para marcarlo en los mapas). */
+	public int turnoCambio(int dcx, int dcz) {
+		Cambio c = cambios.get(Grafo.id(dcx, dcz));
+		return c == null ? -1 : c.turno();
 	}
 
 	public Map<Long, Cambio> cambios() {
@@ -427,7 +433,7 @@ public final class Politica {
 		if (nuevo == base) {
 			cambios.remove(ducado);
 		} else {
-			cambios.put(ducado, new Cambio(nuevo, guerra ? 20 : 60, anio(), !d.salvajeBase() && nuevo != SALVAJE));
+			cambios.put(ducado, new Cambio(nuevo, guerra ? 20 : 60, anio(), !d.salvajeBase() && nuevo != SALVAJE, turno));
 		}
 	}
 

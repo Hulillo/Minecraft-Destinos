@@ -34,6 +34,9 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 	private static final float GROSOR_BORDE = 1.0F;
 	private static final float OPACIDAD_REINO = 0.95F;
 	private static final float GROSOR_REINO = 3.5F;
+	private static final int ROJO = 0xd42a2a;
+	private static final int ORO = 0xffc83d;
+	private static final float OPACIDAD_ORO = 0.35F;
 	/** Altura a la que se dejan los polígonos (JourneyMap la usa al ver cuevas por capas). */
 	private static final int Y = 64;
 
@@ -71,6 +74,12 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		pendientes.addAll(tocados);
 	}
 
+	/** Turno o guerras nuevas: cambian los dorados (recientes) y los contornos rojos (en guerra). */
+	@Override
+	public void politica() {
+		pendientes.addAll(areas.keySet());
+	}
+
 	@Override
 	public void visibilidad(boolean visible) {
 		if (visible) {
@@ -102,7 +111,7 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		trozos.forEach((d, trozo) -> {
 			if (!d.salvaje()) {
 				PaqueteTerritorio.Ducado reino = new PaqueteTerritorio.Ducado(Integer.MIN_VALUE, Integer.MIN_VALUE,
-						d.kx(), d.kz(), false, false, false, d.color());
+						d.kx(), d.kz(), false, false, false, d.color(), -1);
 				res.computeIfAbsent(reino, k -> new Area()).add(trozo);
 			}
 		});
@@ -150,19 +159,32 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		if (viejas != null) {
 			viejas.forEach(api::remove);
 		}
-		ShapeProperties estilo = esReino(ducado)
-				? new ShapeProperties()
-						.setFillColor(ducado.color())
-						.setFillOpacity(0)
-						.setStrokeColor(oscuro(oscuro(ducado.color())))
-						.setStrokeOpacity(OPACIDAD_REINO)
-						.setStrokeWidth(GROSOR_REINO)
-				: new ShapeProperties()
-						.setFillColor(ducado.color())
-						.setFillOpacity(ducado.oceano() ? OPACIDAD_AGUAS : OPACIDAD_RELLENO)
-						.setStrokeColor(oscuro(ducado.color()))
-						.setStrokeOpacity(OPACIDAD_BORDE)
-						.setStrokeWidth(GROSOR_BORDE);
+		ShapeProperties estilo;
+		if (esReino(ducado)) {
+			// reino en guerra: contorno rojo
+			boolean guerra = TerritoriosCliente.enGuerra(ducado);
+			estilo = new ShapeProperties()
+					.setFillColor(ducado.color())
+					.setFillOpacity(0)
+					.setStrokeColor(guerra ? ROJO : oscuro(oscuro(ducado.color())))
+					.setStrokeOpacity(OPACIDAD_REINO)
+					.setStrokeWidth(guerra ? GROSOR_REINO + 1 : GROSOR_REINO);
+		} else if (TerritoriosCliente.reciente(ducado)) {
+			// acaba de cambiar de dueño: relleno y borde dorados
+			estilo = new ShapeProperties()
+					.setFillColor(ORO)
+					.setFillOpacity(OPACIDAD_ORO)
+					.setStrokeColor(ORO)
+					.setStrokeOpacity(OPACIDAD_REINO)
+					.setStrokeWidth(GROSOR_REINO - 1);
+		} else {
+			estilo = new ShapeProperties()
+					.setFillColor(ducado.color())
+					.setFillOpacity(ducado.oceano() ? OPACIDAD_AGUAS : OPACIDAD_RELLENO)
+					.setStrokeColor(oscuro(ducado.color()))
+					.setStrokeOpacity(OPACIDAD_BORDE)
+					.setStrokeWidth(GROSOR_BORDE);
+		}
 		List<PolygonOverlay> nuevas = new ArrayList<>();
 		if (areas.get(ducado) == null || areas.get(ducado).isEmpty()) {
 			areas.remove(ducado);

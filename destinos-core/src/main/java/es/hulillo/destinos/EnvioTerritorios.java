@@ -5,7 +5,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.UnaryOperator;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -15,10 +14,15 @@ import net.minecraft.server.level.ServerPlayer;
  */
 final class EnvioTerritorios {
 	private final Map<UUID, Set<Long>> enviadas = new HashMap<>();
+	/** Jugadores que ya tienen el estado político de ahora (guerras y turno). */
+	private final Set<UUID> conPolitica = new HashSet<>();
 
-	void envia(MapaTerreno mapa, UnaryOperator<MapaTerreno.Resultado> politica, ServerPlayer jugador) {
+	void envia(MapaTerreno mapa, PaqueteTerritorio.Politica politica, PaquetePolitica estado, ServerPlayer jugador) {
 		if (!ServerPlayNetworking.canSend(jugador, PaqueteTerritorio.TIPO)) {
 			return;
+		}
+		if (conPolitica.add(jugador.getUUID()) && ServerPlayNetworking.canSend(jugador, PaquetePolitica.TIPO)) {
+			ServerPlayNetworking.send(jugador, estado);
 		}
 		Set<Long> ya = enviadas.computeIfAbsent(jugador.getUUID(), k -> new HashSet<>());
 		int wx = MapaTerreno.indiceVentana(jugador.getBlockX());
@@ -40,6 +44,12 @@ final class EnvioTerritorios {
 
 	void olvida(UUID jugador) {
 		enviadas.remove(jugador);
+		conPolitica.remove(jugador);
+	}
+
+	/** Ha pasado un turno: el estado político se vuelve a mandar a todos. */
+	void olvidaPolitica() {
+		conPolitica.clear();
 	}
 
 	/** Zonas que han cambiado (conquistas): se vuelven a mandar a quien ya las tenía. */
@@ -52,5 +62,6 @@ final class EnvioTerritorios {
 	/** Otro mundo u otra sal: hay que volver a mandarlo todo. */
 	void olvidaTodo() {
 		enviadas.clear();
+		conPolitica.clear();
 	}
 }

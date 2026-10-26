@@ -2,10 +2,13 @@ package es.hulillo.destinos.cliente;
 
 import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.MapaTerreno;
+import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTerritorio;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -20,6 +23,10 @@ public final class TerritoriosCliente {
 
 		void borrado();
 
+		/** Ha llegado un estado político nuevo (turno, guerras). */
+		default void politica() {
+		}
+
 		/** Se ha encendido o apagado el mapa político. */
 		default void visibilidad(boolean visible) {
 		}
@@ -33,6 +40,11 @@ public final class TerritoriosCliente {
 	public static volatile String ultimoPintado = "ningún mapa ha intentado pintar todavía";
 	/** La última zona consultada: al pintar se piden muchas casillas seguidas de la misma. */
 	private static PaqueteTerritorio ultima;
+	/** Turno político de ahora y guerras abiertas (pares de reinos), del último PaquetePolitica. */
+	private static int turno;
+	private static final Set<Long> GUERRAS = new HashSet<>();
+	/** Reinos que están en alguna guerra. */
+	private static final Set<Long> EN_GUERRA = new HashSet<>();
 	/** Si se pintan los reinos en los mapas (la tecla del mapa político lo cambia). */
 	private static boolean visible = Ajustes.leeVisible();
 
@@ -57,8 +69,50 @@ public final class TerritoriosCliente {
 		OYENTES.forEach(o -> o.zonaNueva(zona, anterior));
 	}
 
+	static void politica(PaquetePolitica p) {
+		turno = p.turno();
+		GUERRAS.clear();
+		EN_GUERRA.clear();
+		for (PaquetePolitica.Guerra g : p.guerras()) {
+			GUERRAS.add(par(g.akx(), g.akz(), g.bkx(), g.bkz()));
+			EN_GUERRA.add(MapaTerreno.clave(g.akx(), g.akz()));
+			EN_GUERRA.add(MapaTerreno.clave(g.bkx(), g.bkz()));
+		}
+		OYENTES.forEach(Oyente::politica);
+	}
+
+	/** Clave de un par de reinos sin orden. */
+	private static long par(int akx, int akz, int bkx, int bkz) {
+		long a = MapaTerreno.clave(akx, akz);
+		long b = MapaTerreno.clave(bkx, bkz);
+		long lo = Math.min(a, b);
+		long hi = Math.max(a, b);
+		return lo * 0x9E3779B97F4A7C15L ^ hi;
+	}
+
+	/** Si el ducado cambió de dueño hace poco (se marca en dorado). */
+	public static boolean reciente(PaqueteTerritorio.Ducado d) {
+		return d.cambio() >= 0 && turno - d.cambio() < PaquetePolitica.TURNOS_RECIENTE;
+	}
+
+	/** Si los reinos de estos dos ducados están en guerra entre sí. */
+	public static boolean enGuerra(PaqueteTerritorio.Ducado a, PaqueteTerritorio.Ducado b) {
+		if (GUERRAS.isEmpty() || b == null || a.salvaje() || b.salvaje() || a.mismoReino(b)) {
+			return false;
+		}
+		return GUERRAS.contains(par(a.kx(), a.kz(), b.kx(), b.kz()));
+	}
+
+	/** Si el reino del ducado está en alguna guerra. */
+	public static boolean enGuerra(PaqueteTerritorio.Ducado d) {
+		return !d.salvaje() && EN_GUERRA.contains(MapaTerreno.clave(d.kx(), d.kz()));
+	}
+
 	static void borra() {
 		ZONAS.clear();
+		GUERRAS.clear();
+		EN_GUERRA.clear();
+		turno = 0;
 		ultima = null;
 		OYENTES.forEach(Oyente::borrado);
 	}
