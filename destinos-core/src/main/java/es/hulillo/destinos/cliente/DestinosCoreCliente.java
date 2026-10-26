@@ -11,10 +11,13 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
@@ -44,6 +47,22 @@ public final class DestinosCoreCliente implements ClientModInitializer {
 				alterna(cliente);
 			}
 		});
+		// con un mapa abierto a pantalla completa las teclas no llegan al juego: se escucha en la pantalla del mapa
+		ScreenEvents.AFTER_INIT.register((cliente, pantalla, ancho, alto) -> {
+			if (esMapa(pantalla)) {
+				ScreenKeyboardEvents.afterKeyPress(pantalla).register((p, evento) -> {
+					if (tecla.matches(evento)) {
+						alterna(cliente);
+					}
+				});
+			}
+		});
+	}
+
+	/** Pantallas de JourneyMap y Diorama (por paquete, sin depender de sus clases). Así no salta al escribir en otras. */
+	private static boolean esMapa(Screen pantalla) {
+		String clase = pantalla.getClass().getName();
+		return clase.startsWith("journeymap.") || clase.startsWith("dev.diorama.");
 	}
 
 	private static void alterna(Minecraft cliente) {
