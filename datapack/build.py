@@ -1,4 +1,4 @@
-"""Genera el datapack y el resource pack de idiomas de Destinos: Reinos v0.1."""
+"""Genera el datapack y el resource pack de idiomas de Destinos: Reinos v0.3."""
 import json, os, shutil, sys, zipfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from culturas import CULTURAS, ORDEN, BIOMAS
@@ -50,7 +50,7 @@ TIEMPOS_TITULO = "title @s times 10 70 20"
 
 # ---------------------------------------------------------------- init
 fn("init/load", [
-    "# Destinos: Reinos v0.1 · carga",
+    "# Destinos: Reinos v0.3 · carga",
     *[f"scoreboard objectives add {o} dummy" for o in
       ["dr.calc", "dr.const", "dr.dx", "dr.dz", "dr.kx", "dr.kz", "dr.w", "dr.init", "dr.id", "dr.hud", "dr.mar"]],
     *[f"scoreboard objectives add destinos.{t} trigger" for t in TRIGGERS],
@@ -693,9 +693,9 @@ def wjson(p, o):
     open(p, "w", encoding="utf-8").write(json.dumps(o, ensure_ascii=False, indent=2) + "\n")
 for p, o in files_json: wjson(p, o)
 wjson(os.path.join(DP, "data/minecraft/tags/function/load.json"), {"values": ["destinos:init/load"]})
-wjson(os.path.join(DP, "pack.mcmeta"), {"pack": {"description": "Destinos: Reinos v0.1 · reinos y ducados RNG",
+wjson(os.path.join(DP, "pack.mcmeta"), {"pack": {"description": "Destinos: Reinos v0.3 · reinos y ducados RNG",
                                                  "min_format": 88, "max_format": 99}})
-wjson(os.path.join(RP, "pack.mcmeta"), {"pack": {"description": "Destinos: Reinos v0.1 · idiomas ES/EN",
+wjson(os.path.join(RP, "pack.mcmeta"), {"pack": {"description": "Destinos: Reinos v0.3 · idiomas ES/EN",
                                                  "min_format": 69, "max_format": 99}})
 for loc in ("es_es", "es_mx", "es_ar", "es_cl", "es_ec", "es_uy", "es_ve"):
     wjson(os.path.join(RP, f"assets/destinos/lang/{loc}.json"), es)
