@@ -76,13 +76,17 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 			tocados.add(ducado);
 		});
 		pendientes.addAll(tocados);
-		frentesSucios = true;
+		// sin guerras (ni frentes viejos que quitar) explorar no obliga a rehacer los frentes
+		frentesSucios |= TerritoriosCliente.hayGuerras() || !frentes.isEmpty();
 	}
 
-	/** Turno o guerras nuevas: cambian los dorados (recientes) y los contornos rojos (en guerra). */
+	/**
+	 * Turno o guerras nuevas: cambian los dorados (recientes) y los frentes. Solo los ducados que alguna vez cambiaron
+	 * de dueño pueden ganar o perder el dorado; el resto (casi todos) no se vuelve a pintar.
+	 */
 	@Override
 	public void politica() {
-		pendientes.addAll(areas.keySet());
+		areas.keySet().stream().filter(d -> d.cambio() >= 0).forEach(pendientes::add);
 		frentesSucios = true;
 	}
 
@@ -121,6 +125,9 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 	private void redibujaFrentes() {
 		frentes.forEach(api::remove);
 		frentes.clear();
+		if (!TerritoriosCliente.hayGuerras()) {
+			return;
+		}
 		int n = MapaTerreno.NUCLEO;
 		int c = MapaTerreno.CASILLA;
 		Path2D trazado = new Path2D.Double(Path2D.WIND_NON_ZERO);
@@ -129,6 +136,9 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 			for (int j = 0; j < n; j++) {
 				for (int i = 0; i < n; i++) {
 					PaqueteTerritorio.Ducado d = zona.ducado(i, j);
+					if (d == null || !TerritoriosCliente.enGuerra(d)) {
+						continue;
+					}
 					int tx = zona.wx() * n + i;
 					int tz = zona.wz() * n + j;
 					if (TerritoriosCliente.enGuerra(d, TerritoriosCliente.ducado(tx + 1, tz))) {

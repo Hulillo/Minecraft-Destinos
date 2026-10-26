@@ -96,6 +96,11 @@ public final class TerritoriosCliente {
 		return d.cambio() >= 0 && turno - d.cambio() < PaquetePolitica.TURNOS_RECIENTE;
 	}
 
+	/** Si hay alguna guerra abierta: sin guerras no hace falta buscar frentes. */
+	public static boolean hayGuerras() {
+		return !GUERRAS.isEmpty();
+	}
+
 	/** Si los reinos de estos dos ducados están en guerra entre sí. */
 	public static boolean enGuerra(PaqueteTerritorio.Ducado a, PaqueteTerritorio.Ducado b) {
 		if (GUERRAS.isEmpty() || b == null || a.salvaje() || b.salvaje() || a.mismoReino(b)) {
