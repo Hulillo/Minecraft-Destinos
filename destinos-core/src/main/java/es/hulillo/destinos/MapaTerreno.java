@@ -142,6 +142,39 @@ public final class MapaTerreno {
 		}
 	}
 
+	/** Hasta dónde se calcula en segundo plano para la política (en ventanas alrededor del jugador). */
+	public static final int RADIO_LEJOS = 2;
+
+	/**
+	 * Para que la política tenga reinos con los que moverse, se calculan también las ventanas del anillo de
+	 * fuera (5×5 en total), pero sin quitar sitio a lo cercano: solo cuando las 3×3 de alrededor están hechas,
+	 * y de una en una.
+	 */
+	public void precargaLejos(int x, int z) {
+		int wx = indiceVentana(x);
+		int wz = indiceVentana(z);
+		for (int ox = -1; ox <= 1; ox++) {
+			for (int oz = -1; oz <= 1; oz++) {
+				CompletableFuture<Ventana> f = ventanas.get(clave(wx + ox, wz + oz));
+				if (f == null || !f.isDone()) {
+					return;
+				}
+			}
+		}
+		for (int ox = -RADIO_LEJOS; ox <= RADIO_LEJOS; ox++) {
+			for (int oz = -RADIO_LEJOS; oz <= RADIO_LEJOS; oz++) {
+				CompletableFuture<Ventana> f = ventanas.get(clave(wx + ox, wz + oz));
+				if (f == null) {
+					ventana(wx + ox, wz + oz);
+					return;
+				}
+				if (!f.isDone()) {
+					return;
+				}
+			}
+		}
+	}
+
 	/** El núcleo de la ventana (wx, wz) si ya está calculado, o null (sin pedirlo). */
 	public Zona zonaSiLista(int wx, int wz) {
 		CompletableFuture<Ventana> f = ventanas.get(clave(wx, wz));
