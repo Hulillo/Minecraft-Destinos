@@ -37,7 +37,8 @@ public final class EstructuraCapital extends Structure {
 	public static final StructureType<EstructuraCapital> TIPO = () -> CODEC;
 	/** Profundidad extra sobre la del pueblo (el máximo del juego es 20) y hasta dónde llegan sus calles. */
 	private static final int MAS_PROFUNDIDAD = 4;
-	private static final int DISTANCIA = 128;
+	/** El juego no deja pasar de 128 contando los 12 bloques que allana el terreno alrededor (terrain_adaptation). */
+	private static final int DISTANCIA = 116;
 
 	/** Pueblos agrandados ya preparados, por estructura de pueblo, para los registros del mundo abierto. */
 	private static final Map<Identifier, Optional<Structure>> COPIAS = new ConcurrentHashMap<>();
@@ -115,9 +116,9 @@ public final class EstructuraCapital extends Structure {
 			}
 			// el bioma ya lo ha mirado findGenerationPoint (o es el pueblo de respaldo): que no lo vuelva a mirar
 			o.addProperty("biomes", "#minecraft:is_overworld");
-			Optional<Structure> copia = Structure.DIRECT_CODEC.parse(ops, o).result();
+			Optional<Structure> copia = Structure.DIRECT_CODEC.parse(ops, o).resultOrPartial(error ->
+					DestinosCore.LOG.warn("Destinos Core: el pueblo {} agrandado no es válido ({}); la capital usará el normal", k, error));
 			if (copia.isEmpty()) {
-				DestinosCore.LOG.warn("Destinos Core: el pueblo {} agrandado no es válido; la capital usará el normal", k);
 				return Optional.of(pueblo);
 			}
 			DestinosCore.LOG.info("Destinos Core: capitales con el estilo de {} (profundidad {})", k,
