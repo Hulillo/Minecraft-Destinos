@@ -167,11 +167,28 @@ public final class EstructuraCapital extends Structure {
 		}
 	}
 
+	/**
+	 * Un pueblo de verdad para copiar: del tag de pueblos o con "village" en el nombre, pero no los campamentos,
+	 * ruinas o pueblos dispersos que algunos mods llaman así (structory:outcast_villager_*,
+	 * nova_structures:remnant_*, towns_and_towers:village_sparse_*…).
+	 */
 	private static boolean esPueblo(Registry<Structure> estructuras, Holder.Reference<Structure> h) {
 		Identifier id = estructuras.getKey(h.value());
-		return id != null && !id.getNamespace().equals(DestinosCore.MOD_ID)
-				&& (h.is(StructureTags.VILLAGE) || id.getPath().contains("village"));
+		if (id == null || id.getNamespace().equals(DestinosCore.MOD_ID)) {
+			return false;
+		}
+		String ruta = id.getPath();
+		for (String no : NO_PUEBLO) {
+			if (ruta.contains(no)) {
+				return false;
+			}
+		}
+		return h.is(StructureTags.VILLAGE) || ruta.matches("(.*[/_])?villages?([/_].*)?");
 	}
+
+	private static final String[] NO_PUEBLO = {"villager", "outcast", "remnant", "ruin", "abandon", "sparse", "zombie",
+			"camp", "pillager", "illager", "outpost", "destroyed", "burn", "haunt", "ghost", "ancient", "lost", "tiny",
+			"small", "hamlet", "derelict"};
 
 	/** El pueblo con más profundidad, el alcance dado y válido en cualquier bioma del mundo normal. */
 	private static Optional<Structure> agrandado(RegistryAccess registros, Identifier k, Structure pueblo, int mas,
