@@ -742,7 +742,10 @@ if MOD:
     def wj(rel, o):
         q = os.path.join(CAP, rel); os.makedirs(os.path.dirname(q), exist_ok=True)
         open(q, "w", encoding="utf-8").write(json.dumps(o, ensure_ascii=False, indent=2) + "\n")
-    wj("worldgen/structure/capital.json", {"type": "destinos_core:capital", "biomes": "#minecraft:is_overworld",
+    # todos los biomas del mundo normal, también los de mods que no se apuntan al tag de vanilla
+    wj("tags/worldgen/biome/capital.json", {"replace": False, "values": [
+        "#minecraft:is_overworld", {"id": "#c:is_overworld", "required": False}]})
+    wj("worldgen/structure/capital.json", {"type": "destinos_core:capital", "biomes": "#destinos_core:capital",
                                            "step": "surface_structures", "spawn_overrides": {},
                                            "terrain_adaptation": "beard_thin"})
     wj("worldgen/structure_set/capitales.json", {"structures": [{"structure": "destinos_core:capital", "weight": 1}],
