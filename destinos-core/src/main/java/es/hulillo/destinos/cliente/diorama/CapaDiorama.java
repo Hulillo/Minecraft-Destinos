@@ -179,13 +179,21 @@ public final class CapaDiorama {
 		lienzo.rect(x0, y0, x1, y1, c);
 	}
 
-	/** Una X roja de radio r centrada en (cx, cy), hecha a escalones: las marcas de la trinchera. */
+	/**
+	 * Una X roja de radio r centrada en (cx, cy), hecha a escalones: las marcas de la trinchera. Primero va una X negra
+	 * algo más gorda debajo, para que el contorno la separe de la línea roja del frente.
+	 */
 	private static void equis(Lienzo lienzo, int cx, int cy, int r) {
 		int t = Math.max(1, r / 3);
-		int c = 0xff << 24 | ROJO;
+		int b = Math.max(1, t / 2);
+		trazos(lienzo, cx, cy, r, t, b, 0xff << 24);
+		trazos(lienzo, cx, cy, r, t, 0, 0xff << 24 | ROJO);
+	}
+
+	private static void trazos(Lienzo lienzo, int cx, int cy, int r, int t, int b, int c) {
 		for (int i = -r; i <= r; i++) {
-			lienzo.rect(cx + i, cy + i, cx + i + t, cy + i + t, c);
-			lienzo.rect(cx + i, cy - i, cx + i + t, cy - i + t, c);
+			lienzo.rect(cx + i - b, cy + i - b, cx + i + t + b, cy + i + t + b, c);
+			lienzo.rect(cx + i - b, cy - i - b, cx + i + t + b, cy - i + t + b, c);
 		}
 	}
 

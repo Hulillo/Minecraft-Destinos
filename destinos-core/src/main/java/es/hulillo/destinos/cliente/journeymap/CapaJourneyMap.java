@@ -148,9 +148,9 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		ShapeProperties estilo = new ShapeProperties()
 				.setFillColor(ROJO)
 				.setFillOpacity(0.85F)
-				.setStrokeColor(oscuro(ROJO))
+				.setStrokeColor(0x000000)
 				.setStrokeOpacity(0.9F)
-				.setStrokeWidth(1.0F);
+				.setStrokeWidth(2.0F);
 		for (MapPolygonWithHoles poligono : PolygonHelper.createPolygonFromArea(new Area(trazado), Y)) {
 			PolygonOverlay capa = new PolygonOverlay(DestinosCore.MOD_ID, Level.OVERWORLD, estilo, poligono);
 			capa.setOverlayGroupName(GRUPO);
