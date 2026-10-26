@@ -64,6 +64,7 @@ public final class DestinosCore implements ModInitializer {
 										.executes(ctx -> turno(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "n")))))
 						.then(Commands.literal("cronica").executes(ctx -> cronica(ctx.getSource())))));
 		ColocacionCapital.registra();
+		EstructuraCapital.registra();
 		PayloadTypeRegistry.playS2C().register(PaqueteTerritorio.TIPO, PaqueteTerritorio.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaquetePolitica.TIPO, PaquetePolitica.CODEC);
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ENVIO.olvida(handler.getPlayer().getUUID()));

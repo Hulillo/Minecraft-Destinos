@@ -735,37 +735,16 @@ if MOD:
     open(os.path.join(MOD, "data/destinos/function/geo/territorio.mcfunction"), "w", encoding="utf-8").write(
         "# Destinos Core: fronteras que siguen montañas, ríos y costas (mismas entradas y salidas)\n"
         "destinoscore territorio\n")
-    # Capitales: una aldea grande por reino, en el sitio que elige Destinos Core (solo con el mod: el tipo de
-    # colocación destinos_core:capital es suyo). Piezas de aldea vanilla, con más profundidad que un pueblo normal.
+    # Capitales: una aldea grande por reino, en el sitio que elige Destinos Core (solo con el mod: la colocación
+    # destinos_core:capital y la estructura destinos_core:capital son suyas). La estructura copia el pueblo que toca
+    # en ese bioma, de vanilla o de cualquier mod, con más profundidad (EstructuraCapital.java).
     CAP = os.path.join(MOD, "data/destinos_core")
-    # estilo: (centros de aldea vanilla, biomas del tag, peso). El de llanura vale para cualquier otro bioma.
-    ESTILOS = {
-        "desierto": (["desert/town_centers/desert_meeting_point_1", "desert/town_centers/desert_meeting_point_2"],
-                     ["#minecraft:has_structure/village_desert"], 100),
-        "sabana": (["savanna/town_centers/savanna_meeting_point_1", "savanna/town_centers/savanna_meeting_point_2"],
-                   ["#minecraft:has_structure/village_savanna"], 100),
-        "nieve": (["snowy/town_centers/snowy_meeting_point_1", "snowy/town_centers/snowy_meeting_point_2"],
-                  ["#minecraft:has_structure/village_snowy", "#minecraft:is_mountain"], 100),
-        "taiga": (["taiga/town_centers/taiga_meeting_point_1", "taiga/town_centers/taiga_meeting_point_2"],
-                  ["#minecraft:has_structure/village_taiga"], 100),
-        "llanura": (["plains/town_centers/plains_fountain_01", "plains/town_centers/plains_meeting_point_1",
-                     "plains/town_centers/plains_meeting_point_2"], ["#minecraft:is_overworld"], 1),
-    }
     def wj(rel, o):
         q = os.path.join(CAP, rel); os.makedirs(os.path.dirname(q), exist_ok=True)
         open(q, "w", encoding="utf-8").write(json.dumps(o, ensure_ascii=False, indent=2) + "\n")
-    for estilo, (centros, biomas, _) in ESTILOS.items():
-        wj(f"tags/worldgen/biome/capital/{estilo}.json", {"replace": False, "values": biomas})
-        wj(f"worldgen/template_pool/capital/{estilo}.json", {"fallback": "minecraft:empty", "elements": [
-            {"weight": 1, "element": {"element_type": "minecraft:single_pool_element", "location": f"minecraft:village/{c}",
-                                      "processors": "minecraft:empty", "projection": "rigid"}} for c in centros]})
-        wj(f"worldgen/structure/capital_{estilo}.json", {
-            "type": "minecraft:jigsaw", "biomes": f"#destinos_core:capital/{estilo}", "step": "surface_structures",
-            "spawn_overrides": {}, "terrain_adaptation": "beard_thin", "start_pool": f"destinos_core:capital/{estilo}",
-            # un pueblo vanilla tiene size 6 y 80 bloques: la capital llega más lejos y con más calles
-            "size": 10, "start_height": {"absolute": 0}, "project_start_to_heightmap": "WORLD_SURFACE_WG",
-            "max_distance_from_center": 128, "use_expansion_hack": True})
-    wj("worldgen/structure_set/capitales.json", {
-        "structures": [{"structure": f"destinos_core:capital_{e}", "weight": w} for e, (_, _, w) in ESTILOS.items()],
-        "placement": {"type": "destinos_core:capital", "salt": 0}})
+    wj("worldgen/structure/capital.json", {"type": "destinos_core:capital", "biomes": "#minecraft:is_overworld",
+                                           "step": "surface_structures", "spawn_overrides": {},
+                                           "terrain_adaptation": "beard_thin"})
+    wj("worldgen/structure_set/capitales.json", {"structures": [{"structure": "destinos_core:capital", "weight": 1}],
+                                                 "placement": {"type": "destinos_core:capital", "salt": 0}})
     print("variante del mod en", MOD)
