@@ -43,6 +43,7 @@ public final class DestinosCore implements ModInitializer {
 	/** Mapa para el que se mandaron las zonas: si cambia (otra sal), se manda todo otra vez. */
 	private static MapaTerreno mapaEnviado;
 	private static PoliticaMundo politica;
+	private static final ReparaCapitales REPARA = new ReparaCapitales();
 	private static final Identifier MUNDO = Identifier.fromNamespaceAndPath("destinos", "mundo");
 
 	@Override
@@ -52,6 +53,7 @@ public final class DestinosCore implements ModInitializer {
 		EstructuraCapital.registra();
 		CalleCapital.registra();
 		MurallaCapital.registra();
+		CastilloCapital.registra();
 		PayloadTypeRegistry.playS2C().register(PaqueteTerritorio.TIPO, PaqueteTerritorio.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaquetePolitica.TIPO, PaquetePolitica.CODEC);
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ENVIO.olvida(handler.getPlayer().getUUID()));
@@ -73,6 +75,7 @@ public final class DestinosCore implements ModInitializer {
 			mapa = null;
 			politica = null;
 			EstructuraCapital.olvida();
+			REPARA.olvida();
 			mapaEnviado = null;
 			ENVIO.olvidaTodo();
 		});
@@ -94,6 +97,10 @@ public final class DestinosCore implements ModInitializer {
 		}
 		if (server.getTickCount() % TICKS_PRECARGA == 0) {
 			precarga(server);
+		}
+		MapaTerreno m = mapa;
+		if (m != null) {
+			REPARA.tick(server, m);
 		}
 	}
 

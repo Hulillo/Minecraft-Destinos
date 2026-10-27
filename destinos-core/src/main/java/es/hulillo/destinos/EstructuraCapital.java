@@ -24,6 +24,7 @@ import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraft.world.level.levelgen.structure.StructureType;
 
 /**
@@ -48,6 +49,8 @@ public final class EstructuraCapital extends Structure {
 	private static final int SEPARACION_BARRIO = 64;
 	/** Largo de cada tramo de calle entre el centro y un barrio. */
 	private static final int TRAMO = 16;
+	/** A qué distancias de la plaza (en un eje) se prueba el castillo de las capitales ricas, de más cerca a más lejos. */
+	private static final int[] DISTANCIAS_CASTILLO = {32, 48};
 	/** Agua seguida que puede cruzar una calle (con tablones); más, y esa calle no se hace. */
 	private static final int MAX_AGUA_CALLE = 8;
 
@@ -139,14 +142,21 @@ public final class EstructuraCapital extends Structure {
 		List<StructurePiece> muralla = new ArrayList<>();
 		MurallaCapital.piezas(principal.position().getX(), principal.position().getZ(), nivel, (mx, mz) -> suelo(ctx, mx, mz),
 				muralla);
+		// y las capitales ricas, su castillo dentro de la muralla
+		Optional<CastilloCapital> castillo = nivel == 2 ? castillo(ctx, agua, bioma, principal) : Optional.empty();
 		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
 			List<StructurePiece> puestas = new ArrayList<>();
+			castillo.ifPresent(c -> {
+				puestas.add(c);
+				piezas.addPiece(c);
+			});
 			List<StructurePiece> delCentro = principal.piezas();
 			for (int i = 0; i < delCentro.size(); i++) {
-				// la plaza siempre; el resto, si no está metido en el mar (calles y casas flotando)
-				if (i == 0 || !agua.tapa(delCentro.get(i))) {
-					puestas.add(delCentro.get(i));
-					piezas.addPiece(delCentro.get(i));
+				StructurePiece pieza = delCentro.get(i);
+				// la plaza siempre; el resto, si no está metido en el mar (calles y casas flotando) ni en el castillo
+				if (i == 0 || !agua.tapa(pieza) && castillo.stream().noneMatch(c -> enPlanta(c, pieza))) {
+					puestas.add(pieza);
+					piezas.addPiece(pieza);
 				}
 			}
 			int enCalles = 0;
@@ -154,7 +164,8 @@ public final class EstructuraCapital extends Structure {
 				int antes = puestas.size();
 				for (StructurePiece pieza : barrios.get(i).piezas()) {
 					// una pieza de barrio que choca con algo ya puesto o cae en el agua se queda fuera
-					if (!agua.tapa(pieza) && puestas.stream().noneMatch(otra -> otra.getBoundingBox().intersects(pieza.getBoundingBox()))) {
+					if (!agua.tapa(pieza) && puestas.stream().noneMatch(otra -> otra.getBoundingBox().intersects(pieza.getBoundingBox()))
+							&& castillo.stream().noneMatch(c -> enPlanta(c, pieza))) {
 						puestas.add(pieza);
 						piezas.addPiece(pieza);
 					}
@@ -168,10 +179,50 @@ public final class EstructuraCapital extends Structure {
 			// la muralla al final, para que vea las calles y casas ya puestas y les deje hueco. Ningún trozo que toque
 			// el agua: cada pieza allana el terreno bajo su caja, y sobre el mar eso levantaba un anillo de tierra
 			muralla.stream().filter(pieza -> !agua.toca(pieza)).forEach(piezas::addPiece);
-			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}): {} de {} piezas del centro, {} barrios, {} piezas en total",
-					principal.position().getX(), principal.position().getY(), principal.position().getZ(), nivel, delCentro.stream()
-							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + enCalles);
+			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} de {} piezas del centro, {} barrios, {} piezas en total · pedida por {}",
+					principal.position().getX(), principal.position().getY(), principal.position().getZ(), nivel,
+					castillo.isPresent() ? ", con castillo" : "", delCentro.stream()
+							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + enCalles,
+					ColocacionCapital.quien());
 		}));
+	}
+
+	/**
+	 * Dónde va el castillo: a un lado de la plaza (norte, este, sur u oeste, primero cerca), sin tocar la plaza ni el
+	 * agua, y donde quite menos casas del centro. Con la puerta hacia la plaza.
+	 */
+	private static Optional<CastilloCapital> castillo(Structure.GenerationContext ctx, Agua agua, Holder<Biome> bioma, Montado principal) {
+		int px = principal.position().getX();
+		int pz = principal.position().getZ();
+		boolean desierto = bioma.value().getBaseTemperature() > 1.5F;
+		CastilloCapital mejor = null;
+		long quita = Long.MAX_VALUE;
+		for (int distancia : DISTANCIAS_CASTILLO) {
+			for (int[] d : CRUZ) {
+				int x = px + d[0] * distancia;
+				int z = pz + d[1] * distancia;
+				CastilloCapital c = new CastilloCapital(x, z, suelo(ctx, x, z), CastilloCapital.giroHacia(-d[0], -d[1]), desierto);
+				if (agua.toca(c) || enPlanta(c, principal.piezas().get(0))) {
+					continue;
+				}
+				long n = principal.piezas().stream().filter(p -> enPlanta(c, p)).count();
+				if (n < quita) {
+					mejor = c;
+					quita = n;
+				}
+			}
+		}
+		if (mejor == null) {
+			DestinosCore.LOG.info("Destinos Core: la capital del chunk {} es rica pero no tiene sitio para el castillo", ctx.chunkPos());
+		}
+		return Optional.ofNullable(mejor);
+	}
+
+	/** Si dos piezas se pisan vistas desde arriba (la altura no cuenta: el castillo vacía todo lo de encima). */
+	private static boolean enPlanta(StructurePiece a, StructurePiece b) {
+		BoundingBox p = a.getBoundingBox();
+		BoundingBox q = b.getBoundingBox();
+		return p.minX() <= q.maxX() && p.maxX() >= q.minX() && p.minZ() <= q.maxZ() && p.maxZ() >= q.minZ();
 	}
 
 	/** Un pueblo ya montado: dónde empieza y sus piezas (sin las casas abandonadas sueltas). */
@@ -185,6 +236,7 @@ public final class EstructuraCapital extends Structure {
 	/** Dónde probar la plaza, en chunks desde el de la capital: primero el suyo y luego alrededor. */
 	private static final int[][] DESPLAZAMIENTOS = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 	private static final int[][] DIAGONALES = {{1, 1}, {-1, 1}, {1, -1}, {-1, -1}};
+	private static final int[][] CRUZ = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};
 
 	/** Intentos de montar un pueblo que no salga abandonado antes de pasar al siguiente estilo. */
 	private static final int INTENTOS = 6;
@@ -222,10 +274,12 @@ public final class EstructuraCapital extends Structure {
 	 * corona: así la corona va siempre donde la capital sí sale.
 	 */
 	static boolean cabe(ServerLevel level, int x, int z) {
-		ChunkGenerator gen = level.getChunkSource().getGenerator();
-		Structure.GenerationContext ctx = new Structure.GenerationContext(level.registryAccess(), gen, gen.getBiomeSource(),
-				level.getChunkSource().randomState(), level.getStructureManager(), level.getSeed(),
-				new ChunkPos(x >> 4, z >> 4), level, b -> true);
+		Structure.GenerationContext ctx = contexto(level, x, z);
+		// primero, que de verdad sea tierra: el pueblo empieza igual en medio del mar (solo queda la plaza en un
+		// islote), y el bioma y la altura estimada del mapa no bastan con generadores de terreno de mods
+		if (!tierraFirme(ctx, x, z)) {
+			return false;
+		}
 		return primeraQueEmpieza(ctx, biomaCentro(ctx), false, (copia, aqui) -> {
 			for (int intento = 0; intento < INTENTOS; intento++) {
 				if (copia.findValidGenerationPoint(contexto(aqui, aqui.chunkPos(), aqui.seed() + intento * Geo.MEZCLA)).isPresent()) {
@@ -234,6 +288,73 @@ public final class EstructuraCapital extends Structure {
 			}
 			return Optional.<Boolean>empty();
 		}).isPresent();
+	}
+
+	/** La capital del chunk de (x, z) montada fuera de la generación del mundo (para ReparaCapitales), o null. */
+	StructureStart inicio(ServerLevel level, int x, int z) {
+		Structure.GenerationContext ctx = contexto(level, x, z);
+		return findGenerationPoint(ctx).map(stub -> new StructureStart(this, ctx.chunkPos(), 0, stub.getPiecesBuilder().build()))
+				.orElse(null);
+	}
+
+	/** Si alrededor de (x, z) hay tierra para una capital (lo mismo que mira cabe antes de probar pueblos). */
+	static boolean enTierra(ServerLevel level, int x, int z) {
+		return tierraFirme(contexto(level, x, z), x, z);
+	}
+
+	/** Contexto de generación del chunk de (x, z) en el mundo abierto, sin mirar el bioma. */
+	private static Structure.GenerationContext contexto(ServerLevel level, int x, int z) {
+		ChunkGenerator gen = level.getChunkSource().getGenerator();
+		return new Structure.GenerationContext(level.registryAccess(), gen, gen.getBiomeSource(),
+				level.getChunkSource().randomState(), level.getStructureManager(), level.getSeed(),
+				new ChunkPos(x >> 4, z >> 4), level, b -> true);
+	}
+
+	/** Separación de los puntos en los que se mira si alrededor de una capital hay tierra. */
+	private static final int PASO_TIERRA = 40;
+	/** Puntos con agua que se aceptan en los 8 de al lado del centro (un río) y en los 24 hasta 80 bloques (costa). */
+	private static final int AGUA_CERCA = 1;
+	private static final int AGUA_TOTAL = 8;
+
+	/**
+	 * Si alrededor de (x, z) hay tierra para una capital, con la altura de verdad del generador: el centro seco,
+	 * casi todo seco a 40 bloques y como mucho un tercio con agua hasta 80 (lo que ocupa el centro de la capital).
+	 */
+	private static boolean tierraFirme(Structure.GenerationContext ctx, int x, int z) {
+		if (mojado(ctx, x, z)) {
+			return false;
+		}
+		int cerca = 0;
+		int total = 0;
+		for (int anillo = 1; anillo <= 2; anillo++) {
+			for (int dz = -anillo; dz <= anillo; dz++) {
+				for (int dx = -anillo; dx <= anillo; dx++) {
+					if (Math.max(Math.abs(dx), Math.abs(dz)) != anillo || !mojado(ctx, x + dx * PASO_TIERRA, z + dz * PASO_TIERRA)) {
+						continue;
+					}
+					total++;
+					if (anillo == 1) {
+						cerca++;
+					}
+					if (cerca > AGUA_CERCA || total > AGUA_TOTAL) {
+						return false;
+					}
+				}
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Si en (x, z) hay agua de al menos dos de hondo (mar, lago o río, también los que están por encima del nivel
+	 * del mar), según el generador y sin generar el chunk: la superficie con agua y el fondo sin ella.
+	 */
+	private static boolean mojado(Structure.GenerationContext ctx, int x, int z) {
+		int superficie = ctx.chunkGenerator().getBaseHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG, ctx.heightAccessor(),
+				ctx.randomState());
+		int fondo = ctx.chunkGenerator().getBaseHeight(x, z, Heightmap.Types.OCEAN_FLOOR_WG, ctx.heightAccessor(),
+				ctx.randomState());
+		return superficie - fondo >= 2;
 	}
 
 	/** El mismo contexto en otro chunk y con otra semilla, y sin mirar el bioma (la capital ya ha elegido pueblo). */
@@ -314,7 +435,7 @@ public final class EstructuraCapital extends Structure {
 		return calles;
 	}
 
-	/** Dónde hay agua en vez de tierra (fondo por debajo del nivel del mar), mirado por casillas de 16 bloques. */
+	/** Dónde hay agua en vez de tierra (ver mojado), mirado por casillas de 16 bloques. */
 	private static final class Agua {
 		private final Structure.GenerationContext ctx;
 		private final Map<Long, Boolean> visto = new ConcurrentHashMap<>();
@@ -324,9 +445,7 @@ public final class EstructuraCapital extends Structure {
 		}
 
 		boolean en(int x, int z) {
-			return visto.computeIfAbsent(Geo.mezcla(Geo.clave(x >> 4, z >> 4)), k ->
-					ctx.chunkGenerator().getBaseHeight((x & ~15) + 8, (z & ~15) + 8, Heightmap.Types.OCEAN_FLOOR_WG, ctx.heightAccessor(),
-							ctx.randomState()) < ctx.chunkGenerator().getSeaLevel());
+			return visto.computeIfAbsent(Geo.mezcla(Geo.clave(x >> 4, z >> 4)), k -> mojado(ctx, (x & ~15) + 8, (z & ~15) + 8));
 		}
 
 		/** Si la pieza está casi toda sobre el agua: el centro y al menos dos esquinas. */
