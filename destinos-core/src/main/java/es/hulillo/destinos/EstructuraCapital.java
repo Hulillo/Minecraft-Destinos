@@ -26,6 +26,7 @@ import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructureType;
+import net.minecraft.world.level.levelgen.structure.pools.StructureTemplatePool;
 import net.minecraft.world.level.levelgen.structure.structures.JigsawStructure;
 
 /**
@@ -416,6 +417,7 @@ public final class EstructuraCapital extends Structure {
 			}
 			// el bioma ya lo ha mirado findGenerationPoint (o es el pueblo de respaldo): que no lo vuelva a mirar
 			o.addProperty("biomes", "#destinos_core:capital");
+			sinPlazasAbandonadas(registros, ops, o, k);
 			Optional<Structure> copia = Structure.DIRECT_CODEC.parse(ops, o).resultOrPartial(error ->
 					DestinosCore.LOG.warn("Destinos Core: el pueblo {} agrandado no es válido ({}); la capital usará el normal", k, error));
 			if (copia.isEmpty()) {
@@ -425,6 +427,47 @@ public final class EstructuraCapital extends Structure {
 					Math.min(20, profundidad + mas), alcance);
 			return copia;
 		});
+	}
+
+	/**
+	 * Cambia la lista de plazas de inicio del pueblo copiado por la misma sin las abandonadas (los pueblos zombi de
+	 * vanilla y los abandonados de mods empiezan por una plaza así): la capital no puede salir abandonada nunca, en
+	 * vez de tirar otra vez cuando sale. La lista va dentro de la copia, sin registrar nada.
+	 */
+	private static void sinPlazasAbandonadas(RegistryAccess registros, RegistryOps<JsonElement> ops, JsonObject o, Identifier k) {
+		JsonElement inicio = o.get("start_pool");
+		if (inicio == null || !inicio.isJsonPrimitive()) {
+			return;
+		}
+		Identifier idPool = Identifier.tryParse(inicio.getAsString());
+		Optional<Holder.Reference<StructureTemplatePool>> pool = idPool == null ? Optional.empty()
+				: registros.lookupOrThrow(Registries.TEMPLATE_POOL).get(idPool);
+		if (pool.isEmpty()) {
+			return;
+		}
+		Optional<JsonElement> json = StructureTemplatePool.DIRECT_CODEC.encodeStart(ops, pool.get().value()).result();
+		if (json.isEmpty() || !json.get().isJsonObject() || !json.get().getAsJsonObject().has("elements")) {
+			return;
+		}
+		JsonObject limpio = json.get().getAsJsonObject().deepCopy();
+		com.google.gson.JsonArray elementos = limpio.getAsJsonArray("elements");
+		com.google.gson.JsonArray buenos = new com.google.gson.JsonArray();
+		for (JsonElement e : elementos) {
+			String texto = e.toString().toLowerCase(java.util.Locale.ROOT);
+			boolean malo = false;
+			for (String no : ABANDONADO) {
+				malo |= texto.contains(no);
+			}
+			if (!malo) {
+				buenos.add(e);
+			}
+		}
+		if (buenos.isEmpty() || buenos.size() == elementos.size()) {
+			return;
+		}
+		limpio.add("elements", buenos);
+		o.add("start_pool", limpio);
+		DestinosCore.LOG.info("Destinos Core: capitales de {} sin {} plazas abandonadas", k, elementos.size() - buenos.size());
 	}
 
 	@Override
