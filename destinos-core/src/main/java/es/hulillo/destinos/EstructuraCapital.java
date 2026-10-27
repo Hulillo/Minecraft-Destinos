@@ -23,6 +23,7 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructureType;
 import net.minecraft.world.level.levelgen.structure.structures.JigsawStructure;
@@ -129,11 +130,11 @@ public final class EstructuraCapital extends Structure {
 		estructuras.get(Identifier.withDefaultNamespace(porDefecto)).filter(h -> !orden.contains(h)).ifPresent(orden::add);
 		Holder.Reference<Structure> pueblo = null;
 		Identifier id = null;
-		Optional<Structure.GenerationStub> plaza = Optional.empty();
+		Optional<Montado> plaza = Optional.empty();
 		for (Holder.Reference<Structure> candidato : orden) {
 			Identifier idCandidato = estructuras.getKey(candidato.value());
 			plaza = agrandado(ctx.registryAccess(), idCandidato, candidato.value(), MAS_PROFUNDIDAD, DISTANCIA)
-					.flatMap(s -> s.findValidGenerationPoint(ctx));
+					.flatMap(s -> monta(s, ctx));
 			if (plaza.isPresent()) {
 				pueblo = candidato;
 				id = idCandidato;
@@ -148,7 +149,7 @@ public final class EstructuraCapital extends Structure {
 		}
 		// los barrios: el mismo pueblo, en las cuatro diagonales (menos los que caen en el agua)
 		Agua agua = new Agua(ctx);
-		List<Structure.GenerationStub> barrios = new ArrayList<>();
+		List<Montado> barrios = new ArrayList<>();
 		Optional<Structure> barrio = agrandado(ctx.registryAccess(), id, pueblo.value(), MAS_PROFUNDIDAD_BARRIO, DISTANCIA_BARRIO);
 		if (barrio.isPresent()) {
 			for (int[] d : new int[][] {{1, 1}, {-1, 1}, {1, -1}, {-1, -1}}) {
@@ -158,15 +159,15 @@ public final class EstructuraCapital extends Structure {
 						ctx.biomeSource(), ctx.randomState(), ctx.structureTemplateManager(), ctx.seed(), sitio,
 						ctx.heightAccessor(), ctx.validBiome());
 				if (!agua.en(sitio.getMiddleBlockX(), sitio.getMiddleBlockZ())) {
-					barrio.get().findValidGenerationPoint(otro).ifPresent(barrios::add);
+					monta(barrio.get(), otro).ifPresent(barrios::add);
 				}
 			}
 		}
-		Structure.GenerationStub principal = plaza.get();
+		Montado principal = plaza.get();
 		// calles del centro a cada barrio, para que no queden como pueblos sueltos
 		// (solo por tierra: una calle que tendría que cruzar un lago o un brazo de mar no se hace)
 		List<List<CalleCapital>> calles = new ArrayList<>();
-		for (Structure.GenerationStub b : barrios) {
+		for (Montado b : barrios) {
 			calles.add(calles(ctx, agua, principal.position().getX(), principal.position().getZ(), b.position().getX(),
 					b.position().getZ()));
 		}
@@ -179,7 +180,7 @@ public final class EstructuraCapital extends Structure {
 						ctx.randomState()), muralla);
 		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
 			List<StructurePiece> puestas = new ArrayList<>();
-			List<StructurePiece> delCentro = principal.getPiecesBuilder().build().pieces();
+			List<StructurePiece> delCentro = principal.piezas();
 			for (int i = 0; i < delCentro.size(); i++) {
 				// la plaza siempre; el resto, si no está metido en el mar (calles y casas flotando)
 				if (i == 0 || !agua.tapa(delCentro.get(i))) {
@@ -190,7 +191,7 @@ public final class EstructuraCapital extends Structure {
 			int enCalles = 0;
 			for (int i = 0; i < barrios.size(); i++) {
 				int antes = puestas.size();
-				for (StructurePiece pieza : barrios.get(i).getPiecesBuilder().build().pieces()) {
+				for (StructurePiece pieza : barrios.get(i).piezas()) {
 					// una pieza de barrio que choca con algo ya puesto o cae en el agua se queda fuera
 					if (!agua.tapa(pieza) && puestas.stream().noneMatch(otra -> otra.getBoundingBox().intersects(pieza.getBoundingBox()))) {
 						puestas.add(pieza);
@@ -210,6 +211,60 @@ public final class EstructuraCapital extends Structure {
 							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + enCalles);
 		}));
 	}
+
+	/** Un pueblo ya montado: dónde empieza y sus piezas (sin las casas abandonadas sueltas). */
+	private record Montado(net.minecraft.core.BlockPos position, List<StructurePiece> piezas) {
+	}
+
+	/** Intentos de montar un pueblo que no salga abandonado antes de pasar al siguiente estilo. */
+	private static final int INTENTOS = 6;
+
+	/**
+	 * Monta el pueblo en ese chunk, pero no uno abandonado: los pueblos zombi de vanilla (y los abandonados de
+	 * algunos mods) salen del mismo pueblo, con una plaza de inicio rara; si toca una, se vuelve a tirar con otra
+	 * semilla. Las casas abandonadas sueltas dentro de un pueblo normal se quitan.
+	 */
+	private static Optional<Montado> monta(Structure pueblo, Structure.GenerationContext ctx) {
+		for (int intento = 0; intento < INTENTOS; intento++) {
+			Structure.GenerationContext c = intento == 0 ? ctx : new Structure.GenerationContext(ctx.registryAccess(),
+					ctx.chunkGenerator(), ctx.biomeSource(), ctx.randomState(), ctx.structureTemplateManager(),
+					ctx.seed() + intento * 0x9E3779B97F4A7C15L, ctx.chunkPos(), ctx.heightAccessor(), ctx.validBiome());
+			Optional<Structure.GenerationStub> stub = pueblo.findValidGenerationPoint(c);
+			if (stub.isEmpty()) {
+				return Optional.empty();
+			}
+			List<StructurePiece> piezas = stub.get().getPiecesBuilder().build().pieces();
+			if (piezas.isEmpty() || abandonada(piezas.get(0))) {
+				DestinosCore.LOG.info("Destinos Core: la capital del chunk {} salía abandonada; se vuelve a tirar", ctx.chunkPos());
+				continue;
+			}
+			List<StructurePiece> buenas = new ArrayList<>(piezas.size());
+			for (int i = 0; i < piezas.size(); i++) {
+				if (i == 0 || !abandonada(piezas.get(i))) {
+					buenas.add(piezas.get(i));
+				}
+			}
+			return Optional.of(new Montado(stub.get().position(), buenas));
+		}
+		return Optional.empty();
+	}
+
+	/** Si la pieza es de un pueblo abandonado (por el nombre de su plantilla). */
+	private static boolean abandonada(StructurePiece pieza) {
+		if (!(pieza instanceof PoolElementStructurePiece p)) {
+			return false;
+		}
+		String plantilla = p.getElement().toString().toLowerCase(java.util.Locale.ROOT);
+		for (String no : ABANDONADO) {
+			if (plantilla.contains(no)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static final String[] ABANDONADO = {"zombie", "abandon", "ruin", "destroyed", "burn", "haunt", "ghost",
+			"derelict"};
 
 	/** Tramos de calle de (x0, z0) a (x1, z1), cada uno a la altura del suelo en su mitad. */
 	private static List<CalleCapital> calles(Structure.GenerationContext ctx, Agua agua, int x0, int z0, int x1, int z1) {
