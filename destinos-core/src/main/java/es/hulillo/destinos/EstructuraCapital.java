@@ -190,10 +190,14 @@ public final class EstructuraCapital extends Structure {
 			}
 			// la muralla al final, para que vea las calles y casas ya puestas y les deje hueco. Ningún trozo que toque
 			// el agua: cada pieza allana el terreno bajo su caja, y sobre el mar eso levantaba un anillo de tierra
-			muralla.stream().filter(pieza -> !agua.toca(pieza)).forEach(piezas::addPiece);
-			// y lo último, el adorno, que ya ve todo lo demás puesto
-			piezas.addPiece(new AdornoCapital(principal.position().getX(), principal.position().getZ(), estilo, color,
-					piezas.calculateBoundingBox(), techo));
+			List<StructurePiece> enMuralla = muralla.stream().filter(pieza -> !agua.toca(pieza)).toList();
+			enMuralla.forEach(piezas::addPiece);
+			// y lo último, el adorno, que ya ve todo lo demás puesto (las calles van de casas a casas: no amplían la caja)
+			List<BoundingBox> cajas = new ArrayList<>();
+			puestas.forEach(pieza -> cajas.add(pieza.getBoundingBox()));
+			enMuralla.forEach(pieza -> cajas.add(pieza.getBoundingBox()));
+			BoundingBox.encapsulatingBoxes(cajas).ifPresent(caja -> piezas.addPiece(
+					new AdornoCapital(principal.position().getX(), principal.position().getZ(), estilo, color, caja, techo)));
 			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} de {} piezas del centro, {} barrios, {} piezas en total · pedida por {}",
 					principal.position().getX(), principal.position().getY(), principal.position().getZ(), nivel,
 					castillo.isPresent() ? ", con castillo" : "", delCentro.stream()
