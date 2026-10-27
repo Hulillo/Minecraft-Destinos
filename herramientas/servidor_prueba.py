@@ -119,6 +119,8 @@ else:
         sys.exit("la capital rica no se ha generado con su castillo")
     if not re.search(rf"capital del reino en {rx}, {rz} .*su chunk tiene la capital", salida):
         sys.exit("la capital rica no está en su chunk")
+if "Tried to load a DUMMY block entity" in salida:
+    sys.exit("hay bloques con datos (estandartes, barriles…) puestos fuera de su sitio: " + re.search(r"Tried to load a DUMMY.*", salida).group(0))
 if "plaza mayor de la capital" not in salida:
     print("AVISO: ninguna plaza mayor ha tenido sitio para sus estandartes")
 if not ok_terr:

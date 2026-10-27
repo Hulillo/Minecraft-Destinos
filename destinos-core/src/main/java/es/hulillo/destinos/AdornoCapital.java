@@ -29,8 +29,10 @@ import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
  * estandartes del color del reino y puestos de mercado, y las calles se alumbran con farolas. Solo toca el suelo
  * natural y los caminos, nunca las casas. Cada cultura con sus piedras: arenisca en el desierto, adobe en la sabana.
  *
- * La caja abarca toda la capital pero está arriba del todo del mundo: las piezas que no son de pueblo cuentan como
- * cajas rígidas para allanar el terreno, y tan lejos del suelo no allanan nada.
+ * La caja abarca toda la capital, así que no debe contar para adaptar el terreno: las piezas que no son de pueblo
+ * cuentan como cajas rígidas y el terreno se rellena bajo ellas (con la caja arriba del mundo salía una losa de
+ * tierra flotando sobre toda la capital). Por eso dice que no está cerca de ningún chunk, que es lo único que mira
+ * el allanado; para ponerse se mira su caja.
  */
 public final class AdornoCapital extends StructurePiece {
 	public static final StructurePieceType TIPO = (StructurePieceType.ContextlessType) AdornoCapital::new;
@@ -108,6 +110,11 @@ public final class AdornoCapital extends StructurePiece {
 	}
 
 	@Override
+	public boolean isCloseToChunk(ChunkPos chunk, int distancia) {
+		return false;
+	}
+
+	@Override
 	protected void addAdditionalSaveData(StructurePieceSerializationContext ctx, CompoundTag t) {
 		t.putInt("px", px);
 		t.putInt("pz", pz);
@@ -127,17 +134,6 @@ public final class AdornoCapital extends StructurePiece {
 			return;
 		}
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-		if (caja.isInside(px, caja.minY(), pz)) {
-			int llenos = 0;
-			for (int y = 100; y < 319; y++) {
-				if (!level.getBlockState(pos.set(px, y, pz)).isAir()) {
-					llenos++;
-				}
-			}
-			DestinosCore.LOG.info("Destinos Core: adorno en {}, {}: superficie {} · fondo {} · en 318 {} · en 317 {} · bloques entre 100 y 318: {}",
-					px, pz, level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, px, pz), level.getHeight(Heightmap.Types.OCEAN_FLOOR_WG, px, pz),
-					level.getBlockState(pos.set(px, 318, pz)), level.getBlockState(pos.set(px, 317, pz)), llenos);
-		}
 		// 1. empedrar: calles (los caminos de tierra) y la plaza (el suelo natural cerca del centro)
 		for (int x = x0; x <= x1; x++) {
 			for (int z = z0; z <= z1; z++) {
