@@ -190,6 +190,7 @@ final class ComandosDestinos {
 			int reinos = 0;
 			int[] niveles = new int[3];
 			List<String> mojadas = new ArrayList<>();
+			List<Double> riquezas = new ArrayList<>();
 			MapaTerreno.Capital rica = null;
 			for (int kx = kx0 - n; kx <= kx0 + n; kx++) {
 				for (int kz = kz0 - n; kz <= kz0 + n; kz++) {
@@ -199,6 +200,7 @@ final class ComandosDestinos {
 						continue;
 					}
 					niveles[c.nivel()]++;
+					riquezas.add(c.riqueza());
 					if (c.nivel() == 2 && rica == null) {
 						rica = c;
 					}
@@ -210,13 +212,27 @@ final class ComandosDestinos {
 			return "Destinos Core: " + reinos + " reinos revisados en " + (System.currentTimeMillis() - inicio)
 					+ " ms · capitales pobres " + niveles[0] + ", normales " + niveles[1] + ", ricas " + niveles[2]
 					+ " · capitales en el agua: " + mojadas.size() + (mojadas.isEmpty() ? "" : " (" + String.join("; ", mojadas) + ")")
-					+ (rica == null ? "" : " · primera rica en " + rica.x() + " " + rica.z());
+					+ (rica == null ? "" : " · primera rica en " + rica.x() + " " + rica.z()) + " · riqueza " + percentiles(riquezas);
 		}).whenComplete((texto, error) -> server.execute(() -> {
 			String linea = error != null ? "Destinos Core: la revisión de capitales ha fallado: " + error : texto;
 			DestinosCore.LOG.info(linea);
 			fuente.sendSuccess(() -> Component.literal(linea), false);
 		}));
 		return 1;
+	}
+
+	/** Mínimo, percentiles 25, 50, 75 y 90 y máximo de la riqueza de las capitales, para calibrar los niveles. */
+	private static String percentiles(List<Double> valores) {
+		if (valores.isEmpty()) {
+			return "-";
+		}
+		List<Double> orden = valores.stream().sorted().toList();
+		StringBuilder sb = new StringBuilder();
+		for (int p : new int[] {0, 25, 50, 75, 90, 100}) {
+			double v = orden.get(Math.min(orden.size() - 1, p * orden.size() / 100));
+			sb.append(sb.isEmpty() ? "" : " ").append("p").append(p).append("=").append(String.format(java.util.Locale.ROOT, "%.2f", v));
+		}
+		return sb.toString();
 	}
 
 	private static int turno(CommandSourceStack fuente, int n) {

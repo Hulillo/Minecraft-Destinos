@@ -90,8 +90,8 @@ final class EleccionCapital {
 	}
 
 	private static MapaTerreno.Capital capital(Candidata cand, Sitio s, boolean montana, int ducadosReino) {
-		return new MapaTerreno.Capital(cand.cx(), cand.cz(), s.x(), s.z(), montana && s.montana(),
-				nivel(cand.recursos(), ducadosReino));
+		double riqueza = riqueza(cand.recursos(), ducadosReino);
+		return new MapaTerreno.Capital(cand.cx(), cand.cz(), s.x(), s.z(), montana && s.montana(), nivel(riqueza), riqueza);
 	}
 
 	/** Los ducados con señor del reino cerca de su centro (k), con sus puntos sin contar el agua. */
@@ -162,8 +162,11 @@ final class EleccionCapital {
 	 * Riqueza de la capital: recursos medios por casilla de su ducado (0-10, lo normal 3-5) más el tamaño del
 	 * reino cerca de su centro (ducados con señor, hasta 49). 0 pobre, 1 normal, 2 rica.
 	 */
-	static int nivel(int recursos, int ducados) {
-		double riqueza = recursos / 9.0 + ducados / 8.0;
+	static double riqueza(int recursos, int ducados) {
+		return recursos / 9.0 + ducados / 8.0;
+	}
+
+	static int nivel(double riqueza) {
 		return riqueza < RIQUEZA_NORMAL ? 0 : riqueza < RIQUEZA_RICA ? 1 : 2;
 	}
 

@@ -98,9 +98,10 @@ public final class MapaTerreno {
 	/**
 	 * La capital de un reino: el ducado donde está y el sitio en bloques. montana: el reino es de cultura de
 	 * montaña y ha preferido levantarla en las alturas. nivel: lo rica y grande que es (0 pobre, 1 normal, 2 rica),
-	 * por los recursos de su ducado y los ducados del reino; decide su muralla.
+	 * por los recursos de su ducado y los ducados del reino; decide su muralla. riqueza: el número del que sale el
+	 * nivel (para calibrarlo).
 	 */
-	public record Capital(int dcx, int dcz, int x, int z, boolean montana, int nivel) {
+	public record Capital(int dcx, int dcz, int x, int z, boolean montana, int nivel, double riqueza) {
 	}
 
 	/** Territorio de un punto: ducado (celda), reino (celda), salvaje y si la casilla es mar. */
