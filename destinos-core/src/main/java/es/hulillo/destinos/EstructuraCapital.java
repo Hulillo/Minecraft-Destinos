@@ -82,6 +82,16 @@ public final class EstructuraCapital extends Structure {
 		Registry.register(BuiltInRegistries.STRUCTURE_TYPE, Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "capital"), TIPO);
 	}
 
+	/**
+	 * Sin mirar el bioma: dónde va la capital lo decide ColocacionCapital, y el bioma justo en el centro puede ser
+	 * uno que no está en ningún tag (ríos y biomas de mods). Con la comprobación de vanilla, si la generación del
+	 * chunk veía un bioma así, la capital se quedaba sin generar aunque la corona sí saliera en el mapa.
+	 */
+	@Override
+	public Optional<Structure.GenerationStub> findValidGenerationPoint(Structure.GenerationContext ctx) {
+		return findGenerationPoint(ctx);
+	}
+
 	@Override
 	public Optional<Structure.GenerationStub> findGenerationPoint(Structure.GenerationContext ctx) {
 		// la generación y las búsquedas de estructuras (/locate, RoadWeaver…) preguntan por el mismo chunk: la
@@ -157,7 +167,7 @@ public final class EstructuraCapital extends Structure {
 						ctx.chunkPos().z + d[1] * SEPARACION_BARRIO / 16);
 				Structure.GenerationContext otro = new Structure.GenerationContext(ctx.registryAccess(), ctx.chunkGenerator(),
 						ctx.biomeSource(), ctx.randomState(), ctx.structureTemplateManager(), ctx.seed(), sitio,
-						ctx.heightAccessor(), ctx.validBiome());
+						ctx.heightAccessor(), b -> true);
 				if (!agua.en(sitio.getMiddleBlockX(), sitio.getMiddleBlockZ())) {
 					monta(barrio.get(), otro).ifPresent(barrios::add);
 				}
@@ -226,9 +236,10 @@ public final class EstructuraCapital extends Structure {
 	 */
 	private static Optional<Montado> monta(Structure pueblo, Structure.GenerationContext ctx) {
 		for (int intento = 0; intento < INTENTOS; intento++) {
-			Structure.GenerationContext c = intento == 0 ? ctx : new Structure.GenerationContext(ctx.registryAccess(),
+			// el pueblo copiado tampoco mira el bioma (ya lo ha elegido prepara para este sitio)
+			Structure.GenerationContext c = new Structure.GenerationContext(ctx.registryAccess(),
 					ctx.chunkGenerator(), ctx.biomeSource(), ctx.randomState(), ctx.structureTemplateManager(),
-					ctx.seed() + intento * 0x9E3779B97F4A7C15L, ctx.chunkPos(), ctx.heightAccessor(), ctx.validBiome());
+					ctx.seed() + intento * 0x9E3779B97F4A7C15L, ctx.chunkPos(), ctx.heightAccessor(), b -> true);
 			Optional<Structure.GenerationStub> stub = pueblo.findValidGenerationPoint(c);
 			if (stub.isEmpty()) {
 				return Optional.empty();
