@@ -119,6 +119,8 @@ else:
         sys.exit("la capital rica no se ha generado con su castillo")
     if not re.search(rf"capital del reino en {rx}, {rz} .*su chunk tiene la capital", salida):
         sys.exit("la capital rica no está en su chunk")
+if "plaza mayor de la capital" not in salida:
+    print("AVISO: ninguna plaza mayor ha tenido sitio para sus estandartes")
 if not ok_terr:
     sys.exit("geo/territorio no devolvió #tdx: el mod no respondió")
 print("\nOK: el servidor carga Destinos Core y el datapack sin errores")

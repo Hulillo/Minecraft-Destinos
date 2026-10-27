@@ -144,6 +144,18 @@ public final class EstructuraCapital extends Structure {
 				muralla);
 		// y las capitales ricas, su castillo dentro de la muralla
 		Optional<CastilloCapital> castillo = nivel == 2 ? castillo(ctx, agua, bioma, principal) : Optional.empty();
+		// lo bonito (calles empedradas, plaza mayor, farolas): con el estilo del pueblo y el color del reino
+		int estilo = AdornoCapital.estilo(pueblo.getRegisteredName(), bioma.value().getBaseTemperature());
+		MapaTerreno mapa = DestinosCore.mapaActual();
+		int tinte = -1;
+		if (mapa != null) {
+			// el reino de la capital (con /place, el del sitio)
+			int[] t = Geo.territorioGeometrico(principal.position().getX(), principal.position().getZ(), mapa.sal());
+			Geo.Reino reino = esta != null ? Geo.reinoDeDucado(esta.dcx(), esta.dcz(), mapa.sal()) : new Geo.Reino(t[2], t[3], false);
+			tinte = AdornoCapital.tinte(Geo.colorReino(reino.kx(), reino.kz(), mapa.sal()));
+		}
+		int color = tinte;
+		int techo = ctx.heightAccessor().getMinY() + ctx.heightAccessor().getHeight() - 1;
 		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
 			List<StructurePiece> puestas = new ArrayList<>();
 			castillo.ifPresent(c -> {
@@ -179,6 +191,9 @@ public final class EstructuraCapital extends Structure {
 			// la muralla al final, para que vea las calles y casas ya puestas y les deje hueco. Ningún trozo que toque
 			// el agua: cada pieza allana el terreno bajo su caja, y sobre el mar eso levantaba un anillo de tierra
 			muralla.stream().filter(pieza -> !agua.toca(pieza)).forEach(piezas::addPiece);
+			// y lo último, el adorno, que ya ve todo lo demás puesto
+			piezas.addPiece(new AdornoCapital(principal.position().getX(), principal.position().getZ(), estilo, color,
+					piezas.calculateBoundingBox(), techo));
 			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} de {} piezas del centro, {} barrios, {} piezas en total · pedida por {}",
 					principal.position().getX(), principal.position().getY(), principal.position().getZ(), nivel,
 					castillo.isPresent() ? ", con castillo" : "", delCentro.stream()
