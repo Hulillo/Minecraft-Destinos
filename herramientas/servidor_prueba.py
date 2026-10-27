@@ -31,8 +31,9 @@ COMANDOS = [
     "place structure destinos_core:capital 0 80 600",
     # la capital que ha salido sola al cargar los chunks: que su chunk la tenga y los de alrededor la conozcan
     "execute positioned 196 100 667 run destinoscore capital",
-    # las capitales de los 5×5 reinos de alrededor: ninguna en el agua (con la altura de verdad)
-    "destinoscore revisa 2",
+    # las capitales de los 9×9 reinos de alrededor: ninguna en el agua (con la altura de verdad); las ricas son
+    # pocas, así que hacen falta bastantes reinos para que salga una y probar su castillo
+    "destinoscore revisa 4",
 ]
 # Frases que Minecraft escribe cuando algo del datapack falla
 MALO = re.compile(r"Failed to (load|parse) function|Couldn't load function|Unknown or incomplete command|"
