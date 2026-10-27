@@ -48,6 +48,9 @@ public final class EstructuraCapital extends Structure {
 	private static final int DISTANCIA = 80;
 	private static final int DISTANCIA_BARRIO = 48;
 	private static final int SEPARACION_BARRIO = 64;
+	/** De las farolas sueltas del pueblo se deja una de cada tantas. */
+	private static final int FAROLAS = 4;
+	private static final int K_FAROLAS = 6619;
 	/** Largo de cada tramo de calle entre el centro y un barrio. */
 	private static final int TRAMO = 16;
 	/** A qué distancias de la plaza (en un eje) se prueba el castillo de las capitales ricas, de más cerca a más lejos. */
@@ -169,7 +172,7 @@ public final class EstructuraCapital extends Structure {
 				// la plaza siempre; el resto, si no está metido en el mar (calles y casas flotando) ni en el castillo, y
 				// sin casas en la plaza mayor (las calles sí: se enlosan)
 				if (i == 0 || !agua.tapa(pieza) && castillo.stream().noneMatch(c -> enPlanta(c, pieza))
-						&& !(casa(pieza) && cerca(pieza, principal.position(), AdornoCapital.PLAZA))) {
+						&& !(casa(pieza) && cerca(pieza, principal.position(), AdornoCapital.PLAZA)) && !farolaDeSobra(pieza)) {
 					puestas.add(pieza);
 					piezas.addPiece(pieza);
 				}
@@ -180,7 +183,7 @@ public final class EstructuraCapital extends Structure {
 				for (StructurePiece pieza : barrios.get(i).piezas()) {
 					// una pieza de barrio que choca con algo ya puesto o cae en el agua se queda fuera
 					if (!agua.tapa(pieza) && puestas.stream().noneMatch(otra -> otra.getBoundingBox().intersects(pieza.getBoundingBox()))
-							&& castillo.stream().noneMatch(c -> enPlanta(c, pieza))) {
+							&& castillo.stream().noneMatch(c -> enPlanta(c, pieza)) && !farolaDeSobra(pieza)) {
 						puestas.add(pieza);
 						piezas.addPiece(pieza);
 					}
@@ -238,6 +241,18 @@ public final class EstructuraCapital extends Structure {
 			DestinosCore.LOG.info("Destinos Core: la capital del chunk {} es rica pero no tiene sitio para el castillo", ctx.chunkPos());
 		}
 		return Optional.ofNullable(mejor);
+	}
+
+	/**
+	 * Las farolas sueltas del pueblo (plains_lamp_1, taiga_lamp_post_1…): en un pueblo agrandado salen demasiadas, así
+	 * que solo se deja una de cada FAROLAS. Las calles ya llevan las del adorno.
+	 */
+	private static boolean farolaDeSobra(StructurePiece pieza) {
+		if (!(pieza instanceof PoolElementStructurePiece p) || !p.getElement().toString().contains("lamp")) {
+			return false;
+		}
+		BoundingBox b = pieza.getBoundingBox();
+		return Math.floorMod(Geo.hash(b.minX(), b.minZ(), K_FAROLAS), FAROLAS) != 0;
 	}
 
 	/** Si la pieza es una casa (rígida) del pueblo, no una calle que sigue el terreno. */
