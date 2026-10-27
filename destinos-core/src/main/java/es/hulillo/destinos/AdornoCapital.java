@@ -280,12 +280,13 @@ public final class AdornoCapital extends StructurePiece {
 		}
 		level.setBlock(pos.set(x, y + 4, z), remate.defaultBlockState(), 2);
 		level.setBlock(pos.set(x, y + 5, z), Blocks.LANTERN.defaultBlockState(), 2);
-		DestinosCore.LOG.info("Destinos Core: plaza mayor de la capital en {}, {}: estandartes en {}, {}", px, pz, x, z);
 		Block banner = bloque("wall_banner");
 		for (Direction d : Direction.Plane.HORIZONTAL) {
-			level.setBlock(pos.set(x + d.getStepX(), y + 4, z + d.getStepZ()),
+			level.setBlock(new BlockPos(x + d.getStepX(), y + 4, z + d.getStepZ()),
 					banner.defaultBlockState().setValue(WallBannerBlock.FACING, d), 2);
 		}
+		DestinosCore.LOG.info("Destinos Core: plaza mayor de la capital en {}, {}: estandartes en {}, {}, {} ({})", px, pz, x, y, z,
+				level.getBlockState(pos.set(x + 1, y + 4, z)));
 	}
 
 	/** Puesto de mercado de 3×2 con toldo a rayas del color del reino, si cabe en plaza libre y llana. */
@@ -316,7 +317,8 @@ public final class AdornoCapital extends StructurePiece {
 		}
 		// el mostrador: un barril y algo de lo que se vende
 		Block[] mercancia = {Blocks.HAY_BLOCK, Blocks.MELON, Blocks.PUMPKIN, Blocks.COMPOSTER, Blocks.SMOKER, Blocks.FLETCHING_TABLE};
-		level.setBlock(pos.set(x, y + 1, z), Blocks.BARREL.defaultBlockState(), 2);
+		level.setBlock(new BlockPos(x, y + 1, z), Blocks.BARREL.defaultBlockState(), 2);
+		DestinosCore.LOG.info("Destinos Core: puesto de mercado en {}, {}, {}", x, y, z);
 		level.setBlock(pos.set(x, y + 1, z - 1), mercancia[Math.floorMod(h, mercancia.length)].defaultBlockState(), 2);
 	}
 
