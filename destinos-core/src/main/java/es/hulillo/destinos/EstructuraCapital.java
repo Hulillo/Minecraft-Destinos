@@ -141,17 +141,32 @@ public final class EstructuraCapital extends Structure {
 		Holder.Reference<Structure> pueblo = null;
 		Identifier id = null;
 		Optional<Montado> plaza = Optional.empty();
-		for (Holder.Reference<Structure> candidato : orden) {
-			Identifier idCandidato = estructuras.getKey(candidato.value());
-			plaza = agrandado(ctx.registryAccess(), idCandidato, candidato.value(), MAS_PROFUNDIDAD, DISTANCIA)
-					.flatMap(s -> monta(s, ctx));
-			if (plaza.isPresent()) {
-				pueblo = candidato;
-				id = idCandidato;
-				break;
+		// primero sin pueblos abandonados; si con ningún estilo sale otra cosa, mejor uno así que una corona vacía
+		// y si en el sitio justo no cabe ninguno, la plaza un poco más allá (la capital sigue siendo de este chunk)
+		for (int pasada = 0; pasada < 2 && pueblo == null; pasada++) {
+			boolean abandonadoVale = pasada == 1;
+			for (int[] d : DESPLAZAMIENTOS) {
+				if (pueblo != null) {
+					break;
+				}
+				Structure.GenerationContext aqui = d[0] == 0 && d[1] == 0 ? ctx : new Structure.GenerationContext(
+						ctx.registryAccess(), ctx.chunkGenerator(), ctx.biomeSource(), ctx.randomState(),
+						ctx.structureTemplateManager(), ctx.seed(), new ChunkPos(ctx.chunkPos().x + d[0], ctx.chunkPos().z + d[1]),
+						ctx.heightAccessor(), b -> true);
+				for (Holder.Reference<Structure> candidato : orden) {
+					Identifier idCandidato = estructuras.getKey(candidato.value());
+					plaza = agrandado(ctx.registryAccess(), idCandidato, candidato.value(), MAS_PROFUNDIDAD, DISTANCIA)
+							.flatMap(s -> monta(s, aqui, abandonadoVale));
+					if (plaza.isPresent()) {
+						pueblo = candidato;
+						id = idCandidato;
+						break;
+					}
+					DestinosCore.LOG.info("Destinos Core: la capital del chunk {} ({}) no ha podido empezar con {}{} en {}; prueba otro",
+							ctx.chunkPos(), bioma.unwrapKey().map(Object::toString).orElse("?"), idCandidato,
+							abandonadoVale ? " (ni abandonado)" : "", aqui.chunkPos());
+				}
 			}
-			DestinosCore.LOG.info("Destinos Core: la capital del chunk {} ({}) no ha podido empezar con {}; prueba otro",
-					ctx.chunkPos(), bioma.unwrapKey().map(Object::toString).orElse("?"), idCandidato);
 		}
 		if (pueblo == null) {
 			DestinosCore.LOG.warn("Destinos Core: la capital del chunk {} no ha podido empezar con ningún pueblo", ctx.chunkPos());
@@ -169,7 +184,7 @@ public final class EstructuraCapital extends Structure {
 						ctx.biomeSource(), ctx.randomState(), ctx.structureTemplateManager(), ctx.seed(), sitio,
 						ctx.heightAccessor(), b -> true);
 				if (!agua.en(sitio.getMiddleBlockX(), sitio.getMiddleBlockZ())) {
-					monta(barrio.get(), otro).ifPresent(barrios::add);
+					monta(barrio.get(), otro, false).ifPresent(barrios::add);
 				}
 			}
 		}
@@ -226,6 +241,9 @@ public final class EstructuraCapital extends Structure {
 	private record Montado(net.minecraft.core.BlockPos position, List<StructurePiece> piezas) {
 	}
 
+	/** Dónde probar la plaza, en chunks desde el de la capital: primero el suyo y luego alrededor. */
+	private static final int[][] DESPLAZAMIENTOS = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
 	/** Intentos de montar un pueblo que no salga abandonado antes de pasar al siguiente estilo. */
 	private static final int INTENTOS = 6;
 
@@ -234,24 +252,35 @@ public final class EstructuraCapital extends Structure {
 	 * algunos mods) salen del mismo pueblo, con una plaza de inicio rara; si toca una, se vuelve a tirar con otra
 	 * semilla. Las casas abandonadas sueltas dentro de un pueblo normal se quitan.
 	 */
-	private static Optional<Montado> monta(Structure pueblo, Structure.GenerationContext ctx) {
+	private static Optional<Montado> monta(Structure pueblo, Structure.GenerationContext ctx, boolean abandonadoVale) {
 		for (int intento = 0; intento < INTENTOS; intento++) {
 			// el pueblo copiado tampoco mira el bioma (ya lo ha elegido prepara para este sitio)
 			Structure.GenerationContext c = new Structure.GenerationContext(ctx.registryAccess(),
 					ctx.chunkGenerator(), ctx.biomeSource(), ctx.randomState(), ctx.structureTemplateManager(),
 					ctx.seed() + intento * 0x9E3779B97F4A7C15L, ctx.chunkPos(), ctx.heightAccessor(), b -> true);
+			// con otra semilla puede tocar otra plaza de inicio que sí quepa: no se rinde a la primera
 			Optional<Structure.GenerationStub> stub = pueblo.findValidGenerationPoint(c);
 			if (stub.isEmpty()) {
-				return Optional.empty();
+				continue;
 			}
 			List<StructurePiece> piezas = stub.get().getPiecesBuilder().build().pieces();
-			if (piezas.isEmpty() || abandonada(piezas.get(0))) {
-				DestinosCore.LOG.info("Destinos Core: la capital del chunk {} salía abandonada; se vuelve a tirar", ctx.chunkPos());
+			if (piezas.isEmpty()) {
+				continue;
+			}
+			// abandonado de verdad: la mayoría de sus piezas (los pueblos zombi lo son enteros); una casa suelta
+			// con un nombre así no basta
+			int abandonadas = 0;
+			for (StructurePiece pieza : piezas) {
+				abandonadas += abandonada(pieza) ? 1 : 0;
+			}
+			if (!abandonadoVale && abandonadas * 2 > piezas.size()) {
+				DestinosCore.LOG.info("Destinos Core: la capital del chunk {} salía abandonada ({} de {} piezas, plaza {}); se vuelve a tirar",
+						ctx.chunkPos(), abandonadas, piezas.size(), piezas.get(0) instanceof PoolElementStructurePiece p ? p.getElement() : "?");
 				continue;
 			}
 			List<StructurePiece> buenas = new ArrayList<>(piezas.size());
 			for (int i = 0; i < piezas.size(); i++) {
-				if (i == 0 || !abandonada(piezas.get(i))) {
+				if (i == 0 || abandonadoVale || !abandonada(piezas.get(i))) {
 					buenas.add(piezas.get(i));
 				}
 			}
