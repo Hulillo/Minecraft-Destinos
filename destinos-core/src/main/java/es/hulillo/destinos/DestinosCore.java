@@ -275,17 +275,26 @@ public final class DestinosCore implements ModInitializer {
 		}
 		ServerLevel level = server.overworld();
 		BlockPos aqui = BlockPos.containing(fuente.getPosition());
-		MapaTerreno.Resultado r = m.consultaSiLista(aqui.getX(), aqui.getZ());
-		if (r == null || r.salvaje() || r.oceano()) {
-			fuente.sendFailure(Component.literal("Destinos Core: aquí no hay reino con capital (o aún se está calculando)"));
+		// la capital más cercana de los reinos de los ducados de alrededor, como las busca la colocación de
+		// capitales (sin esperar a que se calcule la zona)
+		int dcx = Math.floorDiv(aqui.getX(), Geo.S_DUCADO);
+		int dcz = Math.floorDiv(aqui.getZ(), Geo.S_DUCADO);
+		MapaTerreno.Capital cap = null;
+		for (int ox = -1; ox <= 1; ox++) {
+			for (int oz = -1; oz <= 1; oz++) {
+				int[] centro = Geo.centro(dcx + ox, dcz + oz, Geo.S_DUCADO, m.sal());
+				Geo.Reino reino = Geo.reinoDeDucado(dcx + ox, dcz + oz, centro[0], centro[1], m.sal());
+				MapaTerreno.Capital c = reino.salvaje() ? null : m.capital(reino.kx(), reino.kz());
+				if (c != null && (cap == null || aqui.distToCenterSqr(c.x(), aqui.getY(), c.z())
+						< aqui.distToCenterSqr(cap.x(), aqui.getY(), cap.z()))) {
+					cap = c;
+				}
+			}
+		}
+		if (cap == null) {
+			fuente.sendFailure(Component.literal("Destinos Core: por aquí no hay ningún reino con capital"));
 			return 0;
 		}
-		java.util.Optional<MapaTerreno.Capital> c = m.capitalSiLista(r.kx(), r.kz());
-		if (c == null || c.isEmpty()) {
-			fuente.sendFailure(Component.literal("Destinos Core: la capital de este reino aún no está elegida (o no tiene sitio)"));
-			return 0;
-		}
-		MapaTerreno.Capital cap = c.get();
 		Structure estructura = level.registryAccess().lookupOrThrow(Registries.STRUCTURE)
 				.getValue(Identifier.fromNamespaceAndPath(MOD_ID, "capital"));
 		if (estructura == null) {
