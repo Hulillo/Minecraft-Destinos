@@ -31,6 +31,8 @@ COMANDOS = [
     "place structure destinos_core:capital 0 80 600",
     # la capital que ha salido sola al cargar los chunks: que su chunk la tenga y los de alrededor la conozcan
     "execute positioned 196 100 667 run destinoscore capital",
+    # las capitales de los 5×5 reinos de alrededor: ninguna en el agua (con la altura de verdad)
+    "destinoscore revisa 2",
 ]
 # Frases que Minecraft escribe cuando algo del datapack falla
 MALO = re.compile(r"Failed to (load|parse) function|Couldn't load function|Unknown or incomplete command|"
@@ -90,6 +92,11 @@ if capitales < 1:
 diag = re.search(r"capital del reino en .*", salida)
 if not diag or "su chunk tiene la capital" not in diag.group(0) or "NO la conoce" in diag.group(0):
     sys.exit("la capital del mapa no está entera en el mundo: " + (diag.group(0) if diag else "sin /destinoscore capital"))
+revision = re.search(r"reinos revisados en .*", salida)
+if not revision:
+    sys.exit("/destinoscore revisa no ha contestado")
+if "capitales en el agua: 0" not in revision.group(0):
+    sys.exit("hay capitales elegidas en el agua: " + revision.group(0))
 if not ok_terr:
     sys.exit("geo/territorio no devolvió #tdx: el mod no respondió")
 print("\nOK: el servidor carga Destinos Core y el datapack sin errores")

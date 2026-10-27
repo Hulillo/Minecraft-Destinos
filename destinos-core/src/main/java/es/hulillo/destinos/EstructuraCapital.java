@@ -272,10 +272,12 @@ public final class EstructuraCapital extends Structure {
 	 * corona: así la corona va siempre donde la capital sí sale.
 	 */
 	static boolean cabe(ServerLevel level, int x, int z) {
-		ChunkGenerator gen = level.getChunkSource().getGenerator();
-		Structure.GenerationContext ctx = new Structure.GenerationContext(level.registryAccess(), gen, gen.getBiomeSource(),
-				level.getChunkSource().randomState(), level.getStructureManager(), level.getSeed(),
-				new ChunkPos(x >> 4, z >> 4), level, b -> true);
+		Structure.GenerationContext ctx = contexto(level, x, z);
+		// primero, que de verdad sea tierra: el pueblo empieza igual en medio del mar (solo queda la plaza en un
+		// islote), y el bioma y la altura estimada del mapa no bastan con generadores de terreno de mods
+		if (!tierraFirme(ctx, x, z)) {
+			return false;
+		}
 		return primeraQueEmpieza(ctx, biomaCentro(ctx), false, (copia, aqui) -> {
 			for (int intento = 0; intento < INTENTOS; intento++) {
 				if (copia.findValidGenerationPoint(contexto(aqui, aqui.chunkPos(), aqui.seed() + intento * Geo.MEZCLA)).isPresent()) {
@@ -284,6 +286,66 @@ public final class EstructuraCapital extends Structure {
 			}
 			return Optional.<Boolean>empty();
 		}).isPresent();
+	}
+
+	/** Si alrededor de (x, z) hay tierra para una capital (lo mismo que mira cabe antes de probar pueblos). */
+	static boolean enTierra(ServerLevel level, int x, int z) {
+		return tierraFirme(contexto(level, x, z), x, z);
+	}
+
+	/** Contexto de generación del chunk de (x, z) en el mundo abierto, sin mirar el bioma. */
+	private static Structure.GenerationContext contexto(ServerLevel level, int x, int z) {
+		ChunkGenerator gen = level.getChunkSource().getGenerator();
+		return new Structure.GenerationContext(level.registryAccess(), gen, gen.getBiomeSource(),
+				level.getChunkSource().randomState(), level.getStructureManager(), level.getSeed(),
+				new ChunkPos(x >> 4, z >> 4), level, b -> true);
+	}
+
+	/** Separación de los puntos en los que se mira si alrededor de una capital hay tierra. */
+	private static final int PASO_TIERRA = 40;
+	/** Puntos con agua que se aceptan en los 8 de al lado del centro (un río) y en los 24 hasta 80 bloques (costa). */
+	private static final int AGUA_CERCA = 1;
+	private static final int AGUA_TOTAL = 8;
+
+	/**
+	 * Si alrededor de (x, z) hay tierra para una capital, con la altura de verdad del generador: el centro seco,
+	 * casi todo seco a 40 bloques y como mucho un tercio con agua hasta 80 (lo que ocupa el centro de la capital).
+	 */
+	private static boolean tierraFirme(Structure.GenerationContext ctx, int x, int z) {
+		if (mojado(ctx, x, z)) {
+			return false;
+		}
+		int cerca = 0;
+		int total = 0;
+		for (int anillo = 1; anillo <= 2; anillo++) {
+			for (int dz = -anillo; dz <= anillo; dz++) {
+				for (int dx = -anillo; dx <= anillo; dx++) {
+					if (Math.max(Math.abs(dx), Math.abs(dz)) != anillo || !mojado(ctx, x + dx * PASO_TIERRA, z + dz * PASO_TIERRA)) {
+						continue;
+					}
+					total++;
+					if (anillo == 1) {
+						cerca++;
+					}
+					if (cerca > AGUA_CERCA || total > AGUA_TOTAL) {
+						return false;
+					}
+				}
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Si en (x, z) hay agua de al menos dos de hondo (mar, lago o río, también los que están por encima del nivel
+	 * del mar), según el generador y sin generar el chunk: la superficie con agua y el fondo sin ella.
+	 */
+	private static boolean mojado(Structure.GenerationContext ctx, int x, int z) {
+		int superficie = ctx.chunkGenerator().getBaseHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG, ctx.heightAccessor(),
+				ctx.randomState());
+		int fondo = ctx.chunkGenerator().getBaseHeight(x, z, Heightmap.Types.OCEAN_FLOOR_WG, ctx.heightAccessor(),
+				ctx.randomState());
+		return superficie - fondo >= 2;
 	}
 
 	/** El mismo contexto en otro chunk y con otra semilla, y sin mirar el bioma (la capital ya ha elegido pueblo). */
@@ -364,7 +426,7 @@ public final class EstructuraCapital extends Structure {
 		return calles;
 	}
 
-	/** Dónde hay agua en vez de tierra (fondo por debajo del nivel del mar), mirado por casillas de 16 bloques. */
+	/** Dónde hay agua en vez de tierra (ver mojado), mirado por casillas de 16 bloques. */
 	private static final class Agua {
 		private final Structure.GenerationContext ctx;
 		private final Map<Long, Boolean> visto = new ConcurrentHashMap<>();
@@ -374,9 +436,7 @@ public final class EstructuraCapital extends Structure {
 		}
 
 		boolean en(int x, int z) {
-			return visto.computeIfAbsent(Geo.mezcla(Geo.clave(x >> 4, z >> 4)), k ->
-					ctx.chunkGenerator().getBaseHeight((x & ~15) + 8, (z & ~15) + 8, Heightmap.Types.OCEAN_FLOOR_WG, ctx.heightAccessor(),
-							ctx.randomState()) < ctx.chunkGenerator().getSeaLevel());
+			return visto.computeIfAbsent(Geo.mezcla(Geo.clave(x >> 4, z >> 4)), k -> mojado(ctx, (x & ~15) + 8, (z & ~15) + 8));
 		}
 
 		/** Si la pieza está casi toda sobre el agua: el centro y al menos dos esquinas. */

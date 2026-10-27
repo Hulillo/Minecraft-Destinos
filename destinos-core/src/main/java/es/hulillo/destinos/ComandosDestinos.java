@@ -2,6 +2,8 @@ package es.hulillo.destinos;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.BiConsumer;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -27,6 +29,9 @@ final class ComandosDestinos {
 				.then(Commands.literal("territorio").executes(ctx -> territorio(ctx.getSource())))
 				.then(Commands.literal("estado").executes(ctx -> estado(ctx.getSource())))
 				.then(Commands.literal("capital").executes(ctx -> capital(ctx.getSource())))
+				.then(Commands.literal("revisa").executes(ctx -> revisa(ctx.getSource(), 2))
+						.then(Commands.argument("reinos", IntegerArgumentType.integer(0, 6))
+								.executes(ctx -> revisa(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "reinos")))))
 				.then(Commands.literal("politica").executes(ctx -> conPolitica(ctx.getSource(), false, (pol, m) -> pol.estado(ctx.getSource(), m)))
 						.then(Commands.literal("reinos").executes(ctx -> conPolitica(ctx.getSource(), false, (pol, m) -> pol.ranking(ctx.getSource()))))
 						.then(Commands.literal("ritmo")
@@ -159,6 +164,47 @@ final class ComandosDestinos {
 		DestinosCore.LOG.info(texto);
 		fuente.sendSuccess(() -> Component.literal(texto), false);
 		return 1;
+	}
+
+	/**
+	 * /destinoscore revisa [n]: elige la capital de los reinos a n celdas de reino de donde estás (sin generar
+	 * nada) y comprueba con la altura de verdad que todas están en tierra. Dice cuántas hay de cada nivel, para
+	 * calibrar la riqueza. Para la CI y para buscar capitales mal puestas.
+	 */
+	private static int revisa(CommandSourceStack fuente, int n) {
+		MinecraftServer server = fuente.getServer();
+		MapaTerreno m = DestinosCore.mapa(server);
+		if (m == null) {
+			fuente.sendFailure(Component.literal("Destinos Core: esperando al datapack (no hay sal todavía)"));
+			return 0;
+		}
+		ServerLevel level = server.overworld();
+		BlockPos aqui = BlockPos.containing(fuente.getPosition());
+		int kx0 = Math.floorDiv(aqui.getX(), Geo.S_REINO);
+		int kz0 = Math.floorDiv(aqui.getZ(), Geo.S_REINO);
+		long inicio = System.currentTimeMillis();
+		int reinos = 0;
+		int[] niveles = new int[3];
+		List<String> mojadas = new ArrayList<>();
+		for (int kx = kx0 - n; kx <= kx0 + n; kx++) {
+			for (int kz = kz0 - n; kz <= kz0 + n; kz++) {
+				reinos++;
+				MapaTerreno.Capital c = m.capital(kx, kz);
+				if (c == null) {
+					continue;
+				}
+				niveles[c.nivel()]++;
+				if (!EstructuraCapital.enTierra(level, c.x(), c.z())) {
+					mojadas.add(c.x() + ", " + c.z());
+				}
+			}
+		}
+		String texto = "Destinos Core: " + reinos + " reinos revisados en " + (System.currentTimeMillis() - inicio)
+				+ " ms · capitales pobres " + niveles[0] + ", normales " + niveles[1] + ", ricas " + niveles[2]
+				+ " · capitales en el agua: " + mojadas.size() + (mojadas.isEmpty() ? "" : " (" + String.join("; ", mojadas) + ")");
+		DestinosCore.LOG.info(texto);
+		fuente.sendSuccess(() -> Component.literal(texto), false);
+		return mojadas.isEmpty() ? 1 : 0;
 	}
 
 	private static int turno(CommandSourceStack fuente, int n) {
