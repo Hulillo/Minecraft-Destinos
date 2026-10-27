@@ -12,6 +12,8 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -19,6 +21,9 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.scores.Objective;
 import net.minecraft.world.scores.ReadOnlyScoreInfo;
@@ -59,6 +64,7 @@ public final class DestinosCore implements ModInitializer {
 				dispatcher.register(Commands.literal("destinoscore")
 						.then(Commands.literal("territorio").executes(ctx -> territorio(ctx.getSource())))
 						.then(Commands.literal("estado").executes(ctx -> estado(ctx.getSource())))
+						.then(Commands.literal("capital").executes(ctx -> capital(ctx.getSource())))
 						.then(Commands.literal("politica").executes(ctx -> politica(ctx.getSource()))
 								.then(Commands.literal("reinos").executes(ctx -> ranking(ctx.getSource())))
 								.then(Commands.literal("ritmo")
@@ -253,6 +259,52 @@ public final class DestinosCore implements ModInitializer {
 			String alturas = "Aquí: suelo estimado " + c.altura() + " · suelo real " + real + (c.oceano() ? " · lo toma por MAR" : "");
 			fuente.sendSuccess(() -> Component.literal(alturas), false);
 		}
+		return 1;
+	}
+
+	/**
+	 * /destinoscore capital: la capital del reino donde estás, si su chunk tiene la estructura (y cuántas piezas)
+	 * y si el chunk donde estás la conoce. Para ver por qué una corona sale sin pueblo.
+	 */
+	private static int capital(CommandSourceStack fuente) {
+		MinecraftServer server = fuente.getServer();
+		MapaTerreno m = mapa(server);
+		if (m == null) {
+			fuente.sendFailure(Component.literal("Destinos Core: esperando al datapack (no hay sal todavía)"));
+			return 0;
+		}
+		ServerLevel level = server.overworld();
+		BlockPos aqui = BlockPos.containing(fuente.getPosition());
+		MapaTerreno.Resultado r = m.consultaSiLista(aqui.getX(), aqui.getZ());
+		if (r == null || r.salvaje() || r.oceano()) {
+			fuente.sendFailure(Component.literal("Destinos Core: aquí no hay reino con capital (o aún se está calculando)"));
+			return 0;
+		}
+		java.util.Optional<MapaTerreno.Capital> c = m.capitalSiLista(r.kx(), r.kz());
+		if (c == null || c.isEmpty()) {
+			fuente.sendFailure(Component.literal("Destinos Core: la capital de este reino aún no está elegida (o no tiene sitio)"));
+			return 0;
+		}
+		MapaTerreno.Capital cap = c.get();
+		Structure estructura = level.registryAccess().lookupOrThrow(Registries.STRUCTURE)
+				.getValue(Identifier.fromNamespaceAndPath(MOD_ID, "capital"));
+		if (estructura == null) {
+			fuente.sendFailure(Component.literal("Destinos Core: no está registrada la estructura destinos_core:capital"));
+			return 0;
+		}
+		ChunkAccess inicio = level.getChunk(cap.x() >> 4, cap.z() >> 4);
+		StructureStart start = inicio.getStartForStructure(estructura);
+		String delInicio = start == null || !start.isValid()
+				? "su chunk NO tiene la capital"
+				: "su chunk tiene la capital: " + start.getPieces().size() + " piezas, de " + start.getBoundingBox().minX() + ", "
+						+ start.getBoundingBox().minZ() + " a " + start.getBoundingBox().maxX() + ", " + start.getBoundingBox().maxZ();
+		boolean conoce = !level.getChunk(aqui).getReferencesForStructure(estructura).isEmpty();
+		boolean dentro = level.structureManager().getStructureWithPieceAt(aqui, estructura).isValid();
+		String texto = "Destinos Core: capital del reino en " + cap.x() + ", " + cap.z() + " (chunk " + (cap.x() >> 4) + ", "
+				+ (cap.z() >> 4) + ", nivel " + cap.nivel() + ") · " + delInicio + " · este chunk "
+				+ (conoce ? "la conoce" : "NO la conoce") + (dentro ? " · estás dentro de una pieza" : "");
+		LOG.info(texto);
+		fuente.sendSuccess(() -> Component.literal(texto), false);
 		return 1;
 	}
 
