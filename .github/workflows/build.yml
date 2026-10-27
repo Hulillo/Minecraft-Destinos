@@ -40,7 +40,7 @@ jobs:
       - name: Simular 25 años de política viva (reproducible, sin caos)
         run: |
           mkdir -p prueba-politica
-          javac -d prueba-politica destinos-core/src/main/java/es/hulillo/destinos/Geo.java destinos-core/src/main/java/es/hulillo/destinos/MapaTerreno.java destinos-core/src/main/java/es/hulillo/destinos/politica/*.java herramientas/PruebaPolitica.java
+          javac -d prueba-politica -sourcepath destinos-core/src/main/java destinos-core/src/main/java/es/hulillo/destinos/politica/*.java herramientas/PruebaPolitica.java
           java -cp prueba-politica PruebaPolitica
 
       - name: Compilar Destinos Core

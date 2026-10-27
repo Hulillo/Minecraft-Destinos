@@ -30,7 +30,7 @@ final class EnvioTerritorios {
 		int wz = MapaTerreno.indiceVentana(jugador.getBlockZ());
 		for (int ox = -1; ox <= 1; ox++) {
 			for (int oz = -1; oz <= 1; oz++) {
-				long clave = MapaTerreno.clave(wx + ox, wz + oz);
+				long clave = Geo.clave(wx + ox, wz + oz);
 				if (ya.contains(clave)) {
 					continue;
 				}

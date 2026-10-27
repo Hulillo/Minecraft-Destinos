@@ -1,5 +1,8 @@
 package es.hulillo.destinos;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Matemática del mapa político, idéntica a las funciones geo/* del datapack y a herramientas/sim.py.
  * Aritmética int de Java = scoreboard de Minecraft (desbordamiento incluido), floorDiv y floorMod.
@@ -82,6 +85,44 @@ public final class Geo {
 		return res;
 	}
 
+	/** Centro en bloques del ducado (dcx, dcz): {x, z}. */
+	public static int[] centroDucado(int dcx, int dcz, int sal) {
+		return centro(dcx, dcz, S_DUCADO, sal);
+	}
+
+	/** Centro en bloques del reino (kx, kz): {x, z}. */
+	public static int[] centroReino(int kx, int kz, int sal) {
+		return centro(kx, kz, S_REINO, sal + K_REINO);
+	}
+
+	/** Celda de ducado (en un eje) donde cae la coordenada de bloque, sin el jitter del Voronoi. */
+	public static int celdaDucado(int bloque) {
+		return Math.floorDiv(bloque, S_DUCADO);
+	}
+
+	/** Reino y salvaje del ducado (dcx, dcz). */
+	public static Reino reinoDeDucado(int dcx, int dcz, int sal) {
+		int[] c = centroDucado(dcx, dcz, sal);
+		return reinoDeDucado(dcx, dcz, c[0], c[1], sal);
+	}
+
+	/**
+	 * Los reinos con señor de los 3×3 ducados alrededor de la celda (dcx, dcz), sin repetir y en orden de recorrido.
+	 * Un sitio a menos de medio ducado de un centro tiene su ducado ahí dentro.
+	 */
+	public static List<Reino> reinosCerca(int dcx, int dcz, int sal) {
+		List<Reino> res = new ArrayList<>(9);
+		for (int ox = -1; ox <= 1; ox++) {
+			for (int oz = -1; oz <= 1; oz++) {
+				Reino r = reinoDeDucado(dcx + ox, dcz + oz, sal);
+				if (!r.salvaje() && !res.contains(r)) {
+					res.add(r);
+				}
+			}
+		}
+		return res;
+	}
+
 	/** Reino y salvaje de un ducado (celda dcx, dcz con centro dctx, dctz). Igual que geo/territorio. */
 	public static Reino reinoDeDucado(int dcx, int dcz, int dctx, int dctz, int sal) {
 		int wx = dctx + Math.floorMod(hash(dcx, dcz, sal + K_WARP), 2 * WARP) - WARP;
@@ -108,4 +149,30 @@ public final class Geo {
 		Reino r = reinoDeDucado(d.cx(), d.cz(), d.ctx(), d.ctz(), sal);
 		return new int[] {d.cx(), d.cz(), r.kx(), r.kz(), r.salvaje() ? 1 : 0};
 	}
+
+	// ------------------------------------------------------------------ ids de celda
+
+	/** Id de una celda (ducado, reino, ventana…): x en los 32 bits altos y z en los bajos. */
+	public static long clave(int x, int z) {
+		return ((long) x << 32) ^ (z & 0xffffffffL);
+	}
+
+	public static int claveX(long clave) {
+		return (int) (clave >> 32);
+	}
+
+	public static int claveZ(long clave) {
+		return (int) clave;
+	}
+
+	/**
+	 * Mezcla un id para usarlo de clave de hash: Long.hashCode de clave(x, z) es x ^ z, que se repite muchísimo en
+	 * una rejilla. Multiplicar por un impar es biyectivo y reparte bien.
+	 */
+	public static long mezcla(long clave) {
+		return clave * MEZCLA;
+	}
+
+	/** El impar de la mezcla (parte áurea de 2^64), también para variar semillas. */
+	public static final long MEZCLA = 0x9E3779B97F4A7C15L;
 }

@@ -4,6 +4,7 @@ import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.MapaTerreno;
 import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTerritorio;
+import es.hulillo.destinos.cliente.Colores;
 import es.hulillo.destinos.cliente.TerritoriosCliente;
 import java.awt.Rectangle;
 import java.awt.geom.Area;
@@ -36,8 +37,6 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 	private static final float GROSOR_BORDE = 1.0F;
 	private static final float OPACIDAD_REINO = 0.95F;
 	private static final float GROSOR_REINO = 3.5F;
-	private static final int ROJO = 0xd42a2a;
-	private static final int ORO = 0xffc83d;
 	private static final float OPACIDAD_ORO = 0.35F;
 	/** Altura a la que se dejan los polígonos (JourneyMap la usa al ver cuevas por capas). */
 	private static final int Y = 64;
@@ -102,11 +101,7 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 			frentesSucios = true;
 			coronasSucias = true;
 		} else {
-			api.removeAll(DestinosCore.MOD_ID);
-			capas.clear();
-			frentes.clear();
-			coronas.clear();
-			pendientes.clear();
+			quitaTodo();
 		}
 	}
 
@@ -144,21 +139,12 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 			}
 			forma.closePath();
 			ShapeProperties estilo = new ShapeProperties()
-					.setFillColor(c.perdida() ? 0x9e9e9e : ORO)
+					.setFillColor(c.perdida() ? Colores.GRIS : Colores.ORO)
 					.setFillOpacity(0.95F)
 					.setStrokeColor(0x000000)
 					.setStrokeOpacity(1.0F)
 					.setStrokeWidth(2.0F);
-			for (MapPolygonWithHoles poligono : PolygonHelper.createPolygonFromArea(new Area(forma), Y)) {
-				PolygonOverlay capa = new PolygonOverlay(DestinosCore.MOD_ID, Level.OVERWORLD, estilo, poligono);
-				capa.setOverlayGroupName(GRUPO);
-				try {
-					api.show(capa);
-					coronas.add(capa);
-				} catch (Exception e) {
-					DestinosCore.LOG.warn("Destinos Core: JourneyMap no ha aceptado la corona de una capital", e);
-				}
-			}
+			muestra(new Area(forma), estilo, coronas, "la corona de una capital");
 		}
 	}
 
@@ -200,21 +186,12 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 			return;
 		}
 		ShapeProperties estilo = new ShapeProperties()
-				.setFillColor(ROJO)
+				.setFillColor(Colores.ROJO)
 				.setFillOpacity(0.85F)
 				.setStrokeColor(0x000000)
 				.setStrokeOpacity(0.9F)
 				.setStrokeWidth(2.0F);
-		for (MapPolygonWithHoles poligono : PolygonHelper.createPolygonFromArea(new Area(trazado), Y)) {
-			PolygonOverlay capa = new PolygonOverlay(DestinosCore.MOD_ID, Level.OVERWORLD, estilo, poligono);
-			capa.setOverlayGroupName(GRUPO);
-			try {
-				api.show(capa);
-				frentes.add(capa);
-			} catch (Exception e) {
-				DestinosCore.LOG.warn("Destinos Core: JourneyMap no ha aceptado un frente de guerra", e);
-			}
-		}
+		muestra(new Area(trazado), estilo, frentes, "un frente de guerra");
 	}
 
 	/** Un tramo de frente de una casilla centrado en (x, z): la línea y su X encima. */
@@ -276,12 +253,8 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 
 	@Override
 	public void borrado() {
-		api.removeAll(DestinosCore.MOD_ID);
+		quitaTodo();
 		areas.clear();
-		capas.clear();
-		frentes.clear();
-		coronas.clear();
-		pendientes.clear();
 	}
 
 	/** Área de cada ducado (tierra y aguas territoriales) dentro de la zona, juntando las casillas seguidas de cada fila. */
@@ -323,47 +296,58 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 			estilo = new ShapeProperties()
 					.setFillColor(ducado.color())
 					.setFillOpacity(0)
-					.setStrokeColor(oscuro(oscuro(ducado.color())))
+					.setStrokeColor(Colores.oscuro(Colores.oscuro(ducado.color())))
 					.setStrokeOpacity(OPACIDAD_REINO)
 					.setStrokeWidth(GROSOR_REINO);
 		} else if (TerritoriosCliente.reciente(ducado)) {
 			// acaba de cambiar de dueño: relleno y borde dorados
 			estilo = new ShapeProperties()
-					.setFillColor(ORO)
+					.setFillColor(Colores.ORO)
 					.setFillOpacity(OPACIDAD_ORO)
-					.setStrokeColor(ORO)
+					.setStrokeColor(Colores.ORO)
 					.setStrokeOpacity(OPACIDAD_REINO)
 					.setStrokeWidth(GROSOR_REINO - 1);
 		} else {
 			estilo = new ShapeProperties()
 					.setFillColor(ducado.color())
 					.setFillOpacity(ducado.oceano() ? OPACIDAD_AGUAS : OPACIDAD_RELLENO)
-					.setStrokeColor(oscuro(ducado.color()))
+					.setStrokeColor(Colores.oscuro(ducado.color()))
 					.setStrokeOpacity(OPACIDAD_BORDE)
 					.setStrokeWidth(GROSOR_BORDE);
 		}
-		List<PolygonOverlay> nuevas = new ArrayList<>();
-		if (areas.get(ducado) == null || areas.get(ducado).isEmpty()) {
+		Area area = areas.get(ducado);
+		if (area == null || area.isEmpty()) {
 			areas.remove(ducado);
 			return;
 		}
-		for (MapPolygonWithHoles poligono : PolygonHelper.createPolygonFromArea(areas.get(ducado), Y)) {
+		List<PolygonOverlay> nuevas = new ArrayList<>();
+		muestra(area, estilo, nuevas, "un ducado");
+		capas.put(ducado, nuevas);
+	}
+
+	/**
+	 * Pone en JourneyMap los polígonos del área con ese estilo y los apunta en puestas (para quitarlos luego). que:
+	 * qué se estaba pintando, para el aviso si JourneyMap no lo acepta.
+	 */
+	private void muestra(Area area, ShapeProperties estilo, List<PolygonOverlay> puestas, String que) {
+		for (MapPolygonWithHoles poligono : PolygonHelper.createPolygonFromArea(area, Y)) {
 			PolygonOverlay capa = new PolygonOverlay(DestinosCore.MOD_ID, Level.OVERWORLD, estilo, poligono);
 			capa.setOverlayGroupName(GRUPO);
 			try {
 				api.show(capa);
-				nuevas.add(capa);
+				puestas.add(capa);
 			} catch (Exception e) {
-				DestinosCore.LOG.warn("Destinos Core: JourneyMap no ha aceptado un ducado", e);
+				DestinosCore.LOG.warn("Destinos Core: JourneyMap no ha aceptado {}", que, e);
 			}
 		}
-		capas.put(ducado, nuevas);
 	}
 
-	static int oscuro(int rgb) {
-		int r = (rgb >> 16 & 0xff) * 3 / 5;
-		int g = (rgb >> 8 & 0xff) * 3 / 5;
-		int b = (rgb & 0xff) * 3 / 5;
-		return r << 16 | g << 8 | b;
+	/** Quita del mapa todo lo pintado (las áreas se quedan). */
+	private void quitaTodo() {
+		api.removeAll(DestinosCore.MOD_ID);
+		capas.clear();
+		frentes.clear();
+		coronas.clear();
+		pendientes.clear();
 	}
 }

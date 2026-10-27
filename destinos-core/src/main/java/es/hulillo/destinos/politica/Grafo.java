@@ -1,5 +1,6 @@
 package es.hulillo.destinos.politica;
 
+import es.hulillo.destinos.Geo;
 import es.hulillo.destinos.MapaTerreno;
 import java.util.Collections;
 import java.util.HashSet;
@@ -24,6 +25,12 @@ public final class Grafo {
 	/** Los mismos ducados, para buscarlos por id sin bajar por el árbol. */
 	private final PorId<Ducado> porId = new PorId<>();
 	private final PorId<Integer> casillas = new PorId<>();
+	/** Posiciones en recursos(id). */
+	public static final int COMIDA = 0;
+	public static final int MINERAL = 1;
+	public static final int MADERA = 2;
+	public static final int PUEBLOS = 3;
+
 	/** comida, mineral, madera y pueblos de cada ducado (lo que se ha visto de él). */
 	private final PorId<int[]> recursos = new PorId<>();
 	/** Capital de cada reino (por su ducado) y al revés. */
@@ -37,15 +44,15 @@ public final class Grafo {
 	private final PorId<Set<Long>> ventanasDe = new PorId<>();
 
 	public static long id(int x, int z) {
-		return MapaTerreno.clave(x, z);
+		return Geo.clave(x, z);
 	}
 
 	public static int x(long id) {
-		return (int) (id >> 32);
+		return Geo.claveX(id);
 	}
 
 	public static int z(long id) {
-		return (int) id;
+		return Geo.claveZ(id);
 	}
 
 	/** Si la ventana ya está metida (para no calcular su vecindario otra vez). */
@@ -68,10 +75,10 @@ public final class Grafo {
 			}
 			casillas.merge(id, d.casillas(), Integer::sum);
 			int[] r = recursos.computeIfAbsent(id, k -> new int[4]);
-			r[0] += d.comida();
-			r[1] += d.mineral();
-			r[2] += d.madera();
-			r[3] += d.pueblos();
+			r[COMIDA] += d.comida();
+			r[MINERAL] += d.mineral();
+			r[MADERA] += d.madera();
+			r[PUEBLOS] += d.pueblos();
 			ventanasDe.computeIfAbsent(id, k -> new HashSet<>()).add(ventana);
 		}
 		for (MapaTerreno.Frontera f : v.fronteras()) {
