@@ -245,7 +245,8 @@ public final class EstructuraCapital extends Structure {
 		}
 
 		boolean en(int x, int z) {
-			return visto.computeIfAbsent(((long) (x >> 4) << 32) ^ ((z >> 4) & 0xffffffffL), k ->
+			// la casilla mezclada: con x en los bits altos y z en los bajos, Long.hashCode (x ^ z) se repite mucho
+			return visto.computeIfAbsent((((long) (x >> 4) << 32) ^ ((z >> 4) & 0xffffffffL)) * 0x9E3779B97F4A7C15L, k ->
 					ctx.chunkGenerator().getBaseHeight((x & ~15) + 8, (z & ~15) + 8, Heightmap.Types.OCEAN_FLOOR_WG, ctx.heightAccessor(),
 							ctx.randomState()) < ctx.chunkGenerator().getSeaLevel());
 		}

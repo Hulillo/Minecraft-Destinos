@@ -1,7 +1,7 @@
 package es.hulillo.destinos.politica;
 
 import es.hulillo.destinos.MapaTerreno;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -21,16 +21,20 @@ public final class Grafo {
 	}
 
 	private final Map<Long, Ducado> ducados = new TreeMap<>();
-	private final Map<Long, Integer> casillas = new HashMap<>();
+	/** Los mismos ducados, para buscarlos por id sin bajar por el árbol. */
+	private final PorId<Ducado> porId = new PorId<>();
+	private final PorId<Integer> casillas = new PorId<>();
 	/** comida, mineral, madera y pueblos de cada ducado (lo que se ha visto de él). */
-	private final Map<Long, int[]> recursos = new HashMap<>();
+	private final PorId<int[]> recursos = new PorId<>();
 	/** Capital de cada reino (por su ducado) y al revés. */
-	private final Map<Long, Long> capitales = new HashMap<>();
-	private final Map<Long, Long> capitalDe = new HashMap<>();
-	private final Map<Long, Map<Long, int[]>> vecinos = new HashMap<>();
+	private final PorId<Long> capitales = new PorId<>();
+	private final PorId<Long> capitalDe = new PorId<>();
+	private final PorId<Map<Long, int[]>> vecinos = new PorId<>();
+	/** vecinos(id) ya montados: la política los pide miles de veces por turno y solo cambian al crecer el grafo. */
+	private final PorId<Map<Long, Lado>> vecinosHechos = new PorId<>();
 	private final Set<Long> ventanas = new HashSet<>();
 	/** En qué ventanas sale cada ducado (para reenviar a los mapas solo las que cambian). */
-	private final Map<Long, Set<Long>> ventanasDe = new HashMap<>();
+	private final PorId<Set<Long>> ventanasDe = new PorId<>();
 
 	public static long id(int x, int z) {
 		return MapaTerreno.clave(x, z);
@@ -54,9 +58,14 @@ public final class Grafo {
 		if (!ventanas.add(ventana)) {
 			return false;
 		}
+		vecinosHechos.clear();
 		for (MapaTerreno.DucadoVisto d : v.ducados()) {
 			long id = id(d.dcx(), d.dcz());
-			ducados.putIfAbsent(id, new Ducado(id, d.dcx(), d.dcz(), id(d.kx(), d.kz()), d.salvaje()));
+			if (!ducados.containsKey(id)) {
+				Ducado nuevo = new Ducado(id, d.dcx(), d.dcz(), id(d.kx(), d.kz()), d.salvaje());
+				ducados.put(id, nuevo);
+				porId.put(id, nuevo);
+			}
 			casillas.merge(id, d.casillas(), Integer::sum);
 			int[] r = recursos.computeIfAbsent(id, k -> new int[4]);
 			r[0] += d.comida();
@@ -82,7 +91,9 @@ public final class Grafo {
 
 	/** Añade un ducado a mano (para las pruebas). */
 	public void agrega(Ducado d, int tamano) {
+		vecinosHechos.clear();
 		ducados.put(d.id(), d);
+		porId.put(d.id(), d);
 		casillas.merge(d.id(), tamano, Integer::sum);
 	}
 
@@ -123,6 +134,7 @@ public final class Grafo {
 
 	/** Une dos ducados a mano (para las pruebas). */
 	public void une(long a, long b, int casillasFrontera, int dificiles) {
+		vecinosHechos.clear();
 		MapaTerreno.Frontera f = new MapaTerreno.Frontera(x(a), z(a), x(b), z(b), casillasFrontera, dificiles);
 		suma(a, b, f);
 		suma(b, a, f);
@@ -133,7 +145,7 @@ public final class Grafo {
 	}
 
 	public Ducado ducado(long id) {
-		return ducados.get(id);
+		return porId.get(id);
 	}
 
 	/** Ventanas donde sale el ducado. */
@@ -145,13 +157,22 @@ public final class Grafo {
 		return casillas.getOrDefault(id, 0);
 	}
 
-	/** Vecinos conocidos de un ducado, en orden fijo. */
+	/** Vecinos conocidos de un ducado, en orden fijo. No se debe modificar. */
 	public Map<Long, Lado> vecinos(long id) {
+		Map<Long, Lado> ya = vecinosHechos.get(id);
+		if (ya == null) {
+			ya = Collections.unmodifiableMap(montaVecinos(id));
+			vecinosHechos.put(id, ya);
+		}
+		return ya;
+	}
+
+	private Map<Long, Lado> montaVecinos(long id) {
 		Map<Long, Lado> res = new TreeMap<>();
 		Map<Long, int[]> v = vecinos.get(id);
 		if (v != null) {
 			v.forEach((b, lado) -> {
-				if (ducados.containsKey(b)) {
+				if (porId.containsKey(b)) {
 					res.put(b, new Lado(lado[0], lado[0] == 0 ? 0 : (double) lado[1] / lado[0]));
 				}
 			});

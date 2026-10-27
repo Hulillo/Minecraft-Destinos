@@ -6,8 +6,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.SplittableRandom;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -316,31 +318,38 @@ public final class Politica {
 	private final class Mapa {
 		final Grafo grafo;
 		final Map<Long, List<Long>> ducadosDe = new TreeMap<>();
-		final Map<Long, Integer> poder = new HashMap<>();
+		final PorId<Integer> poder = new PorId<>();
 		final TreeSet<Par> vecinos = new TreeSet<>();
 
 		Mapa(Grafo grafo) {
 			this.grafo = grafo;
+			// el dueño de cada ducado se mira una vez: el bucle de vecinos lo pide por cada lado de cada frontera
+			PorId<Long> duenos = new PorId<>();
 			for (Grafo.Ducado d : grafo.ducados().values()) {
 				long r = dueno(d);
+				duenos.put(d.id(), r);
 				if (r == SALVAJE) {
 					continue;
 				}
 				ducadosDe.computeIfAbsent(r, k -> new ArrayList<>()).add(d.id());
 				poder.merge(r, valor(grafo, d.id()), Integer::sum);
 			}
+			// cada frontera sale desde sus dos ducados: basta con mirarla desde el reino menor, y los pares
+			// repetidos (muchos ducados en la misma raya) se quitan antes de ordenarlos
+			Set<Par> pares = new HashSet<>();
 			for (Grafo.Ducado d : grafo.ducados().values()) {
-				long r = dueno(d);
+				long r = duenos.get(d.id());
 				if (r == SALVAJE) {
 					continue;
 				}
 				for (long v : grafo.vecinos(d.id()).keySet()) {
-					long o = dueno(grafo.ducado(v));
-					if (o != SALVAJE && o != r) {
-						vecinos.add(Par.de(r, o));
+					long o = duenos.get(v);
+					if (o != SALVAJE && r < o) {
+						pares.add(new Par(r, o));
 					}
 				}
 			}
+			vecinos.addAll(pares);
 		}
 
 		Iterable<Long> reinos() {
