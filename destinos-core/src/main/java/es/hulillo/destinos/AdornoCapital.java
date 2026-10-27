@@ -127,6 +127,17 @@ public final class AdornoCapital extends StructurePiece {
 			return;
 		}
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+		if (caja.isInside(px, caja.minY(), pz)) {
+			int llenos = 0;
+			for (int y = 100; y < 319; y++) {
+				if (!level.getBlockState(pos.set(px, y, pz)).isAir()) {
+					llenos++;
+				}
+			}
+			DestinosCore.LOG.info("Destinos Core: adorno en {}, {}: superficie {} · fondo {} · en 318 {} · en 317 {} · bloques entre 100 y 318: {}",
+					px, pz, level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, px, pz), level.getHeight(Heightmap.Types.OCEAN_FLOOR_WG, px, pz),
+					level.getBlockState(pos.set(px, 318, pz)), level.getBlockState(pos.set(px, 317, pz)), llenos);
+		}
 		// 1. empedrar: calles (los caminos de tierra) y la plaza (el suelo natural cerca del centro)
 		for (int x = x0; x <= x1; x++) {
 			for (int z = z0; z <= z1; z++) {
