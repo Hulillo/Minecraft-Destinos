@@ -44,7 +44,7 @@ public final class AdornoCapital extends StructurePiece {
 	/** Radio de la plaza mayor alrededor del centro de la capital. */
 	private static final int PLAZA = 12;
 	/** Las farolas: como mucho una por celda de LADO×LADO, y solo en su parte de en medio (así quedan separadas). */
-	private static final int LADO = 8;
+	private static final int LADO = 16;
 	private static final int K_PIEDRA = 4417;
 	private static final int K_FAROLA = 9133;
 
@@ -219,11 +219,11 @@ public final class AdornoCapital extends StructurePiece {
 	 */
 	private void farola(WorldGenLevel level, BoundingBox caja, BlockPos.MutableBlockPos pos, int cx, int cz) {
 		int h = Geo.hash(cx, cz, K_FAROLA);
-		int ox = Math.floorMod(h, 4) + 2;
-		int oz = Math.floorMod(h >> 4, 4) + 2;
-		for (int i = 0; i < 16; i++) {
-			int x = cx * LADO + 2 + (ox + i) % 4;
-			int z = cz * LADO + 2 + (oz + i / 4) % 4;
+		int ox = Math.floorMod(h, 8);
+		int oz = Math.floorMod(h >> 4, 8);
+		for (int i = 0; i < 64; i++) {
+			int x = cx * LADO + 4 + (ox + i) % 8;
+			int z = cz * LADO + 4 + (oz + i / 8) % 8;
 			if (!caja.isInside(x, caja.minY(), z) || cerca(x, z, PLAZA)) {
 				continue;
 			}
