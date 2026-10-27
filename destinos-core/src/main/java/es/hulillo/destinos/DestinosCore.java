@@ -92,6 +92,7 @@ public final class DestinosCore implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
 			mapa = null;
 			politica = null;
+			EstructuraCapital.olvida();
 			mapaEnviado = null;
 			ENVIO.olvidaTodo();
 		});

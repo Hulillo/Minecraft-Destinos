@@ -483,6 +483,8 @@ public final class MapaTerreno {
 	 * La capital del reino (kx, kz) sin bloquear: null si aún se está eligiendo (y la pide), vacío si el reino no
 	 * tiene ningún ducado donde ponerla.
 	 */
+	private final Map<Long, CompletableFuture<Capital>> enLinea = new ConcurrentHashMap<>();
+
 	public Optional<Capital> capitalSiLista(int kx, int kz) {
 		CompletableFuture<Capital> f = capitales.computeIfAbsent(clave(kx, kz),
 				k -> CompletableFuture.supplyAsync(() -> calculaCapital(kx, kz), hilo));
@@ -498,13 +500,28 @@ public final class MapaTerreno {
 	 * calculando él, se calcula otra vez aquí (sale igual).
 	 */
 	public Capital capital(int kx, int kz) {
-		CompletableFuture<Capital> f = capitales.get(clave(kx, kz));
+		long k = clave(kx, kz);
+		CompletableFuture<Capital> f = capitales.get(k);
 		if (f != null && f.isDone() && !f.isCompletedExceptionally()) {
 			return f.join();
 		}
-		Capital c = calculaCapital(kx, kz);
-		capitales.putIfAbsent(clave(kx, kz), CompletableFuture.completedFuture(c));
-		return c;
+		// varios hilos de generación pueden pedir la misma capital a la vez: la calcula el primero y los demás
+		// le esperan (sale en milisegundos), en vez de calcularla todos
+		CompletableFuture<Capital> mia = new CompletableFuture<>();
+		CompletableFuture<Capital> otra = enLinea.putIfAbsent(k, mia);
+		if (otra != null) {
+			return otra.join();
+		}
+		try {
+			Capital c = calculaCapital(kx, kz);
+			capitales.put(k, CompletableFuture.completedFuture(c));
+			mia.complete(c);
+			return c;
+		} catch (RuntimeException e) {
+			mia.completeExceptionally(e);
+			enLinea.remove(k);
+			throw e;
+		}
 	}
 
 	/**

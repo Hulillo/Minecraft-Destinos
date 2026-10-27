@@ -57,10 +57,24 @@ public final class EstructuraCapital extends Structure {
 
 	/** Pueblos agrandados ya preparados (por pueblo, profundidad y distancia), para los registros del mundo abierto. */
 	private static final Map<String, Optional<Structure>> COPIAS = new ConcurrentHashMap<>();
+	/** Capitales ya preparadas, por chunk (las últimas; hay pocas y se piden varias veces seguidas). */
+	private static final Map<Long, Optional<Structure.GenerationStub>> PREPARADAS = new java.util.LinkedHashMap<>(16, 0.75F, true) {
+		@Override
+		protected boolean removeEldestEntry(Map.Entry<Long, Optional<Structure.GenerationStub>> mas) {
+			return size() > 16;
+		}
+	};
 	private static volatile RegistryAccess registrosCopias;
 
 	public EstructuraCapital(Structure.StructureSettings ajustes) {
 		super(ajustes);
+	}
+
+	/** Al cerrar el mundo: fuera las capitales preparadas, que guardan cosas de ese mundo. */
+	static void olvida() {
+		synchronized (PREPARADAS) {
+			PREPARADAS.clear();
+		}
 	}
 
 	static void registra() {
@@ -69,6 +83,23 @@ public final class EstructuraCapital extends Structure {
 
 	@Override
 	public Optional<Structure.GenerationStub> findGenerationPoint(Structure.GenerationContext ctx) {
+		// la generación y las búsquedas de estructuras (/locate, RoadWeaver…) preguntan por el mismo chunk: la
+		// capital se prepara una vez (son cientos de piezas) y las demás veces se reutiliza
+		long clave = ctx.chunkPos().toLong() * 31 + ctx.seed();
+		synchronized (PREPARADAS) {
+			Optional<Structure.GenerationStub> ya = PREPARADAS.get(clave);
+			if (ya != null) {
+				return ya;
+			}
+		}
+		Optional<Structure.GenerationStub> stub = prepara(ctx);
+		synchronized (PREPARADAS) {
+			PREPARADAS.put(clave, stub);
+		}
+		return stub;
+	}
+
+	private Optional<Structure.GenerationStub> prepara(Structure.GenerationContext ctx) {
 		int x = ctx.chunkPos().getMiddleBlockX();
 		int z = ctx.chunkPos().getMiddleBlockZ();
 		int y = ctx.chunkGenerator().getFirstOccupiedHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG, ctx.heightAccessor(),
@@ -204,7 +235,7 @@ public final class EstructuraCapital extends Structure {
 		return calles;
 	}
 
-	/** Dónde hay agua en vez de tierra (fondo por debajo del nivel del mar), mirado por casillas de 8 bloques. */
+	/** Dónde hay agua en vez de tierra (fondo por debajo del nivel del mar), mirado por casillas de 16 bloques. */
 	private static final class Agua {
 		private final Structure.GenerationContext ctx;
 		private final Map<Long, Boolean> visto = new ConcurrentHashMap<>();
@@ -214,8 +245,8 @@ public final class EstructuraCapital extends Structure {
 		}
 
 		boolean en(int x, int z) {
-			return visto.computeIfAbsent(((long) (x >> 3) << 32) ^ ((z >> 3) & 0xffffffffL), k ->
-					ctx.chunkGenerator().getBaseHeight(x, z, Heightmap.Types.OCEAN_FLOOR_WG, ctx.heightAccessor(),
+			return visto.computeIfAbsent(((long) (x >> 4) << 32) ^ ((z >> 4) & 0xffffffffL), k ->
+					ctx.chunkGenerator().getBaseHeight((x & ~15) + 8, (z & ~15) + 8, Heightmap.Types.OCEAN_FLOOR_WG, ctx.heightAccessor(),
 							ctx.randomState()) < ctx.chunkGenerator().getSeaLevel());
 		}
 
