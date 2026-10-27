@@ -131,12 +131,14 @@ public final class DestinosCore implements ModInitializer {
 			// capitales nuevas: el estado político (con sus coronas) otra vez a todos
 			ENVIO.olvidaPolitica();
 		}
-		PaquetePolitica estado = pol.estadoMapas();
+		// el estado político solo se monta si algún jugador no lo tiene aún
+		PaquetePolitica[] estado = new PaquetePolitica[1];
+		java.util.function.Supplier<PaquetePolitica> deAhora = () -> estado[0] != null ? estado[0] : (estado[0] = pol.estadoMapas());
 		for (ServerPlayer p : server.getPlayerList().getPlayers()) {
 			if (p.level().dimension() == Level.OVERWORLD) {
 				m.precarga(p.getBlockX(), p.getBlockZ());
 				m.precargaLejos(p.getBlockX(), p.getBlockZ());
-				ENVIO.envia(m, pol, estado, p);
+				ENVIO.envia(m, pol, deAhora, p);
 			}
 		}
 	}

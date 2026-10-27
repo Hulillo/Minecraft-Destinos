@@ -86,7 +86,7 @@ public final class DestinosCoreCliente implements ClientModInitializer {
 						+ (d.salvaje() ? " · salvaje" : "") + (d.oceano() ? (d.internacional() ? " · mar internacional" : " · aguas territoriales") : "")
 						+ " · color #" + String.format("%06x", d.color()) + " · altura " + TerritoriosCliente.altura(tx, tz);
 		fuente.sendFeedback(Component.literal("Destinos Core: " + TerritoriosCliente.zonas() + " zonas recibidas · " + aqui));
-		fuente.sendFeedback(Component.literal(TerritoriosCliente.ultimoPintado));
+		fuente.sendFeedback(Component.literal(TerritoriosCliente.ultimoPintado.get()));
 		return 1;
 	}
 }

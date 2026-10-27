@@ -593,12 +593,19 @@ public final class MapaTerreno {
 		int ducadosReino = candidatas.size();
 		for (int i = 0; i < Math.min(CANDIDATAS_CAPITAL, candidatas.size()); i++) {
 			Candidata cand = candidatas.get(i);
+			// el agua solo resta: una candidata que ya no llega a la mejor no puede ganar (ni las siguientes)
+			if (cand.puntos() <= puntosMejor) {
+				break;
+			}
 			boolean hayMontana = cand.sitios().stream().anyMatch(s -> s[2] == 1);
 			for (int[] s : cand.sitios()) {
 				if (montana && hayMontana && s[2] == 0) {
 					continue;
 				}
-				double puntos = cand.puntos() - aguaAlrededor(s[0], s[1]) * 0.6;
+				// se deja de contar agua en cuanto el sitio ya no puede ganar a la mejor
+				int tope = puntosMejor == Double.NEGATIVE_INFINITY ? Integer.MAX_VALUE
+						: (int) Math.floor((cand.puntos() - puntosMejor) / 0.6);
+				double puntos = cand.puntos() - aguaAlrededor(s[0], s[1], tope) * 0.6;
 				if (puntos > puntosMejor) {
 					puntosMejor = puntos;
 					mejor = new Capital(cand.cx(), cand.cz(), s[0], s[1], montana && s[2] == 1, nivel(cand.recursos(), ducadosReino));
@@ -620,13 +627,13 @@ public final class MapaTerreno {
 		return riqueza < RIQUEZA_NORMAL ? 0 : riqueza < RIQUEZA_RICA ? 1 : 2;
 	}
 
-	/** Cuántos de los 5×5 puntos alrededor de (x, z), hasta donde llega la capital, son agua. */
-	private int aguaAlrededor(int x, int z) {
+	/** Cuántos de los 5×5 puntos alrededor de (x, z), hasta donde llega la capital, son agua (deja de contar pasado tope). */
+	private int aguaAlrededor(int x, int z, int tope) {
 		int agua = 0;
 		for (int dz = -2; dz <= 2; dz++) {
 			for (int dx = -2; dx <= 2; dx++) {
-				if (muestreador.agua(x + dx * PASO_AGUA, z + dz * PASO_AGUA)) {
-					agua++;
+				if (muestreador.agua(x + dx * PASO_AGUA, z + dz * PASO_AGUA) && ++agua > tope) {
+					return agua;
 				}
 			}
 		}

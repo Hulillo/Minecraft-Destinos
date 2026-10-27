@@ -3,6 +3,8 @@ package es.hulillo.destinos;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import net.minecraft.core.Registry;
 import net.minecraft.core.Vec3i;
@@ -55,19 +57,15 @@ public final class ColocacionCapital extends StructurePlacement {
 		return capital != null;
 	}
 
-	/** La capital cuyo sitio cae en el chunk (cx, cz), o null si en ese chunk no va ninguna. */
-	static MapaTerreno.Capital capitalEn(int cx, int cz) {
-		MapaTerreno mapa = DestinosCore.mapaActual();
-		if (mapa == null) {
-			if (!avisado) {
-				avisado = true;
-				DestinosCore.LOG.info("Destinos Core: se generan chunks antes de que el datapack ponga la sal; ahí no habrá capitales");
-			}
-			return null;
-		}
+	private record Cerca(MapaTerreno mapa, int dcx, int dcz, List<MapaTerreno.Capital> capitales) {
+	}
+
+	private static final ThreadLocal<Cerca> CERCA = new ThreadLocal<>();
+
+	/** Las capitales de los reinos de los ducados de alrededor de (dcx, dcz). */
+	private static List<MapaTerreno.Capital> capitalesCerca(MapaTerreno mapa, int dcx, int dcz) {
 		int sal = mapa.sal();
-		int dcx = Math.floorDiv(cx * 16 + 8, Geo.S_DUCADO);
-		int dcz = Math.floorDiv(cz * 16 + 8, Geo.S_DUCADO);
+		List<MapaTerreno.Capital> res = new ArrayList<>();
 		long[] vistos = new long[9];
 		int n = 0;
 		for (int ox = -1; ox <= 1; ox++) {
@@ -87,9 +85,35 @@ public final class ColocacionCapital extends StructurePlacement {
 				}
 				vistos[n++] = reino;
 				MapaTerreno.Capital capital = mapa.capital(r.kx(), r.kz());
-				if (capital != null && capital.x() >> 4 == cx && capital.z() >> 4 == cz) {
-					return capital;
+				if (capital != null) {
+					res.add(capital);
 				}
+			}
+		}
+		return res;
+	}
+
+	/** La capital cuyo sitio cae en el chunk (cx, cz), o null si en ese chunk no va ninguna. */
+	static MapaTerreno.Capital capitalEn(int cx, int cz) {
+		MapaTerreno mapa = DestinosCore.mapaActual();
+		if (mapa == null) {
+			if (!avisado) {
+				avisado = true;
+				DestinosCore.LOG.info("Destinos Core: se generan chunks antes de que el datapack ponga la sal; ahí no habrá capitales");
+			}
+			return null;
+		}
+		int dcx = Math.floorDiv(cx * 16 + 8, Geo.S_DUCADO);
+		int dcz = Math.floorDiv(cz * 16 + 8, Geo.S_DUCADO);
+		// los chunks de un mismo ducado miran las mismas capitales: se buscan una vez por ducado y hilo
+		Cerca cerca = CERCA.get();
+		if (cerca == null || cerca.mapa() != mapa || cerca.dcx() != dcx || cerca.dcz() != dcz) {
+			cerca = new Cerca(mapa, dcx, dcz, capitalesCerca(mapa, dcx, dcz));
+			CERCA.set(cerca);
+		}
+		for (MapaTerreno.Capital capital : cerca.capitales()) {
+			if (capital.x() >> 4 == cx && capital.z() >> 4 == cz) {
+				return capital;
 			}
 		}
 		return null;
