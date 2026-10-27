@@ -161,7 +161,6 @@ public final class AdornoCapital extends StructurePiece {
 			puesto(level, caja, pos, x, z, Geo.hash(x, z, K_PIEDRA));
 		}
 	}
-	}
 
 	private void empiedra(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z) {
 		int dx = x - px;
