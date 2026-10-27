@@ -165,8 +165,9 @@ public final class EstructuraCapital extends Structure {
 					enCalles += calles.get(i).size();
 				}
 			}
-			// la muralla al final, para que vea las calles y casas ya puestas y les deje hueco
-			muralla.forEach(piezas::addPiece);
+			// la muralla al final, para que vea las calles y casas ya puestas y les deje hueco. Ningún trozo que toque
+			// el agua: cada pieza allana el terreno bajo su caja, y sobre el mar eso levantaba un anillo de tierra
+			muralla.stream().filter(pieza -> !agua.toca(pieza)).forEach(piezas::addPiece);
 			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}): {} de {} piezas del centro, {} barrios, {} piezas en total",
 					principal.position().getX(), principal.position().getY(), principal.position().getZ(), nivel, delCentro.stream()
 							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + enCalles);
@@ -332,6 +333,12 @@ public final class EstructuraCapital extends Structure {
 		boolean tapa(StructurePiece pieza) {
 			BoundingBox c = pieza.getBoundingBox();
 			return en(c.getCenter().getX(), c.getCenter().getZ()) && esquinasMojadas(c) >= 2;
+		}
+
+		/** Si algo de la pieza (el centro o una esquina) cae sobre el agua. */
+		boolean toca(StructurePiece pieza) {
+			BoundingBox c = pieza.getBoundingBox();
+			return en(c.getCenter().getX(), c.getCenter().getZ()) || esquinasMojadas(c) > 0;
 		}
 
 		private int esquinasMojadas(BoundingBox c) {
