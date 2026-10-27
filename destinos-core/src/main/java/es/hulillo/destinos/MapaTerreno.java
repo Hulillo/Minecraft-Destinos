@@ -6,7 +6,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.PriorityQueue;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -370,27 +369,21 @@ public final class MapaTerreno {
 		int[] dueno = new int[total];
 		Arrays.fill(dueno, -1);
 		int[] mar = new int[total];
-		PriorityQueue<double[]> cola = new PriorityQueue<>((p, q) -> {
-			int c = Double.compare(p[0], q[0]);
-			if (c != 0) {
-				return c;
-			}
-			c = Double.compare(p[2], q[2]);
-			return c != 0 ? c : Double.compare(p[1], q[1]);
-		});
+		Cola cola = new Cola(total);
 		for (int s = 0; s < semillas.size(); s++) {
 			int k = origen.get(s);
 			if (coste[k] > 0) {
 				coste[k] = 0;
 				dueno[k] = s;
-				cola.add(new double[] {0, k, s});
+				cola.mete(0, k, s);
 			}
 		}
-		while (!cola.isEmpty()) {
-			double[] e = cola.poll();
-			int k = (int) e[1];
-			int s = (int) e[2];
-			if (e[0] > coste[k] || dueno[k] != s) {
+		while (!cola.vacia()) {
+			double c0 = cola.coste[0];
+			int k = cola.casilla[0];
+			int s = cola.semilla[0];
+			cola.saca();
+			if (c0 > coste[k] || dueno[k] != s) {
 				continue;
 			}
 			boolean salvaje = semillas.get(s).salvaje();
@@ -404,12 +397,12 @@ public final class MapaTerreno {
 						continue;
 					}
 					int nk = ni + nj * N;
-					double nc = e[0] + costePaso(terreno[k], terreno[nk], di != 0 && dj != 0, salvaje);
+					double nc = c0 + costePaso(terreno[k], terreno[nk], di != 0 && dj != 0, salvaje);
 					if (nc < coste[nk] || (nc == coste[nk] && s < dueno[nk])) {
 						coste[nk] = nc;
 						dueno[nk] = s;
 						mar[nk] = mar[k] + (terreno[nk].oceano() ? 1 : 0);
-						cola.add(new double[] {nc, nk, s});
+						cola.mete(nc, nk, s);
 					}
 				}
 			}
@@ -713,6 +706,88 @@ public final class MapaTerreno {
 	}
 
 	/** Lo que cuesta andar de una casilla a la vecina: ríos, montañas, mar y cambios de bioma lo encarecen. */
+	/**
+	 * Cola de prioridad del Dijkstra sin un objeto por entrada (eran decenas de miles por zona, basura para el
+	 * recolector): montículo en arrays, ordenado por coste, luego semilla y luego casilla, como antes.
+	 */
+	private static final class Cola {
+		double[] coste;
+		int[] casilla;
+		int[] semilla;
+		int n;
+
+		Cola(int capacidad) {
+			coste = new double[capacidad];
+			casilla = new int[capacidad];
+			semilla = new int[capacidad];
+		}
+
+		boolean vacia() {
+			return n == 0;
+		}
+
+		private boolean antes(int a, int b) {
+			int c = Double.compare(coste[a], coste[b]);
+			if (c != 0) {
+				return c < 0;
+			}
+			if (semilla[a] != semilla[b]) {
+				return semilla[a] < semilla[b];
+			}
+			return casilla[a] < casilla[b];
+		}
+
+		private void cambia(int a, int b) {
+			double c = coste[a];
+			coste[a] = coste[b];
+			coste[b] = c;
+			int t = casilla[a];
+			casilla[a] = casilla[b];
+			casilla[b] = t;
+			t = semilla[a];
+			semilla[a] = semilla[b];
+			semilla[b] = t;
+		}
+
+		void mete(double c, int k, int s) {
+			if (n == coste.length) {
+				coste = Arrays.copyOf(coste, n * 2);
+				casilla = Arrays.copyOf(casilla, n * 2);
+				semilla = Arrays.copyOf(semilla, n * 2);
+			}
+			coste[n] = c;
+			casilla[n] = k;
+			semilla[n] = s;
+			int i = n++;
+			while (i > 0 && antes(i, (i - 1) / 2)) {
+				cambia(i, (i - 1) / 2);
+				i = (i - 1) / 2;
+			}
+		}
+
+		/** Quita la primera (la de menor coste). */
+		void saca() {
+			cambia(0, --n);
+			int i = 0;
+			while (true) {
+				int a = 2 * i + 1;
+				int b = a + 1;
+				int m = i;
+				if (a < n && antes(a, m)) {
+					m = a;
+				}
+				if (b < n && antes(b, m)) {
+					m = b;
+				}
+				if (m == i) {
+					return;
+				}
+				cambia(i, m);
+				i = m;
+			}
+		}
+	}
+
 	private static double costePaso(Casilla desde, Casilla hacia, boolean diagonal, boolean salvaje) {
 		double paso = 1 + Math.abs(hacia.altura() - desde.altura()) / DESNIVEL_POR_PUNTO;
 		if (hacia.montana()) {
