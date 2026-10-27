@@ -24,6 +24,7 @@ import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraft.world.level.levelgen.structure.StructureType;
 
 /**
@@ -178,10 +179,11 @@ public final class EstructuraCapital extends Structure {
 			// la muralla al final, para que vea las calles y casas ya puestas y les deje hueco. Ningún trozo que toque
 			// el agua: cada pieza allana el terreno bajo su caja, y sobre el mar eso levantaba un anillo de tierra
 			muralla.stream().filter(pieza -> !agua.toca(pieza)).forEach(piezas::addPiece);
-			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} de {} piezas del centro, {} barrios, {} piezas en total",
+			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} de {} piezas del centro, {} barrios, {} piezas en total · pedida por {}",
 					principal.position().getX(), principal.position().getY(), principal.position().getZ(), nivel,
 					castillo.isPresent() ? ", con castillo" : "", delCentro.stream()
-							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + enCalles);
+							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + enCalles,
+					ColocacionCapital.quien());
 		}));
 	}
 
@@ -286,6 +288,13 @@ public final class EstructuraCapital extends Structure {
 			}
 			return Optional.<Boolean>empty();
 		}).isPresent();
+	}
+
+	/** La capital del chunk de (x, z) montada fuera de la generación del mundo (para ReparaCapitales), o null. */
+	StructureStart inicio(ServerLevel level, int x, int z) {
+		Structure.GenerationContext ctx = contexto(level, x, z);
+		return findGenerationPoint(ctx).map(stub -> new StructureStart(this, ctx.chunkPos(), 0, stub.getPiecesBuilder().build()))
+				.orElse(null);
 	}
 
 	/** Si alrededor de (x, z) hay tierra para una capital (lo mismo que mira cabe antes de probar pueblos). */

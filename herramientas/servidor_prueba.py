@@ -67,7 +67,7 @@ for c in COMANDOS:
     p.stdin.write(c + "\n"); p.stdin.flush(); time.sleep(3)
 # una capital rica de verdad (con castillo), generada al cargar sus chunks como al explorar
 rica = None
-for _ in range(40):
+for _ in range(100):
     m = re.search(r"primera rica en (-?\d+) (-?\d+)", "".join(lineas))
     if m or any("reinos revisados en" in l for l in lineas):
         rica = m

@@ -4,6 +4,7 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -169,7 +170,7 @@ final class ComandosDestinos {
 	/**
 	 * /destinoscore revisa [n]: elige la capital de los reinos a n celdas de reino de donde estás (sin generar
 	 * nada) y comprueba con la altura de verdad que todas están en tierra. Dice cuántas hay de cada nivel, para
-	 * calibrar la riqueza. Para la CI y para buscar capitales mal puestas.
+	 * calibrar la riqueza. Se calcula fuera del hilo del servidor (son segundos por reino) y contesta al acabar.
 	 */
 	private static int revisa(CommandSourceStack fuente, int n) {
 		MinecraftServer server = fuente.getServer();
@@ -182,34 +183,40 @@ final class ComandosDestinos {
 		BlockPos aqui = BlockPos.containing(fuente.getPosition());
 		int kx0 = Math.floorDiv(aqui.getX(), Geo.S_REINO);
 		int kz0 = Math.floorDiv(aqui.getZ(), Geo.S_REINO);
-		long inicio = System.currentTimeMillis();
-		int reinos = 0;
-		int[] niveles = new int[3];
-		List<String> mojadas = new ArrayList<>();
-		MapaTerreno.Capital rica = null;
-		for (int kx = kx0 - n; kx <= kx0 + n; kx++) {
-			for (int kz = kz0 - n; kz <= kz0 + n; kz++) {
-				reinos++;
-				MapaTerreno.Capital c = m.capital(kx, kz);
-				if (c == null) {
-					continue;
-				}
-				niveles[c.nivel()]++;
-				if (c.nivel() == 2 && rica == null) {
-					rica = c;
-				}
-				if (!EstructuraCapital.enTierra(level, c.x(), c.z())) {
-					mojadas.add(c.x() + ", " + c.z());
+		fuente.sendSuccess(() -> Component.literal("Destinos Core: revisando las capitales de " + (2 * n + 1) * (2 * n + 1)
+				+ " reinos…"), false);
+		CompletableFuture.supplyAsync(() -> {
+			long inicio = System.currentTimeMillis();
+			int reinos = 0;
+			int[] niveles = new int[3];
+			List<String> mojadas = new ArrayList<>();
+			MapaTerreno.Capital rica = null;
+			for (int kx = kx0 - n; kx <= kx0 + n; kx++) {
+				for (int kz = kz0 - n; kz <= kz0 + n; kz++) {
+					reinos++;
+					MapaTerreno.Capital c = m.capital(kx, kz);
+					if (c == null) {
+						continue;
+					}
+					niveles[c.nivel()]++;
+					if (c.nivel() == 2 && rica == null) {
+						rica = c;
+					}
+					if (!EstructuraCapital.enTierra(level, c.x(), c.z())) {
+						mojadas.add(c.x() + ", " + c.z());
+					}
 				}
 			}
-		}
-		String texto = "Destinos Core: " + reinos + " reinos revisados en " + (System.currentTimeMillis() - inicio)
-				+ " ms · capitales pobres " + niveles[0] + ", normales " + niveles[1] + ", ricas " + niveles[2]
-				+ " · capitales en el agua: " + mojadas.size() + (mojadas.isEmpty() ? "" : " (" + String.join("; ", mojadas) + ")")
-				+ (rica == null ? "" : " · primera rica en " + rica.x() + " " + rica.z());
-		DestinosCore.LOG.info(texto);
-		fuente.sendSuccess(() -> Component.literal(texto), false);
-		return mojadas.isEmpty() ? 1 : 0;
+			return "Destinos Core: " + reinos + " reinos revisados en " + (System.currentTimeMillis() - inicio)
+					+ " ms · capitales pobres " + niveles[0] + ", normales " + niveles[1] + ", ricas " + niveles[2]
+					+ " · capitales en el agua: " + mojadas.size() + (mojadas.isEmpty() ? "" : " (" + String.join("; ", mojadas) + ")")
+					+ (rica == null ? "" : " · primera rica en " + rica.x() + " " + rica.z());
+		}).whenComplete((texto, error) -> server.execute(() -> {
+			String linea = error != null ? "Destinos Core: la revisión de capitales ha fallado: " + error : texto;
+			DestinosCore.LOG.info(linea);
+			fuente.sendSuccess(() -> Component.literal(linea), false);
+		}));
+		return 1;
 	}
 
 	private static int turno(CommandSourceStack fuente, int n) {

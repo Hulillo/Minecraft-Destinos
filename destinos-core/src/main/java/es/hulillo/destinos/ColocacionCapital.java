@@ -51,10 +51,25 @@ public final class ColocacionCapital extends StructurePlacement {
 	protected boolean isPlacementChunk(ChunkGeneratorStructureState estado, int cx, int cz) {
 		MapaTerreno.Capital capital = capitalEn(cx, cz);
 		if (capital != null) {
-			DestinosCore.LOG.info("Destinos Core: toca generar la capital (nivel {}) en {}, {}", capital.nivel(), capital.x(),
-					capital.z());
+			DestinosCore.LOG.info("Destinos Core: toca generar la capital (nivel {}) en {}, {} (chunk {}, {}) · pedida por {}",
+					capital.nivel(), capital.x(), capital.z(), cx, cz, quien());
 		}
 		return capital != null;
+	}
+
+	/**
+	 * Quién está preguntando por la capital (las clases de la pila por encima de la generación de estructuras),
+	 * para el log: la generación del chunk, un mod que busca estructuras, un /locate...
+	 */
+	static String quien() {
+		return StackWalker.getInstance().walk(pila -> pila
+				.map(f -> f.getClassName())
+				.filter(c -> !c.startsWith("es.hulillo.") && !c.startsWith("java.") && !c.startsWith("jdk."))
+				.map(c -> c.substring(c.lastIndexOf('.') + 1))
+				.distinct()
+				.limit(8)
+				.reduce((a, b) -> a + " < " + b)
+				.orElse("?"));
 	}
 
 	private record Cerca(MapaTerreno mapa, int dcx, int dcz, List<MapaTerreno.Capital> capitales) {
