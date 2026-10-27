@@ -160,18 +160,22 @@ public final class EstructuraCapital extends Structure {
 		}
 		int color = tinte;
 		int techo = ctx.heightAccessor().getMinY() + ctx.heightAccessor().getHeight() - 1;
+		// el barrio noble: casas nobles mirando a la plaza mayor, más cuanto más rica es la capital
+		List<StructurePiece> grandes = new ArrayList<>(castillo.stream().toList());
+		List<CasaNoble> nobles = nobles(ctx, agua, principal, nivel == 2 ? 4 : nivel == 1 ? 2 : 0, estilo, grandes);
+		grandes.addAll(nobles);
 		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
 			List<StructurePiece> puestas = new ArrayList<>();
-			castillo.ifPresent(c -> {
+			for (StructurePiece c : grandes) {
 				puestas.add(c);
 				piezas.addPiece(c);
-			});
+			}
 			List<StructurePiece> delCentro = principal.piezas();
 			for (int i = 0; i < delCentro.size(); i++) {
 				StructurePiece pieza = delCentro.get(i);
 				// la plaza siempre; el resto, si no está metido en el mar (calles y casas flotando) ni en el castillo, y
 				// sin casas en la plaza mayor (las calles sí: se enlosan)
-				if (i == 0 || !agua.tapa(pieza) && castillo.stream().noneMatch(c -> enPlanta(c, pieza))
+				if (i == 0 || !agua.tapa(pieza) && grandes.stream().noneMatch(c -> enPlanta(c, pieza))
 						&& !(casa(pieza) && cerca(pieza, principal.position(), AdornoCapital.PLAZA)) && !farolaDeSobra(pieza)) {
 					puestas.add(pieza);
 					piezas.addPiece(pieza);
@@ -183,7 +187,7 @@ public final class EstructuraCapital extends Structure {
 				for (StructurePiece pieza : barrios.get(i).piezas()) {
 					// una pieza de barrio que choca con algo ya puesto o cae en el agua se queda fuera
 					if (!agua.tapa(pieza) && puestas.stream().noneMatch(otra -> otra.getBoundingBox().intersects(pieza.getBoundingBox()))
-							&& castillo.stream().noneMatch(c -> enPlanta(c, pieza)) && !farolaDeSobra(pieza)) {
+							&& grandes.stream().noneMatch(c -> enPlanta(c, pieza)) && !farolaDeSobra(pieza)) {
 						puestas.add(pieza);
 						piezas.addPiece(pieza);
 					}
@@ -206,7 +210,7 @@ public final class EstructuraCapital extends Structure {
 					new AdornoCapital(principal.position().getX(), principal.position().getZ(), estilo, color, caja, techo)));
 			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} de {} piezas del centro, {} barrios, {} piezas en total · pedida por {}",
 					principal.position().getX(), principal.position().getY(), principal.position().getZ(), nivel,
-					castillo.isPresent() ? ", con castillo" : "", delCentro.stream()
+					(castillo.isPresent() ? ", con castillo" : "") + (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles"), delCentro.stream()
 							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + enCalles,
 					ColocacionCapital.quien());
 		}));
@@ -268,6 +272,49 @@ public final class EstructuraCapital extends Structure {
 		return dx * dx + dz * dz <= (long) r * r;
 	}
 
+	/**
+	 * Hasta n casas nobles alrededor de la plaza mayor, justo fuera de ella y con la puerta hacia el centro: en las
+	 * ocho direcciones, sin tocar el agua, la plaza ni otras piezas grandes (el castillo, otras casas nobles), y
+	 * primero donde quitan menos casas del pueblo.
+	 */
+	private static List<CasaNoble> nobles(Structure.GenerationContext ctx, Agua agua, Montado principal, int n, int estilo,
+			List<StructurePiece> grandes) {
+		List<CasaNoble> elegidas = new ArrayList<>();
+		if (n == 0) {
+			return elegidas;
+		}
+		int px = principal.position().getX();
+		int pz = principal.position().getZ();
+		int distancia = AdornoCapital.PLAZA + CasaNoble.FONDO + 3;
+		List<CasaNoble> sitios = new ArrayList<>();
+		List<Long> quitan = new ArrayList<>();
+		for (int[] d : OCHO) {
+			double largo = Math.hypot(d[0], d[1]);
+			int x = px + (int) Math.round(d[0] / largo * distancia);
+			int z = pz + (int) Math.round(d[1] / largo * distancia);
+			CasaNoble c = new CasaNoble(x, z, suelo(ctx, x, z), CastilloCapital.giroHacia(-d[0], -d[1]), estilo);
+			if (agua.toca(c) || enPlanta(c, principal.piezas().get(0)) || grandes.stream().anyMatch(g -> enPlanta(g, c))) {
+				continue;
+			}
+			sitios.add(c);
+			quitan.add(principal.piezas().stream().filter(p -> enPlanta(c, p)).count());
+		}
+		while (elegidas.size() < n && !sitios.isEmpty()) {
+			int mejor = 0;
+			for (int i = 1; i < sitios.size(); i++) {
+				if (quitan.get(i) < quitan.get(mejor)) {
+					mejor = i;
+				}
+			}
+			CasaNoble c = sitios.remove(mejor);
+			quitan.remove(mejor);
+			if (elegidas.stream().noneMatch(e -> enPlanta(e, c))) {
+				elegidas.add(c);
+			}
+		}
+		return elegidas;
+	}
+
 	/** Si dos piezas se pisan vistas desde arriba (la altura no cuenta: el castillo vacía todo lo de encima). */
 	private static boolean enPlanta(StructurePiece a, StructurePiece b) {
 		BoundingBox p = a.getBoundingBox();
@@ -287,6 +334,7 @@ public final class EstructuraCapital extends Structure {
 	private static final int[][] DESPLAZAMIENTOS = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 	private static final int[][] DIAGONALES = {{1, 1}, {-1, 1}, {1, -1}, {-1, -1}};
 	private static final int[][] CRUZ = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};
+	private static final int[][] OCHO = {{0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}};
 
 	/** Intentos de montar un pueblo que no salga abandonado antes de pasar al siguiente estilo. */
 	private static final int INTENTOS = 6;

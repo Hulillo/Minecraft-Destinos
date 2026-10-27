@@ -14,6 +14,7 @@ import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.WallBannerBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkGenerator;
@@ -45,6 +46,8 @@ public final class AdornoCapital extends StructurePiece {
 	static final int PLAZA = 20;
 	/** Distancia del centro a los puestos de mercado. */
 	private static final int ANILLO_MERCADO = 12;
+	/** Distancia del centro a las jardineras, detrás de cada puesto. */
+	private static final int ANILLO_JARDIN = 17;
 	/** Las farolas: como mucho una por celda de LADO×LADO, y solo en su parte de en medio (así quedan separadas). */
 	private static final int LADO = 16;
 	private static final int K_PIEDRA = 4417;
@@ -159,6 +162,78 @@ public final class AdornoCapital extends StructurePiece {
 			int x = px + (int) Math.round(Math.cos(a) * ANILLO_MERCADO);
 			int z = pz + (int) Math.round(Math.sin(a) * ANILLO_MERCADO);
 			puesto(level, caja, pos, x, z, Geo.hash(x, z, K_PIEDRA));
+			// y por fuera de cada puesto, hacia el borde, una jardinera con flores y un árbol
+			int jx = px + (int) Math.round(Math.cos(a) * ANILLO_JARDIN);
+			int jz = pz + (int) Math.round(Math.sin(a) * ANILLO_JARDIN);
+			jardinera(level, caja, pos, jx, jz, Geo.hash(jx, jz, K_PIEDRA));
+		}
+	}
+
+	/** Jardinera de 3×3 en la plaza: césped con flores alrededor y un arbolito en medio, si cabe en plaza llana. */
+	private void jardinera(WorldGenLevel level, BoundingBox caja, BlockPos.MutableBlockPos pos, int x, int z, int h) {
+		if (!dentro(caja, x - 2, z - 2, x + 2, z + 2)) {
+			return;
+		}
+		int y = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
+		for (int ox = -1; ox <= 1; ox++) {
+			for (int oz = -1; oz <= 1; oz++) {
+				int sy = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x + ox, z + oz) - 1;
+				if (sy != y || !empedrado(level.getBlockState(pos.set(x + ox, y, z + oz))) || !libre(level, pos, x + ox, y + 1, z + oz, 6)) {
+					return;
+				}
+			}
+		}
+		Block[] flores = estilo == DESIERTO ? new Block[] {Blocks.DEAD_BUSH}
+				: new Block[] {Blocks.POPPY, Blocks.DANDELION, Blocks.CORNFLOWER, Blocks.ALLIUM, Blocks.OXEYE_DAISY, Blocks.AZURE_BLUET};
+		Block borde = estilo == DESIERTO ? Blocks.CUT_SANDSTONE_SLAB : estilo == SABANA ? Blocks.MUD_BRICK_SLAB : Blocks.STONE_BRICK_SLAB;
+		for (int ox = -1; ox <= 1; ox++) {
+			for (int oz = -1; oz <= 1; oz++) {
+				level.setBlock(pos.set(x + ox, y, z + oz), (estilo == DESIERTO ? Blocks.SAND : Blocks.GRASS_BLOCK).defaultBlockState(), 2);
+				if (ox != 0 || oz != 0) {
+					level.setBlock(pos.set(x + ox, y + 1, z + oz),
+							flores[Math.floorMod(h + ox * 3 + oz * 7, flores.length)].defaultBlockState(), 2);
+				}
+			}
+		}
+		// el bordillo alrededor
+		for (int i = -2; i <= 2; i++) {
+			for (int[] b : new int[][] {{i, -2}, {i, 2}, {-2, i}, {2, i}}) {
+				int bx = x + b[0];
+				int bz = z + b[1];
+				int by = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, bx, bz) - 1;
+				if (by == y && empedrado(level.getBlockState(pos.set(bx, by, bz))) && libre(level, pos, bx, by + 1, bz, 1)) {
+					level.setBlock(pos.set(bx, by + 1, bz), borde.defaultBlockState(), 2);
+				}
+			}
+		}
+		arbolito(level, pos, x, y + 1, z, h);
+	}
+
+	/** Un árbol pequeño del estilo de la capital: tronco de 4 y copa redonda (hojas que no se caen). */
+	private void arbolito(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int y, int z, int h) {
+		if (estilo == DESIERTO) {
+			for (int i = 0; i < 3; i++) {
+				level.setBlock(pos.set(x, y + i, z), Blocks.CACTUS.defaultBlockState(), 2);
+			}
+			return;
+		}
+		Block tronco = estilo == SABANA ? Blocks.ACACIA_LOG : estilo == TAIGA || estilo == NIEVE ? Blocks.SPRUCE_LOG
+				: Math.floorMod(h, 3) == 0 ? Blocks.CHERRY_LOG : Blocks.OAK_LOG;
+		Block hojas = estilo == SABANA ? Blocks.ACACIA_LEAVES : estilo == TAIGA || estilo == NIEVE ? Blocks.SPRUCE_LEAVES
+				: tronco == Blocks.CHERRY_LOG ? Blocks.CHERRY_LEAVES : Blocks.OAK_LEAVES;
+		BlockState hoja = hojas.defaultBlockState().setValue(LeavesBlock.PERSISTENT, true);
+		for (int dy = 2; dy <= 5; dy++) {
+			int r = dy == 5 ? 1 : 2;
+			for (int ox = -r; ox <= r; ox++) {
+				for (int oz = -r; oz <= r; oz++) {
+					if (Math.abs(ox) + Math.abs(oz) <= r + (dy == 3 || dy == 4 ? 1 : 0) && level.getBlockState(pos.set(x + ox, y + dy, z + oz)).isAir()) {
+						level.setBlock(pos, hoja, 2);
+					}
+				}
+			}
+		}
+		for (int i = 0; i < 4; i++) {
+			level.setBlock(pos.set(x, y + i, z), tronco.defaultBlockState(), 2);
 		}
 	}
 
