@@ -79,9 +79,10 @@ public final class MapaTerreno {
 
 	/**
 	 * La capital de un reino: el ducado donde está y el sitio en bloques. montana: el reino es de cultura de
-	 * montaña y ha preferido levantarla en las alturas.
+	 * montaña y ha preferido levantarla en las alturas. nivel: lo rica y grande que es (0 pobre, 1 normal, 2 rica),
+	 * por los recursos de su ducado y los ducados del reino; decide su muralla.
 	 */
-	public record Capital(int dcx, int dcz, int x, int z, boolean montana) {
+	public record Capital(int dcx, int dcz, int x, int z, boolean montana, int nivel) {
 	}
 
 	/** Territorio de un punto: ducado (celda), reino (celda), salvaje y si la casilla es mar. */
@@ -474,6 +475,9 @@ public final class MapaTerreno {
 	/** Ducados mejor puntuados en los que se mira el agua de cerca, y separación de esos puntos. */
 	private static final int CANDIDATAS_CAPITAL = 4;
 	private static final int PASO_AGUA = 40;
+	/** Riqueza (ver nivel) desde la que una capital es normal y rica. */
+	private static final double RIQUEZA_NORMAL = 5.0;
+	private static final double RIQUEZA_RICA = 7.0;
 
 	/**
 	 * La capital del reino (kx, kz) sin bloquear: null si aún se está eligiendo (y la pide), vacío si el reino no
@@ -524,6 +528,7 @@ public final class MapaTerreno {
 				}
 				// 3×3 puntos alrededor del centro del ducado
 				double puntos = 0;
+				int recursos = 0;
 				int tierra = 0;
 				int alta = Integer.MIN_VALUE;
 				int baja = Integer.MAX_VALUE;
@@ -540,6 +545,7 @@ public final class MapaTerreno {
 						alta = Math.max(alta, t.altura());
 						baja = Math.min(baja, t.altura());
 						int rec = recurso(t);
+						recursos += (rec & 7) + (rec >> 3 & 3) + (rec >> 5 & 3);
 						puntos += (rec & 7) * 0.5;
 						if (t.rio()) {
 							puntos += 1;
@@ -559,7 +565,7 @@ public final class MapaTerreno {
 				double dx = c[0] - k[0];
 				double dz = c[1] - k[1];
 				puntos += tierra * 0.5 - Math.sqrt(dx * dx + dz * dz) / 600.0;
-				candidatas.add(new Candidata(cx, cz, puntos, sitios));
+				candidatas.add(new Candidata(cx, cz, puntos, sitios, recursos));
 			}
 		}
 		// las mejores, mirando de cerca el agua alrededor de cada sitio posible: una capital entre islas o junto a
@@ -567,6 +573,7 @@ public final class MapaTerreno {
 		candidatas.sort((a, b) -> Double.compare(b.puntos(), a.puntos()));
 		Capital mejor = null;
 		double puntosMejor = Double.NEGATIVE_INFINITY;
+		int ducadosReino = candidatas.size();
 		for (int i = 0; i < Math.min(CANDIDATAS_CAPITAL, candidatas.size()); i++) {
 			Candidata cand = candidatas.get(i);
 			boolean hayMontana = cand.sitios().stream().anyMatch(s -> s[2] == 1);
@@ -577,14 +584,23 @@ public final class MapaTerreno {
 				double puntos = cand.puntos() - aguaAlrededor(s[0], s[1]) * 0.6;
 				if (puntos > puntosMejor) {
 					puntosMejor = puntos;
-					mejor = new Capital(cand.cx(), cand.cz(), s[0], s[1], montana && s[2] == 1);
+					mejor = new Capital(cand.cx(), cand.cz(), s[0], s[1], montana && s[2] == 1, nivel(cand.recursos(), ducadosReino));
 				}
 			}
 		}
 		return mejor;
 	}
 
-	private record Candidata(int cx, int cz, double puntos, List<int[]> sitios) {
+	private record Candidata(int cx, int cz, double puntos, List<int[]> sitios, int recursos) {
+	}
+
+	/**
+	 * Riqueza de la capital: recursos medios por casilla de su ducado (0-10, lo normal 3-5) más el tamaño del
+	 * reino cerca de su centro (ducados con señor, hasta 49).
+	 */
+	static int nivel(int recursos, int ducados) {
+		double riqueza = recursos / 9.0 + ducados / 8.0;
+		return riqueza < RIQUEZA_NORMAL ? 0 : riqueza < RIQUEZA_RICA ? 1 : 2;
 	}
 
 	/** Cuántos de los 5×5 puntos alrededor de (x, z), hasta donde llega la capital, son agua. */

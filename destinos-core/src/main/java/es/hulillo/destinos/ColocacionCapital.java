@@ -47,13 +47,23 @@ public final class ColocacionCapital extends StructurePlacement {
 	 */
 	@Override
 	protected boolean isPlacementChunk(ChunkGeneratorStructureState estado, int cx, int cz) {
+		MapaTerreno.Capital capital = capitalEn(cx, cz);
+		if (capital != null) {
+			DestinosCore.LOG.info("Destinos Core: toca generar la capital (nivel {}) en {}, {}", capital.nivel(), capital.x(),
+					capital.z());
+		}
+		return capital != null;
+	}
+
+	/** La capital cuyo sitio cae en el chunk (cx, cz), o null si en ese chunk no va ninguna. */
+	static MapaTerreno.Capital capitalEn(int cx, int cz) {
 		MapaTerreno mapa = DestinosCore.mapaActual();
 		if (mapa == null) {
 			if (!avisado) {
 				avisado = true;
 				DestinosCore.LOG.info("Destinos Core: se generan chunks antes de que el datapack ponga la sal; ahí no habrá capitales");
 			}
-			return false;
+			return null;
 		}
 		int sal = mapa.sal();
 		int dcx = Math.floorDiv(cx * 16 + 8, Geo.S_DUCADO);
@@ -78,14 +88,13 @@ public final class ColocacionCapital extends StructurePlacement {
 				vistos[n++] = reino;
 				MapaTerreno.Capital capital = mapa.capital(r.kx(), r.kz());
 				if (capital != null && capital.x() >> 4 == cx && capital.z() >> 4 == cz) {
-					DestinosCore.LOG.info("Destinos Core: toca generar la capital del reino {},{} en {}, {}", r.kx(), r.kz(),
-							capital.x(), capital.z());
-					return true;
+					return capital;
 				}
 			}
 		}
-		return false;
+		return null;
 	}
+
 
 	@Override
 	public StructurePlacementType<?> type() {

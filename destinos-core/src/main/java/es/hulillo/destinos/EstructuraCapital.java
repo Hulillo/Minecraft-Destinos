@@ -139,6 +139,13 @@ public final class EstructuraCapital extends Structure {
 			calles.add(calles(ctx, agua, principal.position().getX(), principal.position().getZ(), b.position().getX(),
 					b.position().getZ()));
 		}
+		// la muralla, según lo rico que es el reino (con /place, sin capital en el mapa: normal)
+		MapaTerreno.Capital esta = ColocacionCapital.capitalEn(ctx.chunkPos().x, ctx.chunkPos().z);
+		int nivel = esta != null ? esta.nivel() : 1;
+		List<StructurePiece> muralla = new ArrayList<>();
+		MurallaCapital.piezas(principal.position().getX(), principal.position().getZ(), nivel, (mx, mz) ->
+				ctx.chunkGenerator().getFirstOccupiedHeight(mx, mz, Heightmap.Types.WORLD_SURFACE_WG, ctx.heightAccessor(),
+						ctx.randomState()), muralla);
 		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
 			List<StructurePiece> puestas = new ArrayList<>();
 			List<StructurePiece> delCentro = principal.getPiecesBuilder().build().pieces();
@@ -165,8 +172,10 @@ public final class EstructuraCapital extends Structure {
 					enCalles += calles.get(i).size();
 				}
 			}
-			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {}: {} de {} piezas del centro, {} barrios, {} piezas en total",
-					principal.position().getX(), principal.position().getY(), principal.position().getZ(), delCentro.stream()
+			// la muralla al final, para que vea las calles y casas ya puestas y les deje hueco
+			muralla.forEach(piezas::addPiece);
+			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}): {} de {} piezas del centro, {} barrios, {} piezas en total",
+					principal.position().getX(), principal.position().getY(), principal.position().getZ(), nivel, delCentro.stream()
 							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + enCalles);
 		}));
 	}
