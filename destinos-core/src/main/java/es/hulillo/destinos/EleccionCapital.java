@@ -20,9 +20,9 @@ final class EleccionCapital {
 	private static final int PASO_AGUA = 40;
 	/** Lo que resta cada punto de agua alrededor de un sitio. */
 	private static final double PESO_AGUA = 0.6;
-	/** Riqueza (ver nivel) desde la que una capital es normal y rica. */
-	private static final double RIQUEZA_NORMAL = 5.0;
-	private static final double RIQUEZA_RICA = 7.0;
+	/** Riqueza (ver nivel) desde la que una capital es normal y rica: sale ~25 % pobres, ~55 % normales y ~20 % ricas. */
+	private static final double RIQUEZA_NORMAL = 4.8;
+	private static final double RIQUEZA_RICA = 6.1;
 
 	private final MapaTerreno.Muestreador muestreador;
 	private final int sal;
