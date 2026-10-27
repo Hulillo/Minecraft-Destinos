@@ -286,7 +286,9 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 
 	/** Área de cada ducado (tierra y aguas territoriales) dentro de la zona, juntando las casillas seguidas de cada fila. */
 	private static Map<PaqueteTerritorio.Ducado, Area> trozos(PaqueteTerritorio zona) {
-		Map<PaqueteTerritorio.Ducado, Area> res = new HashMap<>();
+		// los rectángulos de cada ducado se juntan en un trazado y el Area se hace una sola vez al final: sumar
+		// Areas de una en una cuesta cada vez más (y esto va en el hilo del juego)
+		Map<PaqueteTerritorio.Ducado, Path2D.Double> trazados = new HashMap<>();
 		int n = MapaTerreno.NUCLEO;
 		int c = MapaTerreno.CASILLA;
 		for (int j = 0; j < n; j++) {
@@ -300,11 +302,13 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 				if (!d.deNadie()) {
 					int x = (zona.wx() * n + i) * c;
 					int z = (zona.wz() * n + j) * c;
-					res.computeIfAbsent(d, k -> new Area()).add(new Area(new Rectangle(x, z, (fin - i) * c, c)));
+					trazados.computeIfAbsent(d, k -> new Path2D.Double()).append(new Rectangle(x, z, (fin - i) * c, c), false);
 				}
 				i = fin;
 			}
 		}
+		Map<PaqueteTerritorio.Ducado, Area> res = new HashMap<>();
+		trazados.forEach((d, trazado) -> res.put(d, new Area(trazado)));
 		return res;
 	}
 

@@ -646,10 +646,43 @@ public final class MapaTerreno {
 		Casilla[] terreno = new Casilla[N * N];
 		for (int j = 0; j < N; j++) {
 			for (int i = 0; i < N; i++) {
-				terreno[i + j * N] = muestreador.muestra((bx + i) * CASILLA + CASILLA / 2, (bz + j) * CASILLA + CASILLA / 2);
+				terreno[i + j * N] = casilla(bx + i, bz + j);
 			}
 		}
 		return terreno;
+	}
+
+	/**
+	 * Terreno ya leído, por regiones de NUCLEO×NUCLEO casillas, empaquetado en un int por casilla (0: sin leer).
+	 * Cada ventana lleva un margen de MARGEN casillas por lado que es núcleo de sus vecinas: sin esto, las casillas
+	 * de los márgenes se leían del generador hasta cuatro veces (y leer el terreno es lo más caro de todo).
+	 */
+	private final ConcurrentHashMap<Long, int[]> terrenoLeido = new ConcurrentHashMap<>();
+
+	private Casilla casilla(int ti, int tj) {
+		int rx = Math.floorDiv(ti, NUCLEO);
+		int rz = Math.floorDiv(tj, NUCLEO);
+		int[] region = terrenoLeido.computeIfAbsent(clave(rx, rz), k -> new int[NUCLEO * NUCLEO]);
+		int k = (ti - rx * NUCLEO) + (tj - rz * NUCLEO) * NUCLEO;
+		int v = region[k];
+		if (v != 0) {
+			return desempaqueta(v);
+		}
+		Casilla c = muestreador.muestra(ti * CASILLA + CASILLA / 2, tj * CASILLA + CASILLA / 2);
+		// dos hilos pueden leer la misma casilla a la vez: escriben lo mismo
+		region[k] = empaqueta(c);
+		return c;
+	}
+
+	/** altura + 1024 en los bits 0-11, mar 12, río 13, montaña 14, familia + 1 en 15-20, y el bit 30 de "leída". */
+	static int empaqueta(Casilla c) {
+		int altura = Math.max(0, Math.min(4095, c.altura() + 1024));
+		int familia = Math.max(0, Math.min(63, c.familia() + 1));
+		return altura | (c.oceano() ? 1 << 12 : 0) | (c.rio() ? 1 << 13 : 0) | (c.montana() ? 1 << 14 : 0) | familia << 15 | 1 << 30;
+	}
+
+	static Casilla desempaqueta(int v) {
+		return new Casilla((v & 4095) - 1024, (v & 1 << 12) != 0, (v & 1 << 13) != 0, (v & 1 << 14) != 0, (v >> 15 & 63) - 1);
 	}
 
 	/** Centros de ducado dentro de la ventana, movidos a tierra firme si caen en el mar. */
