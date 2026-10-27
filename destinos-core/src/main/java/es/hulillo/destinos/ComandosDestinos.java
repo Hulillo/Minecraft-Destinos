@@ -186,6 +186,7 @@ final class ComandosDestinos {
 		int reinos = 0;
 		int[] niveles = new int[3];
 		List<String> mojadas = new ArrayList<>();
+		MapaTerreno.Capital rica = null;
 		for (int kx = kx0 - n; kx <= kx0 + n; kx++) {
 			for (int kz = kz0 - n; kz <= kz0 + n; kz++) {
 				reinos++;
@@ -194,6 +195,9 @@ final class ComandosDestinos {
 					continue;
 				}
 				niveles[c.nivel()]++;
+				if (c.nivel() == 2 && rica == null) {
+					rica = c;
+				}
 				if (!EstructuraCapital.enTierra(level, c.x(), c.z())) {
 					mojadas.add(c.x() + ", " + c.z());
 				}
@@ -201,7 +205,8 @@ final class ComandosDestinos {
 		}
 		String texto = "Destinos Core: " + reinos + " reinos revisados en " + (System.currentTimeMillis() - inicio)
 				+ " ms · capitales pobres " + niveles[0] + ", normales " + niveles[1] + ", ricas " + niveles[2]
-				+ " · capitales en el agua: " + mojadas.size() + (mojadas.isEmpty() ? "" : " (" + String.join("; ", mojadas) + ")");
+				+ " · capitales en el agua: " + mojadas.size() + (mojadas.isEmpty() ? "" : " (" + String.join("; ", mojadas) + ")")
+				+ (rica == null ? "" : " · primera rica en " + rica.x() + " " + rica.z());
 		DestinosCore.LOG.info(texto);
 		fuente.sendSuccess(() -> Component.literal(texto), false);
 		return mojadas.isEmpty() ? 1 : 0;

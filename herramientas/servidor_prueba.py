@@ -65,6 +65,19 @@ while not any(re.search(r"#tlisto has 1 ", l) for l in lineas):
 print(f"zona calculada en {time.time() - inicio:.0f} s sin bloquear el servidor")
 for c in COMANDOS:
     p.stdin.write(c + "\n"); p.stdin.flush(); time.sleep(3)
+# una capital rica de verdad (con castillo), generada al cargar sus chunks como al explorar
+rica = None
+for _ in range(40):
+    m = re.search(r"primera rica en (-?\d+) (-?\d+)", "".join(lineas))
+    if m or any("reinos revisados en" in l for l in lineas):
+        rica = m
+        break
+    time.sleep(3)
+if rica:
+    rx, rz = int(rica.group(1)), int(rica.group(2))
+    for c in [f"forceload add {rx - 160} {rz - 160} {rx} {rz + 160}", f"forceload add {rx + 16} {rz - 160} {rx + 160} {rz + 160}",
+              f"execute positioned {rx} 100 {rz} run destinoscore capital"]:
+        p.stdin.write(c + "\n"); p.stdin.flush(); time.sleep(10)
 p.stdin.write("stop\n"); p.stdin.flush()
 try:
     p.wait(300)
@@ -97,6 +110,14 @@ if not revision:
     sys.exit("/destinoscore revisa no ha contestado")
 if "capitales en el agua: 0" not in revision.group(0):
     sys.exit("hay capitales elegidas en el agua: " + revision.group(0))
+if not rica:
+    print("AVISO: no hay ninguna capital rica en los reinos revisados; el castillo no se ha probado")
+else:
+    if not re.search(r"capital en .*muralla de nivel 2, con castillo", salida):
+        print("\n".join(l.rstrip() for l in lineas if "Destinos Core" in l)[-4000:])
+        sys.exit("la capital rica no se ha generado con su castillo")
+    if not re.search(rf"capital del reino en {rx}, {rz} .*su chunk tiene la capital", salida):
+        sys.exit("la capital rica no está en su chunk")
 if not ok_terr:
     sys.exit("geo/territorio no devolvió #tdx: el mod no respondió")
 print("\nOK: el servidor carga Destinos Core y el datapack sin errores")
