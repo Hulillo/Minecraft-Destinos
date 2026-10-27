@@ -46,20 +46,20 @@ public final class CapaDiorama {
 
 	public static void dibuja(GuiGraphics g, MapViewport.View vista) {
 		if (!TerritoriosCliente.visible()) {
-			TerritoriosCliente.ultimoPintado = "Diorama: mapa político apagado (tecla del mapa político)";
+			TerritoriosCliente.ultimoPintado = () -> "Diorama: mapa político apagado (tecla del mapa político)";
 			return;
 		}
 		if (TerritoriosCliente.vacio()) {
-			TerritoriosCliente.ultimoPintado = "Diorama: aún no hay territorios";
+			TerritoriosCliente.ultimoPintado = () -> "Diorama: aún no hay territorios";
 			return;
 		}
 		if (vista.layer() != TileKey.SURFACE) {
-			TerritoriosCliente.ultimoPintado = "Diorama: estás viendo cuevas, no la superficie";
+			TerritoriosCliente.ultimoPintado = () -> "Diorama: estás viendo cuevas, no la superficie";
 			return;
 		}
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.level == null || mc.level.dimension() != Level.OVERWORLD) {
-			TerritoriosCliente.ultimoPintado = "Diorama: no estás en el mundo normal";
+			TerritoriosCliente.ultimoPintado = () -> "Diorama: no estás en el mundo normal";
 			return;
 		}
 		// Dentro de una capa, el juego ordena lo que se pinta por tipo: los rectángulos lisos irían antes que las
@@ -162,9 +162,27 @@ public final class CapaDiorama {
 				corona(lienzo, sx, sy, Math.max(2, Math.min(4, Math.round(px / 20))), c.perdida() ? GRIS : ORO);
 			}
 		}
-		TerritoriosCliente.ultimoPintado = "Diorama: " + pintadas + " casillas pintadas, " + mar + " de mar internacional, "
-				+ sinDatos + " sin datos, " + fuera + " fuera de pantalla (x " + tx0 + ".." + tx1 + ", z " + tz0 + ".." + tz1
-				+ ", zoom " + String.format("%.3f", vista.zoom()) + ")";
+		resumen[0] = pintadas;
+		resumen[1] = mar;
+		resumen[2] = sinDatos;
+		resumen[3] = fuera;
+		resumen[4] = tx0;
+		resumen[5] = tx1;
+		resumen[6] = tz0;
+		resumen[7] = tz1;
+		zoom = vista.zoom();
+		TerritoriosCliente.ultimoPintado = CapaDiorama::resumen;
+	}
+
+	/** Lo que se pintó en el último fotograma (casillas pintadas, de mar, sin datos, fuera, x0, x1, z0, z1) y el zoom. */
+	private static final int[] resumen = new int[8];
+	private static double zoom;
+
+	private static String resumen() {
+		int[] r = resumen;
+		return "Diorama: " + r[0] + " casillas pintadas, " + r[1] + " de mar internacional, " + r[2] + " sin datos, " + r[3]
+				+ " fuera de pantalla (x " + r[4] + ".." + r[5] + ", z " + r[6] + ".." + r[7] + ", zoom "
+				+ String.format("%.3f", zoom) + ")";
 	}
 
 	/** Altura del borde con la casilla vecina: la media, para que filas a distinta altura no dejen huecos. */
@@ -263,6 +281,13 @@ public final class CapaDiorama {
 			float cx = circulo.x() + circulo.width() / 2.0F;
 			float cy = circulo.y() + circulo.height() / 2.0F;
 			float r = Math.min(circulo.width(), circulo.height()) / 2.0F;
+			// casi todo cae entero dentro del círculo: un solo rectángulo en vez de tiras
+			float dx = Math.max(Math.abs(x0 - cx), Math.abs(x1 - cx));
+			float dy0 = Math.max(Math.abs(y0 - cy), Math.abs(y1 - cy));
+			if (dx * dx + dy0 * dy0 <= r * r) {
+				g.fill(x0, y0, x1, y1, color);
+				return;
+			}
 			for (int y = y0; y < y1; y += TIRA) {
 				int yf = Math.min(y + TIRA, y1);
 				float dy = Math.max(Math.abs(y - cy), Math.abs(yf - cy));

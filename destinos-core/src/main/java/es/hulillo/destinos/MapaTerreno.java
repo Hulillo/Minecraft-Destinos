@@ -6,7 +6,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.PriorityQueue;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -71,6 +70,11 @@ public final class MapaTerreno {
 			return muestra(bloqueX, bloqueZ).oceano();
 		}
 
+		/** Si en (x, z) puede empezar de verdad el pueblo de una capital (para no poner la corona donde no sale). */
+		default boolean capitalCabe(int bloqueX, int bloqueZ) {
+			return true;
+		}
+
 		/** Si en (x, z) hay una cultura de montaña (nórdica, andina o de la estepa), como la elige el datapack. */
 		default boolean culturaDeMontana(int bloqueX, int bloqueZ) {
 			return false;
@@ -79,9 +83,10 @@ public final class MapaTerreno {
 
 	/**
 	 * La capital de un reino: el ducado donde está y el sitio en bloques. montana: el reino es de cultura de
-	 * montaña y ha preferido levantarla en las alturas.
+	 * montaña y ha preferido levantarla en las alturas. nivel: lo rica y grande que es (0 pobre, 1 normal, 2 rica),
+	 * por los recursos de su ducado y los ducados del reino; decide su muralla.
 	 */
-	public record Capital(int dcx, int dcz, int x, int z, boolean montana) {
+	public record Capital(int dcx, int dcz, int x, int z, boolean montana, int nivel) {
 	}
 
 	/** Territorio de un punto: ducado (celda), reino (celda), salvaje y si la casilla es mar. */
@@ -369,27 +374,21 @@ public final class MapaTerreno {
 		int[] dueno = new int[total];
 		Arrays.fill(dueno, -1);
 		int[] mar = new int[total];
-		PriorityQueue<double[]> cola = new PriorityQueue<>((p, q) -> {
-			int c = Double.compare(p[0], q[0]);
-			if (c != 0) {
-				return c;
-			}
-			c = Double.compare(p[2], q[2]);
-			return c != 0 ? c : Double.compare(p[1], q[1]);
-		});
+		Cola cola = new Cola(total);
 		for (int s = 0; s < semillas.size(); s++) {
 			int k = origen.get(s);
 			if (coste[k] > 0) {
 				coste[k] = 0;
 				dueno[k] = s;
-				cola.add(new double[] {0, k, s});
+				cola.mete(0, k, s);
 			}
 		}
-		while (!cola.isEmpty()) {
-			double[] e = cola.poll();
-			int k = (int) e[1];
-			int s = (int) e[2];
-			if (e[0] > coste[k] || dueno[k] != s) {
+		while (!cola.vacia()) {
+			double c0 = cola.coste[0];
+			int k = cola.casilla[0];
+			int s = cola.semilla[0];
+			cola.saca();
+			if (c0 > coste[k] || dueno[k] != s) {
 				continue;
 			}
 			boolean salvaje = semillas.get(s).salvaje();
@@ -403,12 +402,12 @@ public final class MapaTerreno {
 						continue;
 					}
 					int nk = ni + nj * N;
-					double nc = e[0] + costePaso(terreno[k], terreno[nk], di != 0 && dj != 0, salvaje);
+					double nc = c0 + costePaso(terreno[k], terreno[nk], di != 0 && dj != 0, salvaje);
 					if (nc < coste[nk] || (nc == coste[nk] && s < dueno[nk])) {
 						coste[nk] = nc;
 						dueno[nk] = s;
 						mar[nk] = mar[k] + (terreno[nk].oceano() ? 1 : 0);
-						cola.add(new double[] {nc, nk, s});
+						cola.mete(nc, nk, s);
 					}
 				}
 			}
@@ -474,11 +473,16 @@ public final class MapaTerreno {
 	/** Ducados mejor puntuados en los que se mira el agua de cerca, y separación de esos puntos. */
 	private static final int CANDIDATAS_CAPITAL = 4;
 	private static final int PASO_AGUA = 40;
+	/** Riqueza (ver nivel) desde la que una capital es normal y rica. */
+	private static final double RIQUEZA_NORMAL = 5.0;
+	private static final double RIQUEZA_RICA = 7.0;
 
 	/**
 	 * La capital del reino (kx, kz) sin bloquear: null si aún se está eligiendo (y la pide), vacío si el reino no
 	 * tiene ningún ducado donde ponerla.
 	 */
+	private final Map<Long, CompletableFuture<Capital>> enLinea = new ConcurrentHashMap<>();
+
 	public Optional<Capital> capitalSiLista(int kx, int kz) {
 		CompletableFuture<Capital> f = capitales.computeIfAbsent(clave(kx, kz),
 				k -> CompletableFuture.supplyAsync(() -> calculaCapital(kx, kz), hilo));
@@ -494,13 +498,28 @@ public final class MapaTerreno {
 	 * calculando él, se calcula otra vez aquí (sale igual).
 	 */
 	public Capital capital(int kx, int kz) {
-		CompletableFuture<Capital> f = capitales.get(clave(kx, kz));
+		long k = clave(kx, kz);
+		CompletableFuture<Capital> f = capitales.get(k);
 		if (f != null && f.isDone() && !f.isCompletedExceptionally()) {
 			return f.join();
 		}
-		Capital c = calculaCapital(kx, kz);
-		capitales.putIfAbsent(clave(kx, kz), CompletableFuture.completedFuture(c));
-		return c;
+		// varios hilos de generación pueden pedir la misma capital a la vez: la calcula el primero y los demás
+		// le esperan (sale en milisegundos), en vez de calcularla todos
+		CompletableFuture<Capital> mia = new CompletableFuture<>();
+		CompletableFuture<Capital> otra = enLinea.putIfAbsent(k, mia);
+		if (otra != null) {
+			return otra.join();
+		}
+		try {
+			Capital c = calculaCapital(kx, kz);
+			capitales.put(k, CompletableFuture.completedFuture(c));
+			mia.complete(c);
+			return c;
+		} catch (RuntimeException e) {
+			mia.completeExceptionally(e);
+			enLinea.remove(k);
+			throw e;
+		}
 	}
 
 	/**
@@ -524,6 +543,7 @@ public final class MapaTerreno {
 				}
 				// 3×3 puntos alrededor del centro del ducado
 				double puntos = 0;
+				int recursos = 0;
 				int tierra = 0;
 				int alta = Integer.MIN_VALUE;
 				int baja = Integer.MAX_VALUE;
@@ -540,6 +560,7 @@ public final class MapaTerreno {
 						alta = Math.max(alta, t.altura());
 						baja = Math.min(baja, t.altura());
 						int rec = recurso(t);
+						recursos += (rec & 7) + (rec >> 3 & 3) + (rec >> 5 & 3);
 						puntos += (rec & 7) * 0.5;
 						if (t.rio()) {
 							puntos += 1;
@@ -559,7 +580,7 @@ public final class MapaTerreno {
 				double dx = c[0] - k[0];
 				double dz = c[1] - k[1];
 				puntos += tierra * 0.5 - Math.sqrt(dx * dx + dz * dz) / 600.0;
-				candidatas.add(new Candidata(cx, cz, puntos, sitios));
+				candidatas.add(new Candidata(cx, cz, puntos, sitios, recursos));
 			}
 		}
 		// las mejores, mirando de cerca el agua alrededor de cada sitio posible: una capital entre islas o junto a
@@ -567,33 +588,61 @@ public final class MapaTerreno {
 		candidatas.sort((a, b) -> Double.compare(b.puntos(), a.puntos()));
 		Capital mejor = null;
 		double puntosMejor = Double.NEGATIVE_INFINITY;
+		int ducadosReino = candidatas.size();
 		for (int i = 0; i < Math.min(CANDIDATAS_CAPITAL, candidatas.size()); i++) {
 			Candidata cand = candidatas.get(i);
+			// el agua solo resta: una candidata que ya no llega a la mejor no puede ganar (ni las siguientes)
+			if (cand.puntos() <= puntosMejor) {
+				break;
+			}
 			boolean hayMontana = cand.sitios().stream().anyMatch(s -> s[2] == 1);
 			for (int[] s : cand.sitios()) {
 				if (montana && hayMontana && s[2] == 0) {
 					continue;
 				}
-				double puntos = cand.puntos() - aguaAlrededor(s[0], s[1]) * 0.6;
-				if (puntos > puntosMejor) {
+				// se deja de contar agua en cuanto el sitio ya no puede ganar a la mejor
+				int tope = puntosMejor == Double.NEGATIVE_INFINITY ? Integer.MAX_VALUE
+						: (int) Math.floor((cand.puntos() - puntosMejor) / 0.6);
+				double puntos = cand.puntos() - aguaAlrededor(s[0], s[1], tope) * 0.6;
+				// solo donde el pueblo de la capital puede empezar (se mira al final: es lo más caro)
+				if (puntos > puntosMejor && muestreador.capitalCabe(s[0], s[1])) {
 					puntosMejor = puntos;
-					mejor = new Capital(cand.cx(), cand.cz(), s[0], s[1], montana && s[2] == 1);
+					mejor = new Capital(cand.cx(), cand.cz(), s[0], s[1], montana && s[2] == 1, nivel(cand.recursos(), ducadosReino));
+				}
+			}
+		}
+		if (mejor == null) {
+			// en ninguno de los mejores ducados cabe: el mejor sitio de cualquier ducado del reino donde sí quepa
+			for (Candidata cand : candidatas) {
+				for (int[] s : cand.sitios()) {
+					if (muestreador.capitalCabe(s[0], s[1])) {
+						return new Capital(cand.cx(), cand.cz(), s[0], s[1], montana && s[2] == 1, nivel(cand.recursos(), ducadosReino));
+					}
 				}
 			}
 		}
 		return mejor;
 	}
 
-	private record Candidata(int cx, int cz, double puntos, List<int[]> sitios) {
+	private record Candidata(int cx, int cz, double puntos, List<int[]> sitios, int recursos) {
 	}
 
-	/** Cuántos de los 5×5 puntos alrededor de (x, z), hasta donde llega la capital, son agua. */
-	private int aguaAlrededor(int x, int z) {
+	/**
+	 * Riqueza de la capital: recursos medios por casilla de su ducado (0-10, lo normal 3-5) más el tamaño del
+	 * reino cerca de su centro (ducados con señor, hasta 49).
+	 */
+	static int nivel(int recursos, int ducados) {
+		double riqueza = recursos / 9.0 + ducados / 8.0;
+		return riqueza < RIQUEZA_NORMAL ? 0 : riqueza < RIQUEZA_RICA ? 1 : 2;
+	}
+
+	/** Cuántos de los 5×5 puntos alrededor de (x, z), hasta donde llega la capital, son agua (deja de contar pasado tope). */
+	private int aguaAlrededor(int x, int z, int tope) {
 		int agua = 0;
 		for (int dz = -2; dz <= 2; dz++) {
 			for (int dx = -2; dx <= 2; dx++) {
-				if (muestreador.agua(x + dx * PASO_AGUA, z + dz * PASO_AGUA)) {
-					agua++;
+				if (muestreador.agua(x + dx * PASO_AGUA, z + dz * PASO_AGUA) && ++agua > tope) {
+					return agua;
 				}
 			}
 		}
@@ -606,10 +655,43 @@ public final class MapaTerreno {
 		Casilla[] terreno = new Casilla[N * N];
 		for (int j = 0; j < N; j++) {
 			for (int i = 0; i < N; i++) {
-				terreno[i + j * N] = muestreador.muestra((bx + i) * CASILLA + CASILLA / 2, (bz + j) * CASILLA + CASILLA / 2);
+				terreno[i + j * N] = casilla(bx + i, bz + j);
 			}
 		}
 		return terreno;
+	}
+
+	/**
+	 * Terreno ya leído, por regiones de NUCLEO×NUCLEO casillas, empaquetado en un int por casilla (0: sin leer).
+	 * Cada ventana lleva un margen de MARGEN casillas por lado que es núcleo de sus vecinas: sin esto, las casillas
+	 * de los márgenes se leían del generador hasta cuatro veces (y leer el terreno es lo más caro de todo).
+	 */
+	private final ConcurrentHashMap<Long, int[]> terrenoLeido = new ConcurrentHashMap<>();
+
+	private Casilla casilla(int ti, int tj) {
+		int rx = Math.floorDiv(ti, NUCLEO);
+		int rz = Math.floorDiv(tj, NUCLEO);
+		int[] region = terrenoLeido.computeIfAbsent(clave(rx, rz), k -> new int[NUCLEO * NUCLEO]);
+		int k = (ti - rx * NUCLEO) + (tj - rz * NUCLEO) * NUCLEO;
+		int v = region[k];
+		if (v != 0) {
+			return desempaqueta(v);
+		}
+		Casilla c = muestreador.muestra(ti * CASILLA + CASILLA / 2, tj * CASILLA + CASILLA / 2);
+		// dos hilos pueden leer la misma casilla a la vez: escriben lo mismo
+		region[k] = empaqueta(c);
+		return c;
+	}
+
+	/** altura + 1024 en los bits 0-11, mar 12, río 13, montaña 14, familia + 1 en 15-20, y el bit 30 de "leída". */
+	static int empaqueta(Casilla c) {
+		int altura = Math.max(0, Math.min(4095, c.altura() + 1024));
+		int familia = Math.max(0, Math.min(63, c.familia() + 1));
+		return altura | (c.oceano() ? 1 << 12 : 0) | (c.rio() ? 1 << 13 : 0) | (c.montana() ? 1 << 14 : 0) | familia << 15 | 1 << 30;
+	}
+
+	static Casilla desempaqueta(int v) {
+		return new Casilla((v & 4095) - 1024, (v & 1 << 12) != 0, (v & 1 << 13) != 0, (v & 1 << 14) != 0, (v >> 15 & 63) - 1);
 	}
 
 	/** Centros de ducado dentro de la ventana, movidos a tierra firme si caen en el mar. */
@@ -640,6 +722,88 @@ public final class MapaTerreno {
 	}
 
 	/** Lo que cuesta andar de una casilla a la vecina: ríos, montañas, mar y cambios de bioma lo encarecen. */
+	/**
+	 * Cola de prioridad del Dijkstra sin un objeto por entrada (eran decenas de miles por zona, basura para el
+	 * recolector): montículo en arrays, ordenado por coste, luego semilla y luego casilla, como antes.
+	 */
+	private static final class Cola {
+		double[] coste;
+		int[] casilla;
+		int[] semilla;
+		int n;
+
+		Cola(int capacidad) {
+			coste = new double[capacidad];
+			casilla = new int[capacidad];
+			semilla = new int[capacidad];
+		}
+
+		boolean vacia() {
+			return n == 0;
+		}
+
+		private boolean antes(int a, int b) {
+			int c = Double.compare(coste[a], coste[b]);
+			if (c != 0) {
+				return c < 0;
+			}
+			if (semilla[a] != semilla[b]) {
+				return semilla[a] < semilla[b];
+			}
+			return casilla[a] < casilla[b];
+		}
+
+		private void cambia(int a, int b) {
+			double c = coste[a];
+			coste[a] = coste[b];
+			coste[b] = c;
+			int t = casilla[a];
+			casilla[a] = casilla[b];
+			casilla[b] = t;
+			t = semilla[a];
+			semilla[a] = semilla[b];
+			semilla[b] = t;
+		}
+
+		void mete(double c, int k, int s) {
+			if (n == coste.length) {
+				coste = Arrays.copyOf(coste, n * 2);
+				casilla = Arrays.copyOf(casilla, n * 2);
+				semilla = Arrays.copyOf(semilla, n * 2);
+			}
+			coste[n] = c;
+			casilla[n] = k;
+			semilla[n] = s;
+			int i = n++;
+			while (i > 0 && antes(i, (i - 1) / 2)) {
+				cambia(i, (i - 1) / 2);
+				i = (i - 1) / 2;
+			}
+		}
+
+		/** Quita la primera (la de menor coste). */
+		void saca() {
+			cambia(0, --n);
+			int i = 0;
+			while (true) {
+				int a = 2 * i + 1;
+				int b = a + 1;
+				int m = i;
+				if (a < n && antes(a, m)) {
+					m = a;
+				}
+				if (b < n && antes(b, m)) {
+					m = b;
+				}
+				if (m == i) {
+					return;
+				}
+				cambia(i, m);
+				i = m;
+			}
+		}
+	}
+
 	private static double costePaso(Casilla desde, Casilla hacia, boolean diagonal, boolean salvaje) {
 		double paso = 1 + Math.abs(hacia.altura() - desde.altura()) / DESNIVEL_POR_PUNTO;
 		if (hacia.montana()) {

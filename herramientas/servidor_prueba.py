@@ -29,6 +29,8 @@ COMANDOS = [
     "data get storage destinos:politica turno",
     # la capital (el pueblo del bioma, agrandado): que se pueda generar
     "place structure destinos_core:capital 0 80 600",
+    # la capital que ha salido sola al cargar los chunks: que su chunk la tenga y los de alrededor la conozcan
+    "execute positioned 196 100 667 run destinoscore capital",
 ]
 # Frases que Minecraft escribe cuando algo del datapack falla
 MALO = re.compile(r"Failed to (load|parse) function|Couldn't load function|Unknown or incomplete command|"
@@ -85,6 +87,9 @@ if "antes de que el datapack ponga la sal" in salida:
 if capitales < 1:
     print("\n".join(l.rstrip() for l in lineas if "capital" in l or "structure" in l.lower())[-3000:])
     sys.exit("la capital de prueba no se ha generado")
+diag = re.search(r"capital del reino en .*", salida)
+if not diag or "su chunk tiene la capital" not in diag.group(0) or "NO la conoce" in diag.group(0):
+    sys.exit("la capital del mapa no está entera en el mundo: " + (diag.group(0) if diag else "sin /destinoscore capital"))
 if not ok_terr:
     sys.exit("geo/territorio no devolvió #tdx: el mod no respondió")
 print("\nOK: el servidor carga Destinos Core y el datapack sin errores")

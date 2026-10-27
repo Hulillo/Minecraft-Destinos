@@ -18,13 +18,16 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.tags.StructureTags;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructureType;
+import net.minecraft.world.level.levelgen.structure.pools.StructureTemplatePool;
 import net.minecraft.world.level.levelgen.structure.structures.JigsawStructure;
 
 /**
@@ -57,24 +60,171 @@ public final class EstructuraCapital extends Structure {
 
 	/** Pueblos agrandados ya preparados (por pueblo, profundidad y distancia), para los registros del mundo abierto. */
 	private static final Map<String, Optional<Structure>> COPIAS = new ConcurrentHashMap<>();
+	/** Capitales ya preparadas, por chunk (las últimas; hay pocas y se piden varias veces seguidas). */
+	private static final Map<Long, Optional<Structure.GenerationStub>> PREPARADAS = new java.util.LinkedHashMap<>(16, 0.75F, true) {
+		@Override
+		protected boolean removeEldestEntry(Map.Entry<Long, Optional<Structure.GenerationStub>> mas) {
+			return size() > 16;
+		}
+	};
 	private static volatile RegistryAccess registrosCopias;
 
 	public EstructuraCapital(Structure.StructureSettings ajustes) {
 		super(ajustes);
 	}
 
+	/** Al cerrar el mundo: fuera las capitales preparadas, que guardan cosas de ese mundo. */
+	static void olvida() {
+		synchronized (PREPARADAS) {
+			PREPARADAS.clear();
+		}
+	}
+
 	static void registra() {
 		Registry.register(BuiltInRegistries.STRUCTURE_TYPE, Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "capital"), TIPO);
 	}
 
+	/**
+	 * Sin mirar el bioma: dónde va la capital lo decide ColocacionCapital, y el bioma justo en el centro puede ser
+	 * uno que no está en ningún tag (ríos y biomas de mods). Con la comprobación de vanilla, si la generación del
+	 * chunk veía un bioma así, la capital se quedaba sin generar aunque la corona sí saliera en el mapa.
+	 */
+	@Override
+	public Optional<Structure.GenerationStub> findValidGenerationPoint(Structure.GenerationContext ctx) {
+		return findGenerationPoint(ctx);
+	}
+
 	@Override
 	public Optional<Structure.GenerationStub> findGenerationPoint(Structure.GenerationContext ctx) {
+		// la generación y las búsquedas de estructuras (/locate, RoadWeaver…) preguntan por el mismo chunk: la
+		// capital se prepara una vez (son cientos de piezas) y las demás veces se reutiliza
+		long clave = ctx.chunkPos().toLong() * 31 + ctx.seed();
+		synchronized (PREPARADAS) {
+			Optional<Structure.GenerationStub> ya = PREPARADAS.get(clave);
+			if (ya != null) {
+				return ya;
+			}
+		}
+		Optional<Structure.GenerationStub> stub = prepara(ctx);
+		synchronized (PREPARADAS) {
+			PREPARADAS.put(clave, stub);
+		}
+		return stub;
+	}
+
+	private Optional<Structure.GenerationStub> prepara(Structure.GenerationContext ctx) {
+		Holder<Biome> bioma = biomaCentro(ctx);
+		Registry<Structure> estructuras = ctx.registryAccess().lookupOrThrow(Registries.STRUCTURE);
+		List<Holder.Reference<Structure>> orden = candidatos(ctx, bioma);
+		Holder.Reference<Structure> pueblo = null;
+		Identifier id = null;
+		Optional<Montado> plaza = Optional.empty();
+		// en el sitio justo; si ahí no cabe ningún pueblo, la plaza un poco más allá (la capital sigue siendo de
+		// este chunk). Nunca uno abandonado.
+		{
+			for (int[] d : DESPLAZAMIENTOS) {
+				if (pueblo != null) {
+					break;
+				}
+				Structure.GenerationContext aqui = d[0] == 0 && d[1] == 0 ? ctx : new Structure.GenerationContext(
+						ctx.registryAccess(), ctx.chunkGenerator(), ctx.biomeSource(), ctx.randomState(),
+						ctx.structureTemplateManager(), ctx.seed(), new ChunkPos(ctx.chunkPos().x + d[0], ctx.chunkPos().z + d[1]),
+						ctx.heightAccessor(), b -> true);
+				for (Holder.Reference<Structure> candidato : orden) {
+					Identifier idCandidato = estructuras.getKey(candidato.value());
+					plaza = agrandado(ctx.registryAccess(), idCandidato, candidato.value(), MAS_PROFUNDIDAD, DISTANCIA)
+							.flatMap(s -> monta(s, aqui));
+					if (plaza.isPresent()) {
+						pueblo = candidato;
+						id = idCandidato;
+						break;
+					}
+					DestinosCore.LOG.info("Destinos Core: la capital del chunk {} ({}) no ha podido empezar con {} en {}; prueba otro",
+							ctx.chunkPos(), bioma.unwrapKey().map(Object::toString).orElse("?"), idCandidato, aqui.chunkPos());
+				}
+			}
+		}
+		if (pueblo == null) {
+			DestinosCore.LOG.warn("Destinos Core: la capital del chunk {} no ha podido empezar con ningún pueblo", ctx.chunkPos());
+			return Optional.empty();
+		}
+		// los barrios: el mismo pueblo, en las cuatro diagonales (menos los que caen en el agua)
+		Agua agua = new Agua(ctx);
+		List<Montado> barrios = new ArrayList<>();
+		Optional<Structure> barrio = agrandado(ctx.registryAccess(), id, pueblo.value(), MAS_PROFUNDIDAD_BARRIO, DISTANCIA_BARRIO);
+		if (barrio.isPresent()) {
+			for (int[] d : new int[][] {{1, 1}, {-1, 1}, {1, -1}, {-1, -1}}) {
+				ChunkPos sitio = new ChunkPos(ctx.chunkPos().x + d[0] * SEPARACION_BARRIO / 16,
+						ctx.chunkPos().z + d[1] * SEPARACION_BARRIO / 16);
+				Structure.GenerationContext otro = new Structure.GenerationContext(ctx.registryAccess(), ctx.chunkGenerator(),
+						ctx.biomeSource(), ctx.randomState(), ctx.structureTemplateManager(), ctx.seed(), sitio,
+						ctx.heightAccessor(), b -> true);
+				if (!agua.en(sitio.getMiddleBlockX(), sitio.getMiddleBlockZ())) {
+					monta(barrio.get(), otro).ifPresent(barrios::add);
+				}
+			}
+		}
+		Montado principal = plaza.get();
+		// calles del centro a cada barrio, para que no queden como pueblos sueltos
+		// (solo por tierra: una calle que tendría que cruzar un lago o un brazo de mar no se hace)
+		List<List<CalleCapital>> calles = new ArrayList<>();
+		for (Montado b : barrios) {
+			calles.add(calles(ctx, agua, principal.position().getX(), principal.position().getZ(), b.position().getX(),
+					b.position().getZ()));
+		}
+		// la muralla, según lo rico que es el reino (con /place, sin capital en el mapa: normal)
+		MapaTerreno.Capital esta = ColocacionCapital.capitalEn(ctx.chunkPos().x, ctx.chunkPos().z);
+		int nivel = esta != null ? esta.nivel() : 1;
+		List<StructurePiece> muralla = new ArrayList<>();
+		MurallaCapital.piezas(principal.position().getX(), principal.position().getZ(), nivel, (mx, mz) ->
+				ctx.chunkGenerator().getFirstOccupiedHeight(mx, mz, Heightmap.Types.WORLD_SURFACE_WG, ctx.heightAccessor(),
+						ctx.randomState()), muralla);
+		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
+			List<StructurePiece> puestas = new ArrayList<>();
+			List<StructurePiece> delCentro = principal.piezas();
+			for (int i = 0; i < delCentro.size(); i++) {
+				// la plaza siempre; el resto, si no está metido en el mar (calles y casas flotando)
+				if (i == 0 || !agua.tapa(delCentro.get(i))) {
+					puestas.add(delCentro.get(i));
+					piezas.addPiece(delCentro.get(i));
+				}
+			}
+			int enCalles = 0;
+			for (int i = 0; i < barrios.size(); i++) {
+				int antes = puestas.size();
+				for (StructurePiece pieza : barrios.get(i).piezas()) {
+					// una pieza de barrio que choca con algo ya puesto o cae en el agua se queda fuera
+					if (!agua.tapa(pieza) && puestas.stream().noneMatch(otra -> otra.getBoundingBox().intersects(pieza.getBoundingBox()))) {
+						puestas.add(pieza);
+						piezas.addPiece(pieza);
+					}
+				}
+				// la calle, solo hasta barrios que de verdad tienen casas
+				if (puestas.size() - antes >= 3) {
+					calles.get(i).forEach(piezas::addPiece);
+					enCalles += calles.get(i).size();
+				}
+			}
+			// la muralla al final, para que vea las calles y casas ya puestas y les deje hueco
+			muralla.forEach(piezas::addPiece);
+			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}): {} de {} piezas del centro, {} barrios, {} piezas en total",
+					principal.position().getX(), principal.position().getY(), principal.position().getZ(), nivel, delCentro.stream()
+							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + enCalles);
+		}));
+	}
+
+	/** El bioma en la superficie del centro del chunk: decide el estilo de la capital. */
+	private static Holder<Biome> biomaCentro(Structure.GenerationContext ctx) {
 		int x = ctx.chunkPos().getMiddleBlockX();
 		int z = ctx.chunkPos().getMiddleBlockZ();
 		int y = ctx.chunkGenerator().getFirstOccupiedHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG, ctx.heightAccessor(),
 				ctx.randomState());
-		Holder<Biome> bioma = ctx.biomeSource().getNoiseBiome(QuartPos.fromBlock(x), QuartPos.fromBlock(y),
-				QuartPos.fromBlock(z), ctx.randomState().sampler());
+		return ctx.biomeSource().getNoiseBiome(QuartPos.fromBlock(x), QuartPos.fromBlock(y), QuartPos.fromBlock(z),
+				ctx.randomState().sampler());
+	}
+
+	/** Los pueblos que se prueban para la capital de ese chunk, en orden. */
+	private static List<Holder.Reference<Structure>> candidatos(Structure.GenerationContext ctx, Holder<Biome> bioma) {
 		Registry<Structure> estructuras = ctx.registryAccess().lookupOrThrow(Registries.STRUCTURE);
 		// los pueblos que pueden salir en este bioma; si ninguno, uno vanilla según el clima
 		List<Holder.Reference<Structure>> pueblos = new ArrayList<>();
@@ -96,80 +246,121 @@ public final class EstructuraCapital extends Structure {
 		float temperatura = bioma.value().getBaseTemperature();
 		String porDefecto = temperatura < 0.2F ? "village_snowy" : temperatura > 1.5F ? "village_desert" : "village_plains";
 		estructuras.get(Identifier.withDefaultNamespace(porDefecto)).filter(h -> !orden.contains(h)).ifPresent(orden::add);
-		Holder.Reference<Structure> pueblo = null;
-		Identifier id = null;
-		Optional<Structure.GenerationStub> plaza = Optional.empty();
-		for (Holder.Reference<Structure> candidato : orden) {
-			Identifier idCandidato = estructuras.getKey(candidato.value());
-			plaza = agrandado(ctx.registryAccess(), idCandidato, candidato.value(), MAS_PROFUNDIDAD, DISTANCIA)
-					.flatMap(s -> s.findValidGenerationPoint(ctx));
-			if (plaza.isPresent()) {
-				pueblo = candidato;
-				id = idCandidato;
-				break;
+		// si ninguno del bioma cabe, otro pueblo de verdad antes que una corona vacía: los de vanilla y luego el resto
+		for (String otro : new String[] {"village_plains", "village_taiga", "village_savanna", "village_snowy", "village_desert"}) {
+			estructuras.get(Identifier.withDefaultNamespace(otro)).filter(h -> !orden.contains(h)).ifPresent(orden::add);
+		}
+		List<Holder.Reference<Structure>> resto = new ArrayList<>();
+		estructuras.listElements().forEach(h -> {
+			if (h.value() instanceof JigsawStructure && esPueblo(estructuras, h) && !orden.contains(h)) {
+				resto.add(h);
 			}
-			DestinosCore.LOG.info("Destinos Core: la capital del chunk {} ({}) no ha podido empezar con {}; prueba otro",
-					ctx.chunkPos(), bioma.unwrapKey().map(Object::toString).orElse("?"), idCandidato);
-		}
-		if (pueblo == null) {
-			DestinosCore.LOG.warn("Destinos Core: la capital del chunk {} no ha podido empezar con ningún pueblo", ctx.chunkPos());
-			return Optional.empty();
-		}
-		// los barrios: el mismo pueblo, en las cuatro diagonales (menos los que caen en el agua)
-		Agua agua = new Agua(ctx);
-		List<Structure.GenerationStub> barrios = new ArrayList<>();
-		Optional<Structure> barrio = agrandado(ctx.registryAccess(), id, pueblo.value(), MAS_PROFUNDIDAD_BARRIO, DISTANCIA_BARRIO);
-		if (barrio.isPresent()) {
-			for (int[] d : new int[][] {{1, 1}, {-1, 1}, {1, -1}, {-1, -1}}) {
-				ChunkPos sitio = new ChunkPos(ctx.chunkPos().x + d[0] * SEPARACION_BARRIO / 16,
-						ctx.chunkPos().z + d[1] * SEPARACION_BARRIO / 16);
-				Structure.GenerationContext otro = new Structure.GenerationContext(ctx.registryAccess(), ctx.chunkGenerator(),
-						ctx.biomeSource(), ctx.randomState(), ctx.structureTemplateManager(), ctx.seed(), sitio,
-						ctx.heightAccessor(), ctx.validBiome());
-				if (!agua.en(sitio.getMiddleBlockX(), sitio.getMiddleBlockZ())) {
-					barrio.get().findValidGenerationPoint(otro).ifPresent(barrios::add);
+		});
+		resto.sort((a, b) -> String.valueOf(estructuras.getKey(a.value())).compareTo(String.valueOf(estructuras.getKey(b.value()))));
+		orden.addAll(resto);
+		return orden;
+	}
+
+	/**
+	 * Si en (x, z) puede empezar una capital (algún pueblo, en su chunk o al lado). Solo prueba la plaza de inicio,
+	 * sin montar el pueblo entero, así que es barato. Lo usa MapaTerreno para elegir el sitio antes de poner la
+	 * corona: así la corona va siempre donde la capital sí sale.
+	 */
+	static boolean cabe(ServerLevel level, int x, int z) {
+		net.minecraft.world.level.chunk.ChunkGenerator gen = level.getChunkSource().getGenerator();
+		Structure.GenerationContext ctx = new Structure.GenerationContext(level.registryAccess(), gen, gen.getBiomeSource(),
+				level.getChunkSource().randomState(), level.getStructureManager(), level.getSeed(),
+				new ChunkPos(x >> 4, z >> 4), level, b -> true);
+		Registry<Structure> estructuras = ctx.registryAccess().lookupOrThrow(Registries.STRUCTURE);
+		List<Holder.Reference<Structure>> orden = candidatos(ctx, biomaCentro(ctx));
+		for (int[] d : DESPLAZAMIENTOS) {
+			for (Holder.Reference<Structure> candidato : orden) {
+				Optional<Structure> copia = agrandado(ctx.registryAccess(), estructuras.getKey(candidato.value()), candidato.value(),
+						MAS_PROFUNDIDAD, DISTANCIA);
+				if (copia.isEmpty()) {
+					continue;
 				}
-			}
-		}
-		Structure.GenerationStub principal = plaza.get();
-		// calles del centro a cada barrio, para que no queden como pueblos sueltos
-		// (solo por tierra: una calle que tendría que cruzar un lago o un brazo de mar no se hace)
-		List<List<CalleCapital>> calles = new ArrayList<>();
-		for (Structure.GenerationStub b : barrios) {
-			calles.add(calles(ctx, agua, principal.position().getX(), principal.position().getZ(), b.position().getX(),
-					b.position().getZ()));
-		}
-		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
-			List<StructurePiece> puestas = new ArrayList<>();
-			List<StructurePiece> delCentro = principal.getPiecesBuilder().build().pieces();
-			for (int i = 0; i < delCentro.size(); i++) {
-				// la plaza siempre; el resto, si no está metido en el mar (calles y casas flotando)
-				if (i == 0 || !agua.tapa(delCentro.get(i))) {
-					puestas.add(delCentro.get(i));
-					piezas.addPiece(delCentro.get(i));
-				}
-			}
-			int enCalles = 0;
-			for (int i = 0; i < barrios.size(); i++) {
-				int antes = puestas.size();
-				for (StructurePiece pieza : barrios.get(i).getPiecesBuilder().build().pieces()) {
-					// una pieza de barrio que choca con algo ya puesto o cae en el agua se queda fuera
-					if (!agua.tapa(pieza) && puestas.stream().noneMatch(otra -> otra.getBoundingBox().intersects(pieza.getBoundingBox()))) {
-						puestas.add(pieza);
-						piezas.addPiece(pieza);
+				for (int intento = 0; intento < INTENTOS; intento++) {
+					Structure.GenerationContext c = new Structure.GenerationContext(ctx.registryAccess(), gen, gen.getBiomeSource(),
+							ctx.randomState(), ctx.structureTemplateManager(), ctx.seed() + intento * 0x9E3779B97F4A7C15L,
+							new ChunkPos(ctx.chunkPos().x + d[0], ctx.chunkPos().z + d[1]), level, b -> true);
+					if (copia.get().findValidGenerationPoint(c).isPresent()) {
+						return true;
 					}
 				}
-				// la calle, solo hasta barrios que de verdad tienen casas
-				if (puestas.size() - antes >= 3) {
-					calles.get(i).forEach(piezas::addPiece);
-					enCalles += calles.get(i).size();
+			}
+		}
+		return false;
+	}
+
+	/** Un pueblo ya montado: dónde empieza y sus piezas (sin las casas abandonadas sueltas). */
+	private record Montado(net.minecraft.core.BlockPos position, List<StructurePiece> piezas) {
+	}
+
+	/** Dónde probar la plaza, en chunks desde el de la capital: primero el suyo y luego alrededor. */
+	private static final int[][] DESPLAZAMIENTOS = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+	/** Intentos de montar un pueblo que no salga abandonado antes de pasar al siguiente estilo. */
+	private static final int INTENTOS = 6;
+
+	/**
+	 * Monta el pueblo en ese chunk, pero no uno abandonado: los pueblos zombi de vanilla (y los abandonados de
+	 * algunos mods) salen del mismo pueblo, con una plaza de inicio rara; si toca una, se vuelve a tirar con otra
+	 * semilla. Las casas abandonadas sueltas dentro de un pueblo normal se quitan.
+	 */
+	private static Optional<Montado> monta(Structure pueblo, Structure.GenerationContext ctx) {
+		for (int intento = 0; intento < INTENTOS; intento++) {
+			// el pueblo copiado tampoco mira el bioma (ya lo ha elegido prepara para este sitio)
+			Structure.GenerationContext c = new Structure.GenerationContext(ctx.registryAccess(),
+					ctx.chunkGenerator(), ctx.biomeSource(), ctx.randomState(), ctx.structureTemplateManager(),
+					ctx.seed() + intento * 0x9E3779B97F4A7C15L, ctx.chunkPos(), ctx.heightAccessor(), b -> true);
+			// con otra semilla puede tocar otra plaza de inicio que sí quepa: no se rinde a la primera
+			Optional<Structure.GenerationStub> stub = pueblo.findValidGenerationPoint(c);
+			if (stub.isEmpty()) {
+				continue;
+			}
+			List<StructurePiece> piezas = stub.get().getPiecesBuilder().build().pieces();
+			if (piezas.isEmpty()) {
+				continue;
+			}
+			// abandonado de verdad: la mayoría de sus piezas (los pueblos zombi lo son enteros); una casa suelta
+			// con un nombre así no basta
+			int abandonadas = 0;
+			for (StructurePiece pieza : piezas) {
+				abandonadas += abandonada(pieza) ? 1 : 0;
+			}
+			if (abandonadas * 2 > piezas.size()) {
+				DestinosCore.LOG.info("Destinos Core: la capital del chunk {} salía abandonada ({} de {} piezas, plaza {}); se vuelve a tirar",
+						ctx.chunkPos(), abandonadas, piezas.size(), piezas.get(0) instanceof PoolElementStructurePiece p ? p.getElement() : "?");
+				continue;
+			}
+			List<StructurePiece> buenas = new ArrayList<>(piezas.size());
+			for (int i = 0; i < piezas.size(); i++) {
+				if (i == 0 || !abandonada(piezas.get(i))) {
+					buenas.add(piezas.get(i));
 				}
 			}
-			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {}: {} de {} piezas del centro, {} barrios, {} piezas en total",
-					principal.position().getX(), principal.position().getY(), principal.position().getZ(), delCentro.stream()
-							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + enCalles);
-		}));
+			return Optional.of(new Montado(stub.get().position(), buenas));
+		}
+		return Optional.empty();
 	}
+
+	/** Si la pieza es de un pueblo abandonado (por el nombre de su plantilla). */
+	private static boolean abandonada(StructurePiece pieza) {
+		if (!(pieza instanceof PoolElementStructurePiece p)) {
+			return false;
+		}
+		String plantilla = p.getElement().toString().toLowerCase(java.util.Locale.ROOT);
+		for (String no : ABANDONADO) {
+			if (plantilla.contains(no)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static final String[] ABANDONADO = {"zombie", "abandon", "ruin", "destroyed", "burn", "haunt", "ghost",
+			"derelict"};
 
 	/** Tramos de calle de (x0, z0) a (x1, z1), cada uno a la altura del suelo en su mitad. */
 	private static List<CalleCapital> calles(Structure.GenerationContext ctx, Agua agua, int x0, int z0, int x1, int z1) {
@@ -195,7 +386,7 @@ public final class EstructuraCapital extends Structure {
 		return calles;
 	}
 
-	/** Dónde hay agua en vez de tierra (fondo por debajo del nivel del mar), mirado por casillas de 8 bloques. */
+	/** Dónde hay agua en vez de tierra (fondo por debajo del nivel del mar), mirado por casillas de 16 bloques. */
 	private static final class Agua {
 		private final Structure.GenerationContext ctx;
 		private final Map<Long, Boolean> visto = new ConcurrentHashMap<>();
@@ -205,8 +396,9 @@ public final class EstructuraCapital extends Structure {
 		}
 
 		boolean en(int x, int z) {
-			return visto.computeIfAbsent(((long) (x >> 3) << 32) ^ ((z >> 3) & 0xffffffffL), k ->
-					ctx.chunkGenerator().getBaseHeight(x, z, Heightmap.Types.OCEAN_FLOOR_WG, ctx.heightAccessor(),
+			// la casilla mezclada: con x en los bits altos y z en los bajos, Long.hashCode (x ^ z) se repite mucho
+			return visto.computeIfAbsent((((long) (x >> 4) << 32) ^ ((z >> 4) & 0xffffffffL)) * 0x9E3779B97F4A7C15L, k ->
+					ctx.chunkGenerator().getBaseHeight((x & ~15) + 8, (z & ~15) + 8, Heightmap.Types.OCEAN_FLOOR_WG, ctx.heightAccessor(),
 							ctx.randomState()) < ctx.chunkGenerator().getSeaLevel());
 		}
 
@@ -270,6 +462,7 @@ public final class EstructuraCapital extends Structure {
 			}
 			// el bioma ya lo ha mirado findGenerationPoint (o es el pueblo de respaldo): que no lo vuelva a mirar
 			o.addProperty("biomes", "#destinos_core:capital");
+			sinPlazasAbandonadas(registros, ops, o, k);
 			Optional<Structure> copia = Structure.DIRECT_CODEC.parse(ops, o).resultOrPartial(error ->
 					DestinosCore.LOG.warn("Destinos Core: el pueblo {} agrandado no es válido ({}); la capital usará el normal", k, error));
 			if (copia.isEmpty()) {
@@ -279,6 +472,47 @@ public final class EstructuraCapital extends Structure {
 					Math.min(20, profundidad + mas), alcance);
 			return copia;
 		});
+	}
+
+	/**
+	 * Cambia la lista de plazas de inicio del pueblo copiado por la misma sin las abandonadas (los pueblos zombi de
+	 * vanilla y los abandonados de mods empiezan por una plaza así): la capital no puede salir abandonada nunca, en
+	 * vez de tirar otra vez cuando sale. La lista va dentro de la copia, sin registrar nada.
+	 */
+	private static void sinPlazasAbandonadas(RegistryAccess registros, RegistryOps<JsonElement> ops, JsonObject o, Identifier k) {
+		JsonElement inicio = o.get("start_pool");
+		if (inicio == null || !inicio.isJsonPrimitive()) {
+			return;
+		}
+		Identifier idPool = Identifier.tryParse(inicio.getAsString());
+		Optional<Holder.Reference<StructureTemplatePool>> pool = idPool == null ? Optional.empty()
+				: registros.lookupOrThrow(Registries.TEMPLATE_POOL).get(idPool);
+		if (pool.isEmpty()) {
+			return;
+		}
+		Optional<JsonElement> json = StructureTemplatePool.DIRECT_CODEC.encodeStart(ops, pool.get().value()).result();
+		if (json.isEmpty() || !json.get().isJsonObject() || !json.get().getAsJsonObject().has("elements")) {
+			return;
+		}
+		JsonObject limpio = json.get().getAsJsonObject().deepCopy();
+		com.google.gson.JsonArray elementos = limpio.getAsJsonArray("elements");
+		com.google.gson.JsonArray buenos = new com.google.gson.JsonArray();
+		for (JsonElement e : elementos) {
+			String texto = e.toString().toLowerCase(java.util.Locale.ROOT);
+			boolean malo = false;
+			for (String no : ABANDONADO) {
+				malo |= texto.contains(no);
+			}
+			if (!malo) {
+				buenos.add(e);
+			}
+		}
+		if (buenos.isEmpty() || buenos.size() == elementos.size()) {
+			return;
+		}
+		limpio.add("elements", buenos);
+		o.add("start_pool", limpio);
+		DestinosCore.LOG.info("Destinos Core: capitales de {} sin {} plazas abandonadas", k, elementos.size() - buenos.size());
 	}
 
 	@Override

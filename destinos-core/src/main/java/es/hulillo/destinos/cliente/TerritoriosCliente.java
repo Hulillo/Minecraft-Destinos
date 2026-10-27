@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Supplier;
 
 /**
  * Lo que el cliente sabe del mapa político: las zonas que le ha mandado el servidor (cerca de donde ha estado
@@ -37,8 +38,11 @@ public final class TerritoriosCliente {
 	private static final Map<Long, PaqueteTerritorio> ZONAS = new HashMap<>();
 	private static final List<Oyente> OYENTES = new CopyOnWriteArrayList<>();
 	private static int sal;
-	/** Qué hizo el último mapa al pintar, para /destinosmapa. Lo rellenan las capas de cada mapa. */
-	public static volatile String ultimoPintado = "ningún mapa ha intentado pintar todavía";
+	/**
+	 * Qué hizo el último mapa al pintar, para /destinosmapa. Lo rellenan las capas de cada mapa; es un Supplier para
+	 * no montar el texto en cada fotograma, solo cuando alguien lo pide.
+	 */
+	public static volatile Supplier<String> ultimoPintado = () -> "ningún mapa ha intentado pintar todavía";
 	/** La última zona consultada: al pintar se piden muchas casillas seguidas de la misma. */
 	private static PaqueteTerritorio ultima;
 	/** Turno político de ahora y guerras abiertas (pares de reinos), del último PaquetePolitica. */

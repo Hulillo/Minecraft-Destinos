@@ -12,6 +12,8 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -19,6 +21,9 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.scores.Objective;
 import net.minecraft.world.scores.ReadOnlyScoreInfo;
@@ -59,6 +64,7 @@ public final class DestinosCore implements ModInitializer {
 				dispatcher.register(Commands.literal("destinoscore")
 						.then(Commands.literal("territorio").executes(ctx -> territorio(ctx.getSource())))
 						.then(Commands.literal("estado").executes(ctx -> estado(ctx.getSource())))
+						.then(Commands.literal("capital").executes(ctx -> capital(ctx.getSource())))
 						.then(Commands.literal("politica").executes(ctx -> politica(ctx.getSource()))
 								.then(Commands.literal("reinos").executes(ctx -> ranking(ctx.getSource())))
 								.then(Commands.literal("ritmo")
@@ -71,6 +77,7 @@ public final class DestinosCore implements ModInitializer {
 		ColocacionCapital.registra();
 		EstructuraCapital.registra();
 		CalleCapital.registra();
+		MurallaCapital.registra();
 		PayloadTypeRegistry.playS2C().register(PaqueteTerritorio.TIPO, PaqueteTerritorio.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaquetePolitica.TIPO, PaquetePolitica.CODEC);
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ENVIO.olvida(handler.getPlayer().getUUID()));
@@ -91,6 +98,7 @@ public final class DestinosCore implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
 			mapa = null;
 			politica = null;
+			EstructuraCapital.olvida();
 			mapaEnviado = null;
 			ENVIO.olvidaTodo();
 		});
@@ -129,12 +137,14 @@ public final class DestinosCore implements ModInitializer {
 			// capitales nuevas: el estado político (con sus coronas) otra vez a todos
 			ENVIO.olvidaPolitica();
 		}
-		PaquetePolitica estado = pol.estadoMapas();
+		// el estado político solo se monta si algún jugador no lo tiene aún
+		PaquetePolitica[] estado = new PaquetePolitica[1];
+		java.util.function.Supplier<PaquetePolitica> deAhora = () -> estado[0] != null ? estado[0] : (estado[0] = pol.estadoMapas());
 		for (ServerPlayer p : server.getPlayerList().getPlayers()) {
 			if (p.level().dimension() == Level.OVERWORLD) {
 				m.precarga(p.getBlockX(), p.getBlockZ());
 				m.precargaLejos(p.getBlockX(), p.getBlockZ());
-				ENVIO.envia(m, pol, estado, p);
+				ENVIO.envia(m, pol, deAhora, p);
 			}
 		}
 	}
@@ -249,6 +259,61 @@ public final class DestinosCore implements ModInitializer {
 			String alturas = "Aquí: suelo estimado " + c.altura() + " · suelo real " + real + (c.oceano() ? " · lo toma por MAR" : "");
 			fuente.sendSuccess(() -> Component.literal(alturas), false);
 		}
+		return 1;
+	}
+
+	/**
+	 * /destinoscore capital: la capital del reino donde estás, si su chunk tiene la estructura (y cuántas piezas)
+	 * y si el chunk donde estás la conoce. Para ver por qué una corona sale sin pueblo.
+	 */
+	private static int capital(CommandSourceStack fuente) {
+		MinecraftServer server = fuente.getServer();
+		MapaTerreno m = mapa(server);
+		if (m == null) {
+			fuente.sendFailure(Component.literal("Destinos Core: esperando al datapack (no hay sal todavía)"));
+			return 0;
+		}
+		ServerLevel level = server.overworld();
+		BlockPos aqui = BlockPos.containing(fuente.getPosition());
+		// la capital más cercana de los reinos de los ducados de alrededor, como las busca la colocación de
+		// capitales (sin esperar a que se calcule la zona)
+		int dcx = Math.floorDiv(aqui.getX(), Geo.S_DUCADO);
+		int dcz = Math.floorDiv(aqui.getZ(), Geo.S_DUCADO);
+		MapaTerreno.Capital cap = null;
+		for (int ox = -1; ox <= 1; ox++) {
+			for (int oz = -1; oz <= 1; oz++) {
+				int[] centro = Geo.centro(dcx + ox, dcz + oz, Geo.S_DUCADO, m.sal());
+				Geo.Reino reino = Geo.reinoDeDucado(dcx + ox, dcz + oz, centro[0], centro[1], m.sal());
+				MapaTerreno.Capital c = reino.salvaje() ? null : m.capital(reino.kx(), reino.kz());
+				if (c != null && (cap == null || aqui.distToCenterSqr(c.x(), aqui.getY(), c.z())
+						< aqui.distToCenterSqr(cap.x(), aqui.getY(), cap.z()))) {
+					cap = c;
+				}
+			}
+		}
+		if (cap == null) {
+			fuente.sendFailure(Component.literal("Destinos Core: por aquí no hay ningún reino con capital"));
+			return 0;
+		}
+		Structure estructura = level.registryAccess().lookupOrThrow(Registries.STRUCTURE)
+				.getValue(Identifier.fromNamespaceAndPath(MOD_ID, "capital"));
+		if (estructura == null) {
+			fuente.sendFailure(Component.literal("Destinos Core: no está registrada la estructura destinos_core:capital"));
+			return 0;
+		}
+		ChunkAccess inicio = level.getChunk(cap.x() >> 4, cap.z() >> 4);
+		StructureStart start = inicio.getStartForStructure(estructura);
+		String delInicio = start == null || !start.isValid()
+				? "su chunk NO tiene la capital"
+				: "su chunk tiene la capital: " + start.getPieces().size() + " piezas, de " + start.getBoundingBox().minX() + ", "
+						+ start.getBoundingBox().minZ() + " a " + start.getBoundingBox().maxX() + ", " + start.getBoundingBox().maxZ();
+		boolean conoce = !level.getChunk(aqui).getReferencesForStructure(estructura).isEmpty();
+		boolean dentro = level.structureManager().getStructureWithPieceAt(aqui, estructura).isValid();
+		String texto = "Destinos Core: capital del reino en " + cap.x() + ", " + cap.z() + " (chunk " + (cap.x() >> 4) + ", "
+				+ (cap.z() >> 4) + ", nivel " + cap.nivel() + ") · " + delInicio + " · este chunk "
+				+ (conoce ? "la conoce" : "NO la conoce") + (dentro ? " · estás dentro de una pieza" : "");
+		LOG.info(texto);
+		fuente.sendSuccess(() -> Component.literal(texto), false);
 		return 1;
 	}
 
