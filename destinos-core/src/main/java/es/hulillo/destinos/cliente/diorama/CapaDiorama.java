@@ -6,6 +6,7 @@ import dev.diorama.render.MapViewport;
 import es.hulillo.destinos.MapaTerreno;
 import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTerritorio;
+import es.hulillo.destinos.cliente.Colores;
 import es.hulillo.destinos.cliente.TerritoriosCliente;
 import java.lang.reflect.Method;
 import net.minecraft.client.Minecraft;
@@ -25,10 +26,8 @@ public final class CapaDiorama {
 	private static final int ALFA_DUCADO = 0xa0;
 	private static final int ALFA_REINO = 0xf0;
 	/** Ducados que acaban de cambiar de dueño: brillo dorado que late. */
-	private static final int ORO = 0xffc83d;
 	private static final int ALFA_ORO_MAX = 0x78;
 	/** Frentes de guerra: línea roja y, con zoom suficiente, una trinchera de X sobre la frontera. */
-	private static final int ROJO = 0xd42a2a;
 	private static final float CASILLA_MIN_TRINCHERA = 10;
 	/** Por debajo de estos píxeles por casilla las fronteras de ducado serían solo ruido. */
 	private static final float CASILLA_MIN_DUCADOS = 6;
@@ -113,14 +112,14 @@ public final class CapaDiorama {
 				lienzo.rect(x0, y0, x1, y1, (d.oceano() ? ALFA_AGUAS : ALFA_RELLENO) << 24 | d.color());
 				boolean reciente = TerritoriosCliente.reciente(d);
 				if (reciente) {
-					lienzo.rect(x0, y0, x1, y1, alfaOro << 24 | ORO);
+					lienzo.rect(x0, y0, x1, y1, alfaOro << 24 | Colores.ORO);
 				}
 				if (bordes) {
 					// la línea no puede comerse más de un tercio de la casilla
 					int tope = Math.max(1, Math.min(x1 - x0, y1 - y0) / 3);
 					int gr = Math.min(gReino, tope);
 					int gd = ducados ? Math.min(gDucado, tope) : 0;
-					int color = reciente ? ORO : oscuro(d.color());
+					int color = reciente ? Colores.ORO : Colores.oscuro(d.color());
 					PaqueteTerritorio.Ducado este = TerritoriosCliente.ducado(tx + 1, tz);
 					PaqueteTerritorio.Ducado sur = TerritoriosCliente.ducado(tx, tz + 1);
 					PaqueteTerritorio.Ducado oeste = TerritoriosCliente.ducado(tx - 1, tz);
@@ -159,7 +158,7 @@ public final class CapaDiorama {
 				if (sx < vista.x() || sx >= vista.x() + vista.width() || sy < vista.y() || sy >= vista.y() + vista.height()) {
 					continue;
 				}
-				corona(lienzo, sx, sy, Math.max(2, Math.min(4, Math.round(px / 20))), c.perdida() ? GRIS : ORO);
+				corona(lienzo, sx, sy, Math.max(2, Math.min(4, Math.round(px / 20))), c.perdida() ? Colores.GRIS : Colores.ORO);
 			}
 		}
 		resumen[0] = pintadas;
@@ -207,8 +206,8 @@ public final class CapaDiorama {
 		if (grosor == 0 || x0 >= x1 || y0 >= y1) {
 			return;
 		}
-		int c = guerra && grosor > 0 ? ALFA_REINO << 24 | ROJO
-				: grosor > 0 ? ALFA_REINO << 24 | oscuro(color) : ALFA_DUCADO << 24 | color;
+		int c = guerra && grosor > 0 ? ALFA_REINO << 24 | Colores.ROJO
+				: grosor > 0 ? ALFA_REINO << 24 | Colores.oscuro(color) : ALFA_DUCADO << 24 | color;
 		lienzo.rect(x0, y0, x1, y1, c);
 	}
 
@@ -220,7 +219,7 @@ public final class CapaDiorama {
 		int t = Math.max(1, r / 3);
 		int b = Math.max(1, t / 2);
 		trazos(lienzo, cx, cy, r, t, b, 0xff << 24);
-		trazos(lienzo, cx, cy, r, t, 0, 0xff << 24 | ROJO);
+		trazos(lienzo, cx, cy, r, t, 0, 0xff << 24 | Colores.ROJO);
 	}
 
 	private static void trazos(Lienzo lienzo, int cx, int cy, int r, int t, int b, int c) {
@@ -232,9 +231,6 @@ public final class CapaDiorama {
 
 	/** Corona de una capital, en píxeles de s×s centrada en (cx, cy), con contorno negro. */
 	private static final String[] CORONA = {"x.x.x", "xxxxx", "xxxxx"};
-	/** Corona de una capital que hoy tiene otro reino. */
-	private static final int GRIS = 0x9e9e9e;
-
 	private static void corona(Lienzo lienzo, int cx, int cy, int s, int color) {
 		int x0 = cx - 5 * s / 2;
 		int y0 = cy - 3 * s / 2;
@@ -248,11 +244,6 @@ public final class CapaDiorama {
 				}
 			}
 		}
-	}
-
-	/** El color de la casilla oscurecido a 3/5 (líneas de ducado); aplicado dos veces, el de reino. */
-	private static int oscuro(int rgb) {
-		return (rgb >> 16 & 0xff) * 3 / 5 << 16 | (rgb >> 8 & 0xff) * 3 / 5 << 8 | (rgb & 0xff) * 3 / 5;
 	}
 
 	private static Method buscaRedondo() {

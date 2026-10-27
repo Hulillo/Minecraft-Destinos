@@ -4,6 +4,8 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiPredicate;
+import java.util.function.Predicate;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.fabricmc.fabric.api.tag.convention.v2.ConventionalBiomeTags;
@@ -35,6 +37,8 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 	/** Los ríos son estrechos: además del centro de la casilla se mira a esta distancia en 4 direcciones. */
 	private static final int RADIO_RIO = 24;
 	private static final int[][] CRUZ = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+	/** Dónde se mira si hay mar cálido de islas, como cultura/detectar. */
+	private static final int[][] ALREDEDOR_ISLAS = {{0, 0}, {48, 0}, {-48, 0}, {0, 48}, {0, -48}};
 	/** Alturas a las que se mide depth para sacar su pendiente. */
 	private static final int Y_BAJA = 0;
 	private static final int Y_ALTA = 128;
@@ -110,6 +114,11 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 		return biomas.getNoiseBiome(QuartPos.fromBlock(x), QuartPos.fromBlock(y), QuartPos.fromBlock(z), clima);
 	}
 
+	/** El bioma a ras de suelo (o del mar, si el suelo está por debajo). */
+	private Holder<Biome> biomaSuelo(int x, int z) {
+		return bioma(x, Math.max(altura(x, z), nivelMar), z);
+	}
+
 	@Override
 	public MapaTerreno.Casilla muestra(int x, int z) {
 		int suelo = altura(x, z);
@@ -148,30 +157,40 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 		return 0;
 	}
 
+	/**
+	 * Recorre los sitios donde la colocación del grupo intentaría poner un pueblo en el rectángulo [x0, x1] × [z0, z1]
+	 * (en bloques). Los que pasan el filtro dentro (barato, va primero) y donde de verdad toca uno se dan a vale con
+	 * el bioma de su centro; para en cuanto vale devuelve true, y entonces devuelve true.
+	 */
+	private boolean recorrePueblos(RandomSpreadStructurePlacement colocacion, int x0, int z0, int x1, int z1,
+			Predicate<ChunkPos> dentro, BiPredicate<ChunkPos, Holder<Biome>> vale) {
+		int paso = colocacion.spacing();
+		long semilla = estructuras.getLevelSeed();
+		for (int rx = Math.floorDiv(x0 >> 4, paso); rx <= Math.floorDiv(x1 >> 4, paso); rx++) {
+			for (int rz = Math.floorDiv(z0 >> 4, paso); rz <= Math.floorDiv(z1 >> 4, paso); rz++) {
+				ChunkPos c = colocacion.getPotentialStructureChunk(semilla, rx * paso, rz * paso);
+				if (dentro.test(c) && colocacion.isStructureChunk(estructuras, c.x, c.z)
+						&& vale.test(c, biomaSuelo(c.getMiddleBlockX(), c.getMiddleBlockZ()))) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	@Override
 	public List<int[]> pueblos(int x0, int z0, int x1, int z1) {
 		List<int[]> res = new ArrayList<>();
-		long semilla = estructuras.getLevelSeed();
 		for (StructureSet grupo : gruposPueblo) {
-			RandomSpreadStructurePlacement colocacion = (RandomSpreadStructurePlacement) grupo.placement();
-			int paso = colocacion.spacing();
-			for (int rx = Math.floorDiv(x0 >> 4, paso); rx <= Math.floorDiv((x1 - 1) >> 4, paso); rx++) {
-				for (int rz = Math.floorDiv(z0 >> 4, paso); rz <= Math.floorDiv((z1 - 1) >> 4, paso); rz++) {
-					ChunkPos c = colocacion.getPotentialStructureChunk(semilla, rx * paso, rz * paso);
-					int bx = c.getMiddleBlockX();
-					int bz = c.getMiddleBlockZ();
-					if (bx < x0 || bz < z0 || bx >= x1 || bz >= z1 || !colocacion.isStructureChunk(estructuras, c.x, c.z)) {
-						continue;
-					}
-					Holder<Biome> b = bioma(bx, Math.max(altura(bx, bz), nivelMar), bz);
-					for (StructureSet.StructureSelectionEntry e : grupo.structures()) {
-						if (e.structure().is(StructureTags.VILLAGE) && e.structure().value().biomes().contains(b)) {
-							res.add(new int[] {bx, bz});
-							break;
+			recorrePueblos((RandomSpreadStructurePlacement) grupo.placement(), x0, z0, x1 - 1, z1 - 1,
+					c -> c.getMiddleBlockX() >= x0 && c.getMiddleBlockZ() >= z0 && c.getMiddleBlockX() < x1 && c.getMiddleBlockZ() < z1,
+					(c, b) -> {
+						if (grupo.structures().stream()
+								.anyMatch(e -> e.structure().is(StructureTags.VILLAGE) && e.structure().value().biomes().contains(b))) {
+							res.add(new int[] {c.getMiddleBlockX(), c.getMiddleBlockZ()});
 						}
-					}
-				}
-			}
+						return false;
+					});
 		}
 		return res;
 	}
@@ -180,7 +199,7 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 	@Override
 	public boolean culturaDeMontana(int x, int z) {
 		int y = Math.max(altura(x, z), nivelMar);
-		for (int[] d : new int[][] {{0, 0}, {48, 0}, {-48, 0}, {0, 48}, {0, -48}}) {
+		for (int[] d : ALREDEDOR_ISLAS) {
 			if (bioma(x + d[0], y, z + d[1]).is(ISLAS)) {
 				return false;
 			}
@@ -200,31 +219,10 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 		if (pueblos == null || !(pueblos.placement() instanceof RandomSpreadStructurePlacement colocacion)) {
 			return false;
 		}
-		int paso = colocacion.spacing();
-		long semilla = estructuras.getLevelSeed();
-		int r0x = Math.floorDiv((x - radio) >> 4, paso);
-		int r1x = Math.floorDiv((x + radio) >> 4, paso);
-		int r0z = Math.floorDiv((z - radio) >> 4, paso);
-		int r1z = Math.floorDiv((z + radio) >> 4, paso);
-		for (int rx = r0x; rx <= r1x; rx++) {
-			for (int rz = r0z; rz <= r1z; rz++) {
-				ChunkPos c = colocacion.getPotentialStructureChunk(semilla, rx * paso, rz * paso);
-				int bx = c.getMiddleBlockX();
-				int bz = c.getMiddleBlockZ();
-				long dx = bx - x;
-				long dz = bz - z;
-				if (dx * dx + dz * dz > (long) radio * radio
-						|| !colocacion.isStructureChunk(estructuras, c.x, c.z)) {
-					continue;
-				}
-				Holder<Biome> b = bioma(bx, Math.max(altura(bx, bz), nivelMar), bz);
-				for (StructureSet.StructureSelectionEntry e : pueblos.structures()) {
-					if (e.structure().value().biomes().contains(b)) {
-						return true;
-					}
-				}
-			}
-		}
-		return false;
+		return recorrePueblos(colocacion, x - radio, z - radio, x + radio, z + radio, c -> {
+			long dx = c.getMiddleBlockX() - x;
+			long dz = c.getMiddleBlockZ() - z;
+			return dx * dx + dz * dz <= (long) radio * radio;
+		}, (c, b) -> pueblos.structures().stream().anyMatch(e -> e.structure().value().biomes().contains(b)));
 	}
 }

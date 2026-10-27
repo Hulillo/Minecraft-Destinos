@@ -68,6 +68,11 @@ public final class Politica {
 			return r == a ? b : a;
 		}
 
+		/** Si el reino es uno de los dos. */
+		public boolean tiene(long r) {
+			return a == r || b == r;
+		}
+
 		@Override
 		public int compareTo(Par o) {
 			int c = Long.compare(a, o.a);
@@ -182,7 +187,7 @@ public final class Politica {
 	/** La unión en la que está el reino, o null. */
 	public Par unionDe(long reino) {
 		for (Par u : uniones) {
-			if (u.a == reino || u.b == reino) {
+			if (u.tiene(reino)) {
 				return u;
 			}
 		}
@@ -205,8 +210,8 @@ public final class Politica {
 	/** Lo que aporta un ducado al poder de quien lo tenga: extensión, recursos y habitantes. */
 	public static int valor(Grafo grafo, long ducado) {
 		int[] r = grafo.recursos(ducado);
-		double v = Math.max(1, grafo.tamano(ducado)) * PESO_CASILLA + r[0] * PESO_COMIDA + (r[1] + r[2]) * PESO_MATERIA
-				+ r[3] * PESO_PUEBLO;
+		double v = Math.max(1, grafo.tamano(ducado)) * PESO_CASILLA + r[Grafo.COMIDA] * PESO_COMIDA
+				+ (r[Grafo.MINERAL] + r[Grafo.MADERA]) * PESO_MATERIA + r[Grafo.PUEBLOS] * PESO_PUEBLO;
 		if (grafo.capitalDe(ducado) != null) {
 			v *= PESO_CAPITAL;
 		}
@@ -216,25 +221,45 @@ public final class Politica {
 	/** Habitantes que se calculan para el ducado: los de sus pueblos y los del campo. */
 	public static int habitantes(Grafo grafo, long ducado) {
 		int[] r = grafo.recursos(ducado);
-		return r[3] * GENTE_PUEBLO + r[0] * GENTE_COMIDA;
+		return r[Grafo.PUEBLOS] * GENTE_PUEBLO + r[Grafo.COMIDA] * GENTE_COMIDA;
 	}
 
-	/** Poder, habitantes, comida, mineral, madera y ducados de un reino hoy. */
-	public int[] resumen(Grafo grafo, long reino) {
-		int[] res = new int[6];
+	/** Lo que tiene un reino hoy, sumado de sus ducados. */
+	public record Resumen(int poder, int habitantes, int comida, int mineral, int madera, int ducados) {
+	}
+
+	public Resumen resumen(Grafo grafo, long reino) {
+		int poder = 0;
+		int habitantes = 0;
+		int comida = 0;
+		int mineral = 0;
+		int madera = 0;
+		int ducados = 0;
 		for (Grafo.Ducado d : grafo.ducados().values()) {
 			if (dueno(d) != reino) {
 				continue;
 			}
 			int[] r = grafo.recursos(d.id());
-			res[0] += valor(grafo, d.id());
-			res[1] += habitantes(grafo, d.id());
-			res[2] += r[0];
-			res[3] += r[1];
-			res[4] += r[2];
-			res[5]++;
+			poder += valor(grafo, d.id());
+			habitantes += habitantes(grafo, d.id());
+			comida += r[Grafo.COMIDA];
+			mineral += r[Grafo.MINERAL];
+			madera += r[Grafo.MADERA];
+			ducados++;
 		}
-		return res;
+		return new Resumen(poder, habitantes, comida, mineral, madera, ducados);
+	}
+
+	/** Reinos que hoy tienen algún ducado. */
+	public Set<Long> reinosVivos(Grafo grafo) {
+		Set<Long> vivos = new TreeSet<>();
+		for (Grafo.Ducado d : grafo.ducados().values()) {
+			long r = dueno(d);
+			if (r != SALVAJE) {
+				vivos.add(r);
+			}
+		}
+		return vivos;
 	}
 
 	/** Si otro tiene hoy la capital del reino. */
@@ -284,7 +309,7 @@ public final class Politica {
 	/** Juega un turno sobre el mapa conocido y avisa de cada suceso. */
 	public void turno(Grafo grafo, Consumer<Suceso> aviso) {
 		turno++;
-		SplittableRandom rnd = new SplittableRandom(((long) sal << 20) ^ turno * 0x9E3779B97F4A7C15L);
+		SplittableRandom rnd = new SplittableRandom(((long) sal << 20) ^ turno * Geo.MEZCLA);
 		Mapa mapa = new Mapa(grafo);
 		for (long r : mapa.reinos()) {
 			reinos.computeIfAbsent(r, k -> new Reino()).caido = false;
@@ -420,7 +445,7 @@ public final class Politica {
 			// sin su capital, el reino no levanta cabeza
 			e.estabilidad += Integer.compare(capitalPerdida(mapa.grafo, r) ? 35 : 60, e.estabilidad) * 3;
 			for (Par g : guerras.keySet()) {
-				if (g.a == r || g.b == r) {
+				if (g.tiene(r)) {
 					e.estabilidad -= 2;
 				}
 			}
@@ -461,7 +486,7 @@ public final class Politica {
 			f *= 0.75;
 		}
 		for (Par a : alianzas) {
-			if (a.a == r || a.b == r) {
+			if (a.tiene(r)) {
 				long otro = a.otro(r);
 				if (otro != enemigo) {
 					f += uniones.contains(a) ? mapa.poder(otro) : mapa.poder(otro) / 2.0;
@@ -485,19 +510,13 @@ public final class Politica {
 			if (protegido(pierde)) {
 				continue;
 			}
-			Long objetivo = null;
-			double mejor = Double.MAX_VALUE;
-			for (long d : mapa.ducadosDe.get(pierde)) {
-				for (Map.Entry<Long, Grafo.Lado> v : mapa.grafo.vecinos(d).entrySet()) {
-					if (dueno(mapa.grafo.ducado(v.getKey())) == gana && v.getValue().dificultad() < mejor) {
-						mejor = v.getValue().dificultad();
-						objetivo = d;
-					}
-				}
-			}
-			if (objetivo == null) {
+			// el ducado del que pierde más fácil de tomar desde el que gana
+			Paso paso = pasoMasFacil(mapa, pierde, gana);
+			if (paso == null) {
 				continue;
 			}
+			long objetivo = paso.desde();
+			double mejor = paso.dificultad();
 			// cruzar ríos y cordilleras cuesta: la conquista falla más; una capital resiste más
 			Long deQuien = mapa.grafo.capitalDe(objetivo);
 			boolean capital = deQuien != null && deQuien == pierde;
@@ -514,6 +533,32 @@ public final class Politica {
 				}
 			}
 		}
+	}
+
+	/** Una frontera entre un ducado del reino (desde) y uno vecino (hacia), y lo difícil que es cruzarla. */
+	private record Paso(long desde, long hacia, double dificultad) {
+	}
+
+	/** La frontera más fácil de cruzar entre los ducados del reino y los de otroDueno (la primera, si empatan). */
+	private Paso pasoMasFacil(Mapa mapa, long reino, long otroDueno) {
+		Paso mejor = null;
+		for (long d : mapa.ducadosDe.get(reino)) {
+			for (Map.Entry<Long, Grafo.Lado> v : mapa.grafo.vecinos(d).entrySet()) {
+				if (dueno(mapa.grafo.ducado(v.getKey())) == otroDueno
+						&& (mejor == null || v.getValue().dificultad() < mejor.dificultad())) {
+					mejor = new Paso(d, v.getKey(), v.getValue().dificultad());
+				}
+			}
+		}
+		return mejor;
+	}
+
+	/** Todos los ducados del reino pasan a nuevo (o quedan sin señor) y el reino cae. */
+	private void absorbe(long reino, long nuevo, Mapa mapa) {
+		for (long d : new ArrayList<>(mapa.ducadosDe.get(reino))) {
+			conquista(d, nuevo, mapa, false);
+		}
+		cae(reino, mapa);
 	}
 
 	/** Pasa un ducado a otro dueño y actualiza la foto del turno. */
@@ -541,10 +586,10 @@ public final class Politica {
 		Reino r = reinos.get(reino);
 		r.caido = true;
 		r.senor = NADIE;
-		guerras.keySet().removeIf(p -> p.a == reino || p.b == reino);
-		alianzas.removeIf(p -> p.a == reino || p.b == reino);
-		alianzaDesde.keySet().removeIf(p -> p.a == reino || p.b == reino);
-		uniones.removeIf(p -> p.a == reino || p.b == reino);
+		guerras.keySet().removeIf(p -> p.tiene(reino));
+		alianzas.removeIf(p -> p.tiene(reino));
+		alianzaDesde.keySet().removeIf(p -> p.tiene(reino));
+		uniones.removeIf(p -> p.tiene(reino));
 		for (Reino otro : reinos.values()) {
 			if (otro.senor == reino) {
 				otro.senor = NADIE;
@@ -555,7 +600,7 @@ public final class Politica {
 
 	private boolean enGuerra(long r) {
 		for (Par p : guerras.keySet()) {
-			if (p.a == r || p.b == r) {
+			if (p.tiene(r)) {
 				return true;
 			}
 		}
@@ -591,7 +636,7 @@ public final class Politica {
 				// los aliados del atacado se enfadan con el atacante
 				for (Par a : alianzas) {
 					long defiende = p.otro(ataca);
-					if (a.a == defiende || a.b == defiende) {
+					if (a.tiene(defiende)) {
 						cambiaRelacion(a.otro(defiende), ataca, -15);
 					}
 				}
@@ -668,10 +713,7 @@ public final class Politica {
 			} else if (r.turnosVasallo >= 6 && rel >= 70 && !protegido(v) && !ocupados.contains(v)
 					&& rnd.nextDouble() < 0.2) {
 				long senor = r.senor;
-				for (long d : new ArrayList<>(mapa.ducadosDe.get(v))) {
-					conquista(d, senor, mapa, false);
-				}
-				cae(v, mapa);
+				absorbe(v, senor, mapa);
 				ocupados.add(v);
 				ocupados.add(senor);
 				anota.accept(new Suceso(Suceso.Tipo.anexion, anio(), senor, v, NADIE));
@@ -701,10 +743,7 @@ public final class Politica {
 			if (e.estabilidad > 10 || protegido(r) || ocupados.contains(r) || rnd.nextDouble() >= 0.2) {
 				continue;
 			}
-			for (long d : new ArrayList<>(mapa.ducadosDe.get(r))) {
-				conquista(d, SALVAJE, mapa, false);
-			}
-			cae(r, mapa);
+			absorbe(r, SALVAJE, mapa);
 			ocupados.add(r);
 			anota.accept(new Suceso(Suceso.Tipo.disolucion, anio(), r, NADIE, NADIE));
 		}
@@ -716,20 +755,12 @@ public final class Politica {
 			if (e.estabilidad < 55 || enGuerra(r) || ocupados.contains(r) || rnd.nextDouble() >= 0.15) {
 				continue;
 			}
-			Long objetivo = null;
-			double mejor = Double.MAX_VALUE;
-			for (long d : mapa.ducadosDe.get(r)) {
-				for (Map.Entry<Long, Grafo.Lado> v : mapa.grafo.vecinos(d).entrySet()) {
-					if (dueno(mapa.grafo.ducado(v.getKey())) == SALVAJE && v.getValue().dificultad() < mejor) {
-						mejor = v.getValue().dificultad();
-						objetivo = v.getKey();
-					}
-				}
-			}
-			if (objetivo != null) {
-				conquista(objetivo, r, mapa, false);
+			// la tierra salvaje vecina más fácil de alcanzar
+			Paso paso = pasoMasFacil(mapa, r, SALVAJE);
+			if (paso != null) {
+				conquista(paso.hacia(), r, mapa, false);
 				ocupados.add(r);
-				anota.accept(new Suceso(Suceso.Tipo.expansion, anio(), r, NADIE, objetivo));
+				anota.accept(new Suceso(Suceso.Tipo.expansion, anio(), r, NADIE, paso.hacia()));
 			}
 		}
 	}

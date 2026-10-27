@@ -31,8 +31,7 @@ public final class PruebaPolitica {
 		Grafo g = new Grafo();
 		for (int cx = 0; cx < LADO; cx++) {
 			for (int cz = 0; cz < LADO; cz++) {
-				int[] c = Geo.centro(cx, cz, Geo.S_DUCADO, sal);
-				Geo.Reino r = Geo.reinoDeDucado(cx, cz, c[0], c[1], sal);
+				Geo.Reino r = Geo.reinoDeDucado(cx, cz, sal);
 				long id = Grafo.id(cx, cz);
 				g.agrega(new Grafo.Ducado(id, cx, cz, Grafo.id(r.kx(), r.kz()), r.salvaje()),
 						300 + Math.floorMod(Geo.hash(cx, cz, sal + 3), 400));
@@ -46,8 +45,8 @@ public final class PruebaPolitica {
 			if (d.salvajeBase()) {
 				continue;
 			}
-			int[] k = Geo.centro(Grafo.x(d.reinoBase()), Grafo.z(d.reinoBase()), Geo.S_REINO, sal + Geo.K_REINO);
-			int[] c = Geo.centro(d.dcx(), d.dcz(), Geo.S_DUCADO, sal);
+			int[] k = Geo.centroReino(Grafo.x(d.reinoBase()), Grafo.z(d.reinoBase()), sal);
+			int[] c = Geo.centroDucado(d.dcx(), d.dcz(), sal);
 			long dist = (long) (c[0] - k[0]) * (c[0] - k[0]) + (long) (c[1] - k[1]) * (c[1] - k[1]);
 			long[] m = mejor.get(d.reinoBase());
 			if (m == null || dist < m[1]) {
@@ -124,14 +123,7 @@ public final class PruebaPolitica {
 	}
 
 	private static int reinosVivos(Politica p, Grafo g) {
-		java.util.Set<Long> vivos = new java.util.HashSet<>();
-		for (Grafo.Ducado d : g.ducados().values()) {
-			long r = p.dueno(d);
-			if (r != Politica.SALVAJE) {
-				vivos.add(r);
-			}
-		}
-		return vivos.size();
+		return p.reinosVivos(g).size();
 	}
 
 	private static void falla(String motivo) {

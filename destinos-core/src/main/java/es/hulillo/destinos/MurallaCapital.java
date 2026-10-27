@@ -1,12 +1,12 @@
 package es.hulillo.destinos;
 
 import java.util.List;
+import java.util.function.IntBinaryOperator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
-import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.StructureManager;
@@ -14,7 +14,6 @@ import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkGenerator;
-import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceSerializationContext;
@@ -66,7 +65,7 @@ public final class MurallaCapital extends StructurePiece {
 	}
 
 	/** Las piezas de la muralla alrededor de (cx, cz); alturaEn da la altura del suelo para cada caja fina. */
-	static void piezas(int cx, int cz, int nivel, java.util.function.IntBinaryOperator alturaEn, List<StructurePiece> piezas) {
+	static void piezas(int cx, int cz, int nivel, IntBinaryOperator alturaEn, List<StructurePiece> piezas) {
 		int grueso = GRUESO[nivel];
 		// las torres antes que los arcos: así el arco ve la torre ya puesta y no la atraviesa
 		if (nivel == 2) {
@@ -154,18 +153,11 @@ public final class MurallaCapital extends StructurePiece {
 
 	/** Una columna de muralla sobre el suelo natural; nada si hay agua, calle o casa. */
 	private void columna(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int alto) {
-		int y = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
-		pos.set(x, y, z);
-		BlockState s = level.getBlockState(pos);
-		if (s.canBeReplaced() && !s.is(Blocks.WATER) || s.is(BlockTags.FLOWERS)) {
-			level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
-			pos.move(0, -1, 0);
-			s = level.getBlockState(pos);
-		}
-		if (!natural(s)) {
+		BlockState s = SueloNatural.superficie(level, pos, x, z);
+		if (!SueloNatural.natural(s)) {
 			return;
 		}
-		boolean arena = s.is(Blocks.SAND) || s.is(Blocks.RED_SAND) || s.is(Blocks.SANDSTONE);
+		boolean arena = SueloNatural.arena(s);
 		BlockState bloque = switch (nivel) {
 			case 0 -> arena ? Blocks.STRIPPED_ACACIA_LOG.defaultBlockState() : Blocks.SPRUCE_LOG.defaultBlockState();
 			case 1 -> arena ? Blocks.SANDSTONE.defaultBlockState() : Blocks.COBBLESTONE.defaultBlockState();
@@ -181,14 +173,5 @@ public final class MurallaCapital extends StructurePiece {
 			}
 			level.setBlock(pos, bloque, 2);
 		}
-	}
-
-	private static boolean natural(BlockState s) {
-		return s.is(Blocks.GRASS_BLOCK) || s.is(Blocks.DIRT) || s.is(Blocks.COARSE_DIRT) || s.is(Blocks.PODZOL)
-				|| s.is(Blocks.MYCELIUM) || s.is(Blocks.ROOTED_DIRT) || s.is(Blocks.SNOW_BLOCK) || s.is(Blocks.SAND)
-				|| s.is(Blocks.RED_SAND) || s.is(Blocks.SANDSTONE) || s.is(Blocks.GRAVEL) || s.is(Blocks.STONE)
-				|| s.is(Blocks.MUD) || s.is(Blocks.CLAY) || s.is(Blocks.TERRACOTTA) || s.is(Blocks.DEEPSLATE)
-				|| s.is(Blocks.TUFF) || s.is(Blocks.CALCITE) || s.is(Blocks.ANDESITE) || s.is(Blocks.DIORITE)
-				|| s.is(Blocks.GRANITE) || s.is(Blocks.PACKED_ICE) || s.is(Blocks.MOSS_BLOCK);
 	}
 }

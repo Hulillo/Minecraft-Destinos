@@ -1,6 +1,7 @@
 package es.hulillo.destinos.cliente;
 
 import es.hulillo.destinos.DestinosCore;
+import es.hulillo.destinos.Geo;
 import es.hulillo.destinos.MapaTerreno;
 import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTerritorio;
@@ -71,7 +72,7 @@ public final class TerritoriosCliente {
 			DestinosCore.LOG.info("Destinos Core: llegan los territorios del servidor para pintarlos en el mapa");
 		}
 		sal = zona.sal();
-		PaqueteTerritorio anterior = ZONAS.put(MapaTerreno.clave(zona.wx(), zona.wz()), zona);
+		PaqueteTerritorio anterior = ZONAS.put(Geo.clave(zona.wx(), zona.wz()), zona);
 		ultima = null;
 		OYENTES.forEach(o -> o.zonaNueva(zona, anterior));
 	}
@@ -83,19 +84,19 @@ public final class TerritoriosCliente {
 		EN_GUERRA.clear();
 		for (PaquetePolitica.Guerra g : p.guerras()) {
 			GUERRAS.add(par(g.akx(), g.akz(), g.bkx(), g.bkz()));
-			EN_GUERRA.add(MapaTerreno.clave(g.akx(), g.akz()));
-			EN_GUERRA.add(MapaTerreno.clave(g.bkx(), g.bkz()));
+			EN_GUERRA.add(Geo.clave(g.akx(), g.akz()));
+			EN_GUERRA.add(Geo.clave(g.bkx(), g.bkz()));
 		}
 		OYENTES.forEach(Oyente::politica);
 	}
 
 	/** Clave de un par de reinos sin orden. */
 	private static long par(int akx, int akz, int bkx, int bkz) {
-		long a = MapaTerreno.clave(akx, akz);
-		long b = MapaTerreno.clave(bkx, bkz);
+		long a = Geo.clave(akx, akz);
+		long b = Geo.clave(bkx, bkz);
 		long lo = Math.min(a, b);
 		long hi = Math.max(a, b);
-		return lo * 0x9E3779B97F4A7C15L ^ hi;
+		return Geo.mezcla(lo) ^ hi;
 	}
 
 	/** Si el ducado cambió de dueño hace poco (se marca en dorado). */
@@ -122,7 +123,7 @@ public final class TerritoriosCliente {
 
 	/** Si el reino del ducado está en alguna guerra. */
 	public static boolean enGuerra(PaqueteTerritorio.Ducado d) {
-		return !d.salvaje() && EN_GUERRA.contains(MapaTerreno.clave(d.kx(), d.kz()));
+		return !d.salvaje() && EN_GUERRA.contains(Geo.clave(d.kx(), d.kz()));
 	}
 
 	static void borra() {
@@ -176,7 +177,7 @@ public final class TerritoriosCliente {
 		int wz = Math.floorDiv(tz, MapaTerreno.NUCLEO);
 		PaqueteTerritorio z = ultima;
 		if (z == null || z.wx() != wx || z.wz() != wz) {
-			z = ZONAS.get(MapaTerreno.clave(wx, wz));
+			z = ZONAS.get(Geo.clave(wx, wz));
 			if (z != null) {
 				ultima = z;
 			}

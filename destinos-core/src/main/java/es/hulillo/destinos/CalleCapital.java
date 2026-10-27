@@ -5,7 +5,6 @@ import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
-import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.StructureManager;
@@ -13,7 +12,6 @@ import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkGenerator;
-import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceSerializationContext;
@@ -85,15 +83,7 @@ public final class CalleCapital extends StructurePiece {
 	}
 
 	private static void pon(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z) {
-		int y = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
-		pos.set(x, y, z);
-		BlockState s = level.getBlockState(pos);
-		// plantas y nieve encima del suelo: fuera, y se mira el bloque de debajo
-		if (s.canBeReplaced() || s.is(BlockTags.FLOWERS)) {
-			level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
-			pos.move(0, -1, 0);
-			s = level.getBlockState(pos);
-		}
+		BlockState s = SueloNatural.superficie(level, pos, x, z);
 		BlockState nuevo = null;
 		if (s.is(Blocks.WATER)) {
 			nuevo = Blocks.OAK_PLANKS.defaultBlockState();

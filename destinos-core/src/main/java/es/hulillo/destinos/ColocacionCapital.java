@@ -64,30 +64,11 @@ public final class ColocacionCapital extends StructurePlacement {
 
 	/** Las capitales de los reinos de los ducados de alrededor de (dcx, dcz). */
 	private static List<MapaTerreno.Capital> capitalesCerca(MapaTerreno mapa, int dcx, int dcz) {
-		int sal = mapa.sal();
 		List<MapaTerreno.Capital> res = new ArrayList<>();
-		long[] vistos = new long[9];
-		int n = 0;
-		for (int ox = -1; ox <= 1; ox++) {
-			for (int oz = -1; oz <= 1; oz++) {
-				int[] c = Geo.centro(dcx + ox, dcz + oz, Geo.S_DUCADO, sal);
-				Geo.Reino r = Geo.reinoDeDucado(dcx + ox, dcz + oz, c[0], c[1], sal);
-				if (r.salvaje()) {
-					continue;
-				}
-				long reino = MapaTerreno.clave(r.kx(), r.kz());
-				boolean repetido = false;
-				for (int k = 0; k < n; k++) {
-					repetido |= vistos[k] == reino;
-				}
-				if (repetido) {
-					continue;
-				}
-				vistos[n++] = reino;
-				MapaTerreno.Capital capital = mapa.capital(r.kx(), r.kz());
-				if (capital != null) {
-					res.add(capital);
-				}
+		for (Geo.Reino r : Geo.reinosCerca(dcx, dcz, mapa.sal())) {
+			MapaTerreno.Capital capital = mapa.capital(r.kx(), r.kz());
+			if (capital != null) {
+				res.add(capital);
 			}
 		}
 		return res;
@@ -103,8 +84,8 @@ public final class ColocacionCapital extends StructurePlacement {
 			}
 			return null;
 		}
-		int dcx = Math.floorDiv(cx * 16 + 8, Geo.S_DUCADO);
-		int dcz = Math.floorDiv(cz * 16 + 8, Geo.S_DUCADO);
+		int dcx = Geo.celdaDucado(cx * 16 + 8);
+		int dcz = Geo.celdaDucado(cz * 16 + 8);
 		// los chunks de un mismo ducado miran las mismas capitales: se buscan una vez por ducado y hilo
 		Cerca cerca = CERCA.get();
 		if (cerca == null || cerca.mapa() != mapa || cerca.dcx() != dcx || cerca.dcz() != dcz) {
@@ -118,7 +99,6 @@ public final class ColocacionCapital extends StructurePlacement {
 		}
 		return null;
 	}
-
 
 	@Override
 	public StructurePlacementType<?> type() {
