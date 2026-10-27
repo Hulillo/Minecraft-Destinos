@@ -18,6 +18,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.tags.StructureTags;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -112,45 +113,9 @@ public final class EstructuraCapital extends Structure {
 	}
 
 	private Optional<Structure.GenerationStub> prepara(Structure.GenerationContext ctx) {
-		int x = ctx.chunkPos().getMiddleBlockX();
-		int z = ctx.chunkPos().getMiddleBlockZ();
-		int y = ctx.chunkGenerator().getFirstOccupiedHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG, ctx.heightAccessor(),
-				ctx.randomState());
-		Holder<Biome> bioma = ctx.biomeSource().getNoiseBiome(QuartPos.fromBlock(x), QuartPos.fromBlock(y),
-				QuartPos.fromBlock(z), ctx.randomState().sampler());
+		Holder<Biome> bioma = biomaCentro(ctx);
 		Registry<Structure> estructuras = ctx.registryAccess().lookupOrThrow(Registries.STRUCTURE);
-		// los pueblos que pueden salir en este bioma; si ninguno, uno vanilla según el clima
-		List<Holder.Reference<Structure>> pueblos = new ArrayList<>();
-		estructuras.listElements().forEach(h -> {
-			if (h.value() instanceof JigsawStructure && esPueblo(estructuras, h) && h.value().biomes().contains(bioma)) {
-				pueblos.add(h);
-			}
-		});
-		// el que toca en este chunk primero; si no puede empezar (algunos pueblos de mods piden un sitio muy
-		// concreto), los demás del bioma y al final el vanilla del clima
-		List<Holder.Reference<Structure>> orden = new ArrayList<>();
-		if (!pueblos.isEmpty()) {
-			pueblos.sort((a, b) -> String.valueOf(estructuras.getKey(a.value())).compareTo(String.valueOf(estructuras.getKey(b.value()))));
-			int i = Math.floorMod(Geo.hash(ctx.chunkPos().x, ctx.chunkPos().z, (int) ctx.seed()), pueblos.size());
-			for (int k = 0; k < pueblos.size(); k++) {
-				orden.add(pueblos.get((i + k) % pueblos.size()));
-			}
-		}
-		float temperatura = bioma.value().getBaseTemperature();
-		String porDefecto = temperatura < 0.2F ? "village_snowy" : temperatura > 1.5F ? "village_desert" : "village_plains";
-		estructuras.get(Identifier.withDefaultNamespace(porDefecto)).filter(h -> !orden.contains(h)).ifPresent(orden::add);
-		// si ninguno del bioma cabe, otro pueblo de verdad antes que una corona vacía: los de vanilla y luego el resto
-		for (String otro : new String[] {"village_plains", "village_taiga", "village_savanna", "village_snowy", "village_desert"}) {
-			estructuras.get(Identifier.withDefaultNamespace(otro)).filter(h -> !orden.contains(h)).ifPresent(orden::add);
-		}
-		List<Holder.Reference<Structure>> resto = new ArrayList<>();
-		estructuras.listElements().forEach(h -> {
-			if (h.value() instanceof JigsawStructure && esPueblo(estructuras, h) && !orden.contains(h)) {
-				resto.add(h);
-			}
-		});
-		resto.sort((a, b) -> String.valueOf(estructuras.getKey(a.value())).compareTo(String.valueOf(estructuras.getKey(b.value()))));
-		orden.addAll(resto);
+		List<Holder.Reference<Structure>> orden = candidatos(ctx, bioma);
 		Holder.Reference<Structure> pueblo = null;
 		Identifier id = null;
 		Optional<Montado> plaza = Optional.empty();
@@ -246,6 +211,86 @@ public final class EstructuraCapital extends Structure {
 					principal.position().getX(), principal.position().getY(), principal.position().getZ(), nivel, delCentro.stream()
 							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + enCalles);
 		}));
+	}
+
+	/** El bioma en la superficie del centro del chunk: decide el estilo de la capital. */
+	private static Holder<Biome> biomaCentro(Structure.GenerationContext ctx) {
+		int x = ctx.chunkPos().getMiddleBlockX();
+		int z = ctx.chunkPos().getMiddleBlockZ();
+		int y = ctx.chunkGenerator().getFirstOccupiedHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG, ctx.heightAccessor(),
+				ctx.randomState());
+		return ctx.biomeSource().getNoiseBiome(QuartPos.fromBlock(x), QuartPos.fromBlock(y), QuartPos.fromBlock(z),
+				ctx.randomState().sampler());
+	}
+
+	/** Los pueblos que se prueban para la capital de ese chunk, en orden. */
+	private static List<Holder.Reference<Structure>> candidatos(Structure.GenerationContext ctx, Holder<Biome> bioma) {
+		Registry<Structure> estructuras = ctx.registryAccess().lookupOrThrow(Registries.STRUCTURE);
+		// los pueblos que pueden salir en este bioma; si ninguno, uno vanilla según el clima
+		List<Holder.Reference<Structure>> pueblos = new ArrayList<>();
+		estructuras.listElements().forEach(h -> {
+			if (h.value() instanceof JigsawStructure && esPueblo(estructuras, h) && h.value().biomes().contains(bioma)) {
+				pueblos.add(h);
+			}
+		});
+		// el que toca en este chunk primero; si no puede empezar (algunos pueblos de mods piden un sitio muy
+		// concreto), los demás del bioma y al final el vanilla del clima
+		List<Holder.Reference<Structure>> orden = new ArrayList<>();
+		if (!pueblos.isEmpty()) {
+			pueblos.sort((a, b) -> String.valueOf(estructuras.getKey(a.value())).compareTo(String.valueOf(estructuras.getKey(b.value()))));
+			int i = Math.floorMod(Geo.hash(ctx.chunkPos().x, ctx.chunkPos().z, (int) ctx.seed()), pueblos.size());
+			for (int k = 0; k < pueblos.size(); k++) {
+				orden.add(pueblos.get((i + k) % pueblos.size()));
+			}
+		}
+		float temperatura = bioma.value().getBaseTemperature();
+		String porDefecto = temperatura < 0.2F ? "village_snowy" : temperatura > 1.5F ? "village_desert" : "village_plains";
+		estructuras.get(Identifier.withDefaultNamespace(porDefecto)).filter(h -> !orden.contains(h)).ifPresent(orden::add);
+		// si ninguno del bioma cabe, otro pueblo de verdad antes que una corona vacía: los de vanilla y luego el resto
+		for (String otro : new String[] {"village_plains", "village_taiga", "village_savanna", "village_snowy", "village_desert"}) {
+			estructuras.get(Identifier.withDefaultNamespace(otro)).filter(h -> !orden.contains(h)).ifPresent(orden::add);
+		}
+		List<Holder.Reference<Structure>> resto = new ArrayList<>();
+		estructuras.listElements().forEach(h -> {
+			if (h.value() instanceof JigsawStructure && esPueblo(estructuras, h) && !orden.contains(h)) {
+				resto.add(h);
+			}
+		});
+		resto.sort((a, b) -> String.valueOf(estructuras.getKey(a.value())).compareTo(String.valueOf(estructuras.getKey(b.value()))));
+		orden.addAll(resto);
+		return orden;
+	}
+
+	/**
+	 * Si en (x, z) puede empezar una capital (algún pueblo, en su chunk o al lado). Solo prueba la plaza de inicio,
+	 * sin montar el pueblo entero, así que es barato. Lo usa MapaTerreno para elegir el sitio antes de poner la
+	 * corona: así la corona va siempre donde la capital sí sale.
+	 */
+	static boolean cabe(ServerLevel level, int x, int z) {
+		net.minecraft.world.level.chunk.ChunkGenerator gen = level.getChunkSource().getGenerator();
+		Structure.GenerationContext ctx = new Structure.GenerationContext(level.registryAccess(), gen, gen.getBiomeSource(),
+				level.getChunkSource().randomState(), level.getStructureManager(), level.getSeed(),
+				new ChunkPos(x >> 4, z >> 4), level, b -> true);
+		Registry<Structure> estructuras = ctx.registryAccess().lookupOrThrow(Registries.STRUCTURE);
+		List<Holder.Reference<Structure>> orden = candidatos(ctx, biomaCentro(ctx));
+		for (int[] d : DESPLAZAMIENTOS) {
+			for (Holder.Reference<Structure> candidato : orden) {
+				Optional<Structure> copia = agrandado(ctx.registryAccess(), estructuras.getKey(candidato.value()), candidato.value(),
+						MAS_PROFUNDIDAD, DISTANCIA);
+				if (copia.isEmpty()) {
+					continue;
+				}
+				for (int intento = 0; intento < INTENTOS; intento++) {
+					Structure.GenerationContext c = new Structure.GenerationContext(ctx.registryAccess(), gen, gen.getBiomeSource(),
+							ctx.randomState(), ctx.structureTemplateManager(), ctx.seed() + intento * 0x9E3779B97F4A7C15L,
+							new ChunkPos(ctx.chunkPos().x + d[0], ctx.chunkPos().z + d[1]), level, b -> true);
+					if (copia.get().findValidGenerationPoint(c).isPresent()) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
 	}
 
 	/** Un pueblo ya montado: dónde empieza y sus piezas (sin las casas abandonadas sueltas). */

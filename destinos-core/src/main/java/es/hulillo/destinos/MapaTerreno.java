@@ -70,6 +70,11 @@ public final class MapaTerreno {
 			return muestra(bloqueX, bloqueZ).oceano();
 		}
 
+		/** Si en (x, z) puede empezar de verdad el pueblo de una capital (para no poner la corona donde no sale). */
+		default boolean capitalCabe(int bloqueX, int bloqueZ) {
+			return true;
+		}
+
 		/** Si en (x, z) hay una cultura de montaña (nórdica, andina o de la estepa), como la elige el datapack. */
 		default boolean culturaDeMontana(int bloqueX, int bloqueZ) {
 			return false;
@@ -599,9 +604,20 @@ public final class MapaTerreno {
 				int tope = puntosMejor == Double.NEGATIVE_INFINITY ? Integer.MAX_VALUE
 						: (int) Math.floor((cand.puntos() - puntosMejor) / 0.6);
 				double puntos = cand.puntos() - aguaAlrededor(s[0], s[1], tope) * 0.6;
-				if (puntos > puntosMejor) {
+				// solo donde el pueblo de la capital puede empezar (se mira al final: es lo más caro)
+				if (puntos > puntosMejor && muestreador.capitalCabe(s[0], s[1])) {
 					puntosMejor = puntos;
 					mejor = new Capital(cand.cx(), cand.cz(), s[0], s[1], montana && s[2] == 1, nivel(cand.recursos(), ducadosReino));
+				}
+			}
+		}
+		if (mejor == null) {
+			// en ninguno de los mejores ducados cabe: el mejor sitio de cualquier ducado del reino donde sí quepa
+			for (Candidata cand : candidatas) {
+				for (int[] s : cand.sitios()) {
+					if (muestreador.capitalCabe(s[0], s[1])) {
+						return new Capital(cand.cx(), cand.cz(), s[0], s[1], montana && s[2] == 1, nivel(cand.recursos(), ducadosReino));
+					}
 				}
 			}
 		}

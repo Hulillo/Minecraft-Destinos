@@ -50,6 +50,7 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 		BiomeTags.IS_TAIGA, BiomeTags.IS_MOUNTAIN, BiomeTags.IS_FOREST, ConventionalBiomeTags.IS_PLAINS,
 	};
 
+	private final ServerLevel level;
 	private final BiomeSource biomas;
 	private final Climate.Sampler clima;
 	private final DensityFunction profundidad;
@@ -74,6 +75,7 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 	}
 
 	MuestreadorMundo(ServerLevel level) {
+		this.level = level;
 		RandomState aleatorio = level.getChunkSource().randomState();
 		this.biomas = level.getChunkSource().getGenerator().getBiomeSource();
 		this.clima = aleatorio.sampler();
@@ -88,6 +90,11 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 				gruposPueblo.add(grupo);
 			}
 		}
+	}
+
+	@Override
+	public boolean capitalCabe(int x, int z) {
+		return EstructuraCapital.cabe(level, x, z);
 	}
 
 	private int altura(int x, int z) {
