@@ -26,6 +26,7 @@ import net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraft.world.level.levelgen.structure.StructureType;
+import net.minecraft.world.level.levelgen.structure.pools.StructureTemplatePool;
 
 /**
  * La capital de un reino: el pueblo que tocaría en ese bioma (de vanilla o de cualquier mod, como Towns and
@@ -165,8 +166,10 @@ public final class EstructuraCapital extends Structure {
 			List<StructurePiece> delCentro = principal.piezas();
 			for (int i = 0; i < delCentro.size(); i++) {
 				StructurePiece pieza = delCentro.get(i);
-				// la plaza siempre; el resto, si no está metido en el mar (calles y casas flotando) ni en el castillo
-				if (i == 0 || !agua.tapa(pieza) && castillo.stream().noneMatch(c -> enPlanta(c, pieza))) {
+				// la plaza siempre; el resto, si no está metido en el mar (calles y casas flotando) ni en el castillo, y
+				// sin casas en la plaza mayor (las calles sí: se enlosan)
+				if (i == 0 || !agua.tapa(pieza) && castillo.stream().noneMatch(c -> enPlanta(c, pieza))
+						&& !(casa(pieza) && cerca(pieza, principal.position(), AdornoCapital.PLAZA))) {
 					puestas.add(pieza);
 					piezas.addPiece(pieza);
 				}
@@ -235,6 +238,19 @@ public final class EstructuraCapital extends Structure {
 			DestinosCore.LOG.info("Destinos Core: la capital del chunk {} es rica pero no tiene sitio para el castillo", ctx.chunkPos());
 		}
 		return Optional.ofNullable(mejor);
+	}
+
+	/** Si la pieza es una casa (rígida) del pueblo, no una calle que sigue el terreno. */
+	private static boolean casa(StructurePiece pieza) {
+		return pieza instanceof PoolElementStructurePiece p && p.getElement().getProjection() == StructureTemplatePool.Projection.RIGID;
+	}
+
+	/** Si la caja de la pieza llega a menos de r bloques de (centro), vista desde arriba. */
+	private static boolean cerca(StructurePiece pieza, BlockPos centro, int r) {
+		BoundingBox b = pieza.getBoundingBox();
+		long dx = Math.max(0, Math.max(b.minX() - centro.getX(), centro.getX() - b.maxX()));
+		long dz = Math.max(0, Math.max(b.minZ() - centro.getZ(), centro.getZ() - b.maxZ()));
+		return dx * dx + dz * dz <= (long) r * r;
 	}
 
 	/** Si dos piezas se pisan vistas desde arriba (la altura no cuenta: el castillo vacía todo lo de encima). */

@@ -42,7 +42,9 @@ public final class AdornoCapital extends StructurePiece {
 	static final int SABANA = 3;
 	static final int DESIERTO = 4;
 	/** Radio de la plaza mayor alrededor del centro de la capital. */
-	private static final int PLAZA = 12;
+	static final int PLAZA = 20;
+	/** Distancia del centro a los puestos de mercado. */
+	private static final int ANILLO_MERCADO = 12;
 	/** Las farolas: como mucho una por celda de LADO×LADO, y solo en su parte de en medio (así quedan separadas). */
 	private static final int LADO = 16;
 	private static final int K_PIEDRA = 4417;
@@ -146,14 +148,19 @@ public final class AdornoCapital extends StructurePiece {
 				farola(level, caja, pos, cx, cz);
 			}
 		}
-		// 3. la plaza mayor: estandartes en los cuatro puntos cardinales y puestos de mercado en las diagonales
-		for (Direction d : Direction.Plane.HORIZONTAL) {
-			estandartes(level, caja, pos, px + d.getStepX() * (PLAZA - 1), pz + d.getStepZ() * (PLAZA - 1));
-		}
-		int diagonal = (int) Math.round((PLAZA - 4) / Math.sqrt(2));
+		// 3. la plaza mayor: estandartes en las cuatro diagonales del borde (las calles entran por los lados) y un
+		// anillo de ocho puestos de mercado alrededor del pozo o la fuente del centro
+		int diagonal = (int) Math.round((PLAZA - 3) / Math.sqrt(2));
 		for (int[] d : List.of(new int[] {1, 1}, new int[] {1, -1}, new int[] {-1, 1}, new int[] {-1, -1})) {
-			puesto(level, caja, pos, px + d[0] * diagonal, pz + d[1] * diagonal, Geo.hash(px + d[0], pz + d[1], K_PIEDRA));
+			estandartes(level, caja, pos, px + d[0] * diagonal, pz + d[1] * diagonal);
 		}
+		for (int i = 0; i < 8; i++) {
+			double a = Math.PI / 8 + i * Math.PI / 4;
+			int x = px + (int) Math.round(Math.cos(a) * ANILLO_MERCADO);
+			int z = pz + (int) Math.round(Math.sin(a) * ANILLO_MERCADO);
+			puesto(level, caja, pos, x, z, Geo.hash(x, z, K_PIEDRA));
+		}
+	}
 	}
 
 	private void empiedra(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z) {
