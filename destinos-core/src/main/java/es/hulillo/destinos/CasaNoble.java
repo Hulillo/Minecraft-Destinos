@@ -141,8 +141,8 @@ public final class CasaNoble extends PiezaObra {
 		// lado de la cocina por un tabique entero (sin rendijas entre peldaños y techo)
 		o.caja(-ANCHO + 1, 1, 1, ANCHO - 2, PISO - 1, 1, p.tablas);
 		o.aire(-1, 1, 1, 1, 3, 1);
-		o.pon(-1, 3, 1, Obra.escalon(p.maderaEscalon, Direction.EAST, true));
-		o.pon(1, 3, 1, Obra.escalon(p.maderaEscalon, Direction.WEST, true));
+		o.pon(-1, 3, 1, Obra.escalon(p.maderaEscalon, Direction.WEST, true));
+		o.pon(1, 3, 1, Obra.escalon(p.maderaEscalon, Direction.EAST, true));
 		o.escalera(ANCHO - 1, 1, -1, Direction.SOUTH, PISO, p.maderaEscalon, p.tablas);
 		o.caja(ANCHO - 2, 1, 2, ANCHO - 2, PISO - 1, PISO - 2, p.tablas);
 	}

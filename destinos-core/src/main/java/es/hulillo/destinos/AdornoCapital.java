@@ -16,6 +16,8 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.WallBannerBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkGenerator;
@@ -49,6 +51,8 @@ public final class AdornoCapital extends StructurePiece {
 	private static final int LLANO = 10;
 	/** Distancia del centro a los puestos de mercado. */
 	private static final int ANILLO_MERCADO = 12;
+	/** Distancia del centro a los bancos de la plaza (entre el pozo o la fuente del centro y los puestos). */
+	private static final int ANILLO_BANCOS = 8;
 	/** Distancia del centro a las jardineras, detrás de cada puesto. */
 	private static final int ANILLO_JARDIN = 17;
 	/** Las farolas: como mucho una por celda de LADO×LADO, y solo en su parte de en medio (así quedan separadas). */
@@ -183,6 +187,107 @@ public final class AdornoCapital extends StructurePiece {
 			int jz = pz + (int) Math.round(Math.sin(a) * ANILLO_JARDIN);
 			jardinera(level, caja, pos, jx, jz, Geo.hash(jx, jz, K_PIEDRA));
 		}
+		// 4. un sitio para reunirse: bancos mirando al centro entre los puestos y, si el mercado está en su plaza
+		// propia, en el anillo de los puestos corros de bancos con mesa a la sombra de un farol
+		for (int i = 0; i < 8; i++) {
+			double a = i * Math.PI / 4;
+			Direction fuera = haciaFuera(a);
+			int x = px + (int) Math.round(Math.cos(a) * ANILLO_BANCOS);
+			int z = pz + (int) Math.round(Math.sin(a) * ANILLO_BANCOS);
+			banco(level, caja, pos, x, z, fuera);
+			if (!puestos) {
+				double b = Math.PI / 8 + i * Math.PI / 4;
+				int mx = px + (int) Math.round(Math.cos(b) * ANILLO_MERCADO);
+				int mz = pz + (int) Math.round(Math.sin(b) * ANILLO_MERCADO);
+				corro(level, caja, pos, mx, mz, haciaFuera(b));
+			}
+		}
+	}
+
+	/** La dirección de los cuatro ejes más parecida a la del ángulo a (hacia fuera de la plaza). */
+	private static Direction haciaFuera(double a) {
+		double c = Math.cos(a);
+		double d = Math.sin(a);
+		return Math.abs(c) >= Math.abs(d) ? (c > 0 ? Direction.EAST : Direction.WEST) : (d > 0 ? Direction.SOUTH : Direction.NORTH);
+	}
+
+	/** El peldaño de madera de los bancos, según la cultura. */
+	private Block asiento() {
+		return switch (estilo) {
+			case DESIERTO -> Blocks.SMOOTH_SANDSTONE_STAIRS;
+			case SABANA -> Blocks.ACACIA_STAIRS;
+			case TAIGA, NIEVE -> Blocks.SPRUCE_STAIRS;
+			default -> Blocks.DARK_OAK_STAIRS;
+		};
+	}
+
+	/** Si las columnas de x0..x1 × z0..z1 son plaza empedrada a la misma altura y y libres por encima; su altura o MIN_VALUE. */
+	private int llano(WorldGenLevel level, BoundingBox caja, BlockPos.MutableBlockPos pos, int x0, int z0, int x1, int z1, int alto) {
+		if (!dentro(caja, Math.min(x0, x1), Math.min(z0, z1), Math.max(x0, x1), Math.max(z0, z1))) {
+			return Integer.MIN_VALUE;
+		}
+		int y = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x0, z0) - 1;
+		for (int x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
+			for (int z = Math.min(z0, z1); z <= Math.max(z0, z1); z++) {
+				int sy = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
+				if (sy != y || !empedrado(level.getBlockState(pos.set(x, y, z))) || !libre(level, pos, x, y + 1, z, alto)) {
+					return Integer.MIN_VALUE;
+				}
+			}
+		}
+		return y;
+	}
+
+	/** Un banco de tres con brazos, de espaldas hacia fuera (mirando al centro), centrado en (x, z). */
+	private void banco(WorldGenLevel level, BoundingBox caja, BlockPos.MutableBlockPos pos, int x, int z, Direction fuera) {
+		Direction lado = fuera.getClockWise();
+		int y = llano(level, caja, pos, x - 2 * lado.getStepX(), z - 2 * lado.getStepZ(), x + 2 * lado.getStepX(), z + 2 * lado.getStepZ(), 2);
+		if (y == Integer.MIN_VALUE) {
+			return;
+		}
+		BlockState peldano = asiento().defaultBlockState().setValue(StairBlock.FACING, fuera);
+		for (int k = -1; k <= 1; k++) {
+			level.setBlock(pos.set(x + k * lado.getStepX(), y + 1, z + k * lado.getStepZ()), peldano, 2);
+		}
+		Block trampilla = estilo == DESIERTO ? Blocks.BIRCH_TRAPDOOR : estilo == SABANA ? Blocks.ACACIA_TRAPDOOR
+				: estilo == TAIGA || estilo == NIEVE ? Blocks.SPRUCE_TRAPDOOR : Blocks.DARK_OAK_TRAPDOOR;
+		for (int k : new int[] {-2, 2}) {
+			Direction hacia = k < 0 ? lado.getOpposite() : lado;
+			level.setBlock(pos.set(x + k * lado.getStepX(), y + 1, z + k * lado.getStepZ()), trampilla.defaultBlockState()
+					.setValue(TrapDoorBlock.FACING, hacia).setValue(TrapDoorBlock.OPEN, true), 2);
+		}
+	}
+
+	/** Un corro: mesa con mantel y farol, dos bancos enfrentados a los lados y un arbolito detrás, hacia fuera. */
+	private void corro(WorldGenLevel level, BoundingBox caja, BlockPos.MutableBlockPos pos, int x, int z, Direction fuera) {
+		Direction lado = fuera.getClockWise();
+		int y = llano(level, caja, pos, x - 2 * lado.getStepX() - fuera.getStepX(), z - 2 * lado.getStepZ() - fuera.getStepZ(),
+				x + 2 * lado.getStepX() + fuera.getStepX(), z + 2 * lado.getStepZ() + fuera.getStepZ(), 3);
+		if (y == Integer.MIN_VALUE) {
+			return;
+		}
+		Block valla = estilo == SABANA ? Blocks.ACACIA_FENCE : estilo == TAIGA || estilo == NIEVE ? Blocks.SPRUCE_FENCE
+				: estilo == DESIERTO ? Blocks.BIRCH_FENCE : Blocks.DARK_OAK_FENCE;
+		// la mesa: dos patas con tablero de alfombra del color del reino y un farol encima
+		for (int k = 0; k <= 1; k++) {
+			int mx = x + k * fuera.getStepX();
+			int mz = z + k * fuera.getStepZ();
+			level.setBlock(pos.set(mx, y + 1, mz), valla.defaultBlockState(), 2);
+			level.setBlock(pos.set(mx, y + 2, mz), (color >= 0 ? alfombra(color) : Blocks.WHITE_CARPET).defaultBlockState(), 2);
+		}
+		level.setBlock(pos.set(x, y + 3, z), Blocks.LANTERN.defaultBlockState(), 2);
+		// los bancos, a los dos lados, mirando a la mesa
+		for (int s = -1; s <= 1; s += 2) {
+			Direction respaldo = s < 0 ? lado.getOpposite() : lado;
+			for (int k = 0; k <= 1; k++) {
+				level.setBlock(pos.set(x + s * lado.getStepX() + k * fuera.getStepX(), y + 1, z + s * lado.getStepZ() + k * fuera.getStepZ()),
+						asiento().defaultBlockState().setValue(StairBlock.FACING, respaldo), 2);
+			}
+		}
+	}
+
+	private static Block alfombra(int color) {
+		return BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace(DyeColor.byId(color).getName() + "_carpet"));
 	}
 
 	/** Jardinera de 3×3 en la plaza: césped con flores alrededor y un arbolito en medio, si cabe en plaza llana. */

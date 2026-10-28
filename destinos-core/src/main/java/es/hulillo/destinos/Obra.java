@@ -11,6 +11,7 @@ import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CrossCollisionBlock;
+import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.FenceBlock;
 import net.minecraft.world.level.block.IronBarsBlock;
 import net.minecraft.world.level.block.Rotation;
@@ -108,6 +109,17 @@ final class Obra {
 	BlockState en(int u, int ly, int v) {
 		Columna c = columna(u, v);
 		return c == null ? null : c.get(ly);
+	}
+
+	/** Si en (u, ly, v) hay un bloque entero que tapa (una pared). */
+	private boolean macizo(int u, int ly, int v) {
+		BlockState b = en(u, ly, v);
+		return b != null && b.canOcclude() && !(b.getBlock() instanceof DoorBlock);
+	}
+
+	private boolean esPuerta(int u, int ly, int v) {
+		BlockState b = en(u, ly, v);
+		return b != null && b.getBlock() instanceof DoorBlock;
 	}
 
 	boolean vacio(int u, int ly, int v) {
@@ -926,6 +938,24 @@ final class Obra {
 					BlockState detras = en(u - d.getStepX(), ly, v - d.getStepZ());
 					if (detras == null || detras.isAir() || !detras.canOcclude() || detras.getBlock() instanceof TransparentBlock) {
 						c.b[i] = Blocks.AIR.defaultBlockState();
+					}
+					continue;
+				}
+				if (b.getBlock() instanceof DoorBlock && b.getValue(BlockStateProperties.DOUBLE_BLOCK_HALF) == DoubleBlockHalf.LOWER) {
+					// una puerta va en el hueco de una pared: si delante y detrás hay pared y a los lados no, está
+					// girada; se pone de través (las dos mitades)
+					Direction f = b.getValue(DoorBlock.FACING);
+					Direction l = f.getClockWise();
+					boolean delante = macizo(u + f.getStepX(), ly, v + f.getStepZ());
+					boolean detras = macizo(u - f.getStepX(), ly, v - f.getStepZ());
+					boolean izq = macizo(u + l.getStepX(), ly, v + l.getStepZ()) || esPuerta(u + l.getStepX(), ly, v + l.getStepZ());
+					boolean der = macizo(u - l.getStepX(), ly, v - l.getStepZ()) || esPuerta(u - l.getStepX(), ly, v - l.getStepZ());
+					if (delante && detras && !izq && !der) {
+						c.b[i] = b.setValue(DoorBlock.FACING, l);
+						BlockState arriba = en(u, ly + 1, v);
+						if (arriba != null && arriba.getBlock() instanceof DoorBlock && i + 1 < c.b.length) {
+							c.b[i + 1] = arriba.setValue(DoorBlock.FACING, l);
+						}
 					}
 					continue;
 				}

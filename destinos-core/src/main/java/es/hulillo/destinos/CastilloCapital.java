@@ -1828,7 +1828,8 @@ public final class CastilloCapital extends PiezaObra {
 		// la bajada, de tres de ancho, desde el cuarto de la guardia del ala
 		o.sillares(-26, -7, vb, -22, -1, -5, false);
 		for (int u = -25; u <= -23; u++) {
-			o.escalera(u, -6, vb, Direction.SOUTH, 6, p.piedraEscalon, p.zocalo);
+			// siete peldaños: el último queda a ras del suelo de la guardia (con seis faltaba uno y había que saltar)
+			o.escalera(u, -6, vb, Direction.SOUTH, 7, p.piedraEscalon, p.zocalo);
 		}
 		// el hueco abierto hasta el suelo de la guardia por encima de toda la escalera, para verla y bajar de pie
 		for (int i = 0; i < 6; i++) {

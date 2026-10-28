@@ -30,7 +30,7 @@ import net.minecraft.world.level.levelgen.structure.structures.JigsawStructure;
  * con el codec de las estructuras (JSON de ida y vuelta) para no depender de los campos internos de
  * JigsawStructure, que cambian entre versiones.
  */
-final class PueblosCapital {
+public final class PueblosCapital {
 	/** Trozos de nombre de los pueblos (y plazas, y casas) abandonados, zombi o en ruinas. */
 	private static final String[] ABANDONADO = {"zombie", "abandon", "ruin", "destroyed", "burn", "haunt", "ghost",
 		"derelict"};
@@ -86,6 +86,28 @@ final class PueblosCapital {
 
 	private static void agregaVanilla(Registry<Structure> estructuras, String nombre, List<Holder.Reference<Structure>> orden) {
 		estructuras.get(Identifier.withDefaultNamespace(nombre)).filter(h -> !orden.contains(h)).ifPresent(orden::add);
+	}
+
+	/** A cuántos chunks de una capital no puede empezar un pueblo suelto (la capital llega a unos 8 de su centro). */
+	private static final int SIN_PUEBLOS = 14;
+
+	/**
+	 * Si un pueblo suelto (del tag de pueblos o con "village" en el nombre, de cualquier mod) no debe salir aquí por
+	 * caer encima de una capital. Los pueblos agrandados de la propia capital no están en el registro: nunca se vetan.
+	 */
+	public static boolean vetado(Structure estructura, Structure.GenerationContext ctx) {
+		if (estructura instanceof EstructuraCapital) {
+			return false;
+		}
+		Registry<Structure> estructuras = ctx.registryAccess().lookupOrThrow(Registries.STRUCTURE);
+		Identifier id = estructuras.getKey(estructura);
+		if (id == null || id.getNamespace().equals(DestinosCore.MOD_ID)) {
+			return false;
+		}
+		if (!estructuras.wrapAsHolder(estructura).is(StructureTags.VILLAGE) && !id.getPath().contains("village")) {
+			return false;
+		}
+		return ColocacionCapital.capitalCerca(ctx.chunkPos().x, ctx.chunkPos().z, SIN_PUEBLOS) != null;
 	}
 
 	/**

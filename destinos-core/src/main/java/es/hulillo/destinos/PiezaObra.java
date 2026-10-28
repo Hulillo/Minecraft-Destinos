@@ -177,7 +177,7 @@ abstract class PiezaObra extends StructurePiece {
 					}
 				}
 				if (c != null) {
-					columna(level, azar, pos, x, z, c, o.p, giro);
+					columna(level, azar, pos, x, z, u, v, c, o.p, giro);
 				}
 			}
 		}
@@ -262,7 +262,8 @@ abstract class PiezaObra extends StructurePiece {
 				|| s.is(Blocks.CALCITE) || s.is(Blocks.TUFF) || s.is(Blocks.DIRT_PATH) || s.is(Blocks.COARSE_DIRT);
 	}
 
-	private void columna(WorldGenLevel level, RandomSource azar, BlockPos.MutableBlockPos pos, int x, int z, Obra.Columna c, Paleta p, Rotation giro) {
+	private void columna(WorldGenLevel level, RandomSource azar, BlockPos.MutableBlockPos pos, int x, int z, int u, int v, Obra.Columna c, Paleta p,
+			Rotation giro) {
 		int fondo = c.fondo();
 		if (c.planta) {
 			// cimiento: hacia abajo hasta tocar suelo firme, para que no cuelgue en las cuestas
@@ -301,28 +302,87 @@ abstract class PiezaObra extends StructurePiece {
 				b = Blocks.AIR.defaultBlockState();
 			}
 			level.setBlock(pos.immutable(), b.rotate(giro), 2);
-			botin(level, azar, pos.immutable(), b);
+			botin(level, azar, pos.immutable(), b, u, ly, v);
 		}
 	}
 
-	/** Cofres de armas y armaduras, víveres y tesoros sueltos; barriles, uno de cada tres, de víveres. */
-	private static final List<ResourceKey<LootTable>> COFRES = List.of(BuiltInLootTables.VILLAGE_WEAPONSMITH, BuiltInLootTables.VILLAGE_ARMORER,
-			BuiltInLootTables.VILLAGE_TOOLSMITH, BuiltInLootTables.SIMPLE_DUNGEON, BuiltInLootTables.STRONGHOLD_CORRIDOR,
-			BuiltInLootTables.VILLAGE_PLAINS_HOUSE, BuiltInLootTables.VILLAGE_CARTOGRAPHER);
-	private static final List<ResourceKey<LootTable>> BARRILES = List.of(BuiltInLootTables.VILLAGE_PLAINS_HOUSE,
-			BuiltInLootTables.VILLAGE_TAIGA_HOUSE, BuiltInLootTables.VILLAGE_BUTCHER, BuiltInLootTables.VILLAGE_FISHER);
+	/**
+	 * El botín de los cofres y barriles de la obra, de las tablas de Minecraft (se llenan al abrirlos), según el cuarto
+	 * en que están: se mira lo que hay alrededor (yunques y fraguas, fogones, camas, libros, rejas, dianas, calderos de
+	 * alquimia...). Y de vez en cuando, en cualquier sitio, un cofre de tesoro.
+	 */
+	private void botin(WorldGenLevel level, RandomSource azar, BlockPos pos, BlockState b, int u, int ly, int v) {
+		boolean cofre = b.is(Blocks.CHEST);
+		if (!cofre && !b.is(Blocks.BARREL)) {
+			return;
+		}
+		int h = Math.floorMod(Geo.hash(pos.getX(), pos.getZ(), pos.getY() * 31 + 6029), 1000);
+		ResourceKey<LootTable> tabla;
+		if (cofre && h < RAROS_POR_MIL) {
+			tabla = TESOROS.get(h % TESOROS.size());
+		} else {
+			tabla = deCuarto(cuarto(obra(), u, ly, v), cofre, h);
+		}
+		RandomizableContainer.setBlockEntityLootTable(level, azar, pos, tabla);
+	}
 
-	/** El botín de los cofres y barriles de la obra, de las tablas de Minecraft (se llenan al abrirlos). */
-	private void botin(WorldGenLevel level, RandomSource azar, BlockPos pos, BlockState b) {
-		int h = Math.floorMod(Geo.hash(pos.getX(), pos.getZ(), pos.getY() * 31 + 6029), 21);
-		ResourceKey<LootTable> tabla = null;
-		if (b.is(Blocks.CHEST)) {
-			tabla = COFRES.get(h % COFRES.size());
-		} else if (b.is(Blocks.BARREL)) {
-			tabla = BARRILES.get(h % BARRILES.size());
+	/** Cofres de tesoro: uno de cada tantos (por mil), en cualquier cuarto. */
+	private static final int RAROS_POR_MIL = 90;
+	private static final List<ResourceKey<LootTable>> TESOROS = List.of(BuiltInLootTables.WOODLAND_MANSION, BuiltInLootTables.BURIED_TREASURE,
+			BuiltInLootTables.DESERT_PYRAMID, BuiltInLootTables.SHIPWRECK_TREASURE, BuiltInLootTables.JUNGLE_TEMPLE);
+
+	private enum Cuarto { HERRERIA, COCINA, DORMITORIO, BIBLIOTECA, CALABOZO, ARQUEROS, CAPILLA, PESCA, ESTABLO, OTRO }
+
+	/** Qué cuarto es, por lo que hay a menos de 4 bloques en el mismo piso. */
+	private static Cuarto cuarto(Obra o, int u, int ly, int v) {
+		int[] n = new int[Cuarto.values().length];
+		for (int du = -4; du <= 4; du++) {
+			for (int dv = -4; dv <= 4; dv++) {
+				for (int dy = -1; dy <= 2; dy++) {
+					BlockState s = o.en(u + du, ly + dy, v + dv);
+					if (s == null || s.isAir()) {
+						continue;
+					}
+					Cuarto c = s.is(Blocks.ANVIL) || s.is(Blocks.GRINDSTONE) || s.is(Blocks.SMITHING_TABLE) || s.is(Blocks.BLAST_FURNACE) ? Cuarto.HERRERIA
+							: s.is(Blocks.SMOKER) || s.is(Blocks.FURNACE) || s.is(Blocks.WATER_CAULDRON) || s.is(Blocks.CAKE) ? Cuarto.COCINA
+							: s.is(BlockTags.BEDS) ? Cuarto.DORMITORIO
+							: s.is(Blocks.BOOKSHELF) || s.is(Blocks.LECTERN) || s.is(Blocks.CHISELED_BOOKSHELF) ? Cuarto.BIBLIOTECA
+							: s.is(Blocks.IRON_BARS) || s.is(Blocks.IRON_DOOR) || s.is(Blocks.SKELETON_SKULL) ? Cuarto.CALABOZO
+							: s.is(Blocks.TARGET) ? Cuarto.ARQUEROS
+							: s.is(BlockTags.CANDLES) || s.is(Blocks.BREWING_STAND) ? Cuarto.CAPILLA
+							: s.is(Blocks.PACKED_ICE) || s.is(Blocks.DRIED_KELP_BLOCK) ? Cuarto.PESCA
+							: s.is(Blocks.HAY_BLOCK) ? Cuarto.ESTABLO
+							: Cuarto.OTRO;
+					n[c.ordinal()]++;
+				}
+			}
 		}
-		if (tabla != null) {
-			RandomizableContainer.setBlockEntityLootTable(level, azar, pos, tabla);
+		Cuarto mejor = Cuarto.OTRO;
+		for (Cuarto c : Cuarto.values()) {
+			if (c != Cuarto.OTRO && n[c.ordinal()] > 0 && (mejor == Cuarto.OTRO || n[c.ordinal()] > n[mejor.ordinal()])) {
+				mejor = c;
+			}
 		}
+		return mejor;
+	}
+
+	private static ResourceKey<LootTable> deCuarto(Cuarto c, boolean cofre, int h) {
+		List<ResourceKey<LootTable>> t = switch (c) {
+			case HERRERIA -> List.of(BuiltInLootTables.VILLAGE_WEAPONSMITH, BuiltInLootTables.VILLAGE_ARMORER, BuiltInLootTables.VILLAGE_TOOLSMITH);
+			case COCINA -> cofre ? List.of(BuiltInLootTables.VILLAGE_PLAINS_HOUSE, BuiltInLootTables.VILLAGE_TAIGA_HOUSE)
+					: List.of(BuiltInLootTables.VILLAGE_BUTCHER, BuiltInLootTables.VILLAGE_PLAINS_HOUSE);
+			case DORMITORIO -> List.of(BuiltInLootTables.VILLAGE_PLAINS_HOUSE, BuiltInLootTables.VILLAGE_TAIGA_HOUSE,
+					BuiltInLootTables.VILLAGE_SAVANNA_HOUSE, BuiltInLootTables.VILLAGE_SNOWY_HOUSE);
+			// los libros buenos son raros: una de cada tres, la biblioteca de la fortaleza
+			case BIBLIOTECA -> h % 3 == 0 ? List.of(BuiltInLootTables.STRONGHOLD_LIBRARY) : List.of(BuiltInLootTables.VILLAGE_CARTOGRAPHER);
+			case CALABOZO -> List.of(BuiltInLootTables.SIMPLE_DUNGEON, BuiltInLootTables.PILLAGER_OUTPOST);
+			case ARQUEROS -> List.of(BuiltInLootTables.VILLAGE_FLETCHER, BuiltInLootTables.PILLAGER_OUTPOST);
+			case CAPILLA -> List.of(BuiltInLootTables.VILLAGE_TEMPLE);
+			case PESCA -> List.of(BuiltInLootTables.VILLAGE_FISHER);
+			case ESTABLO -> List.of(BuiltInLootTables.VILLAGE_TANNERY, BuiltInLootTables.VILLAGE_SHEPHERD);
+			default -> cofre ? List.of(BuiltInLootTables.VILLAGE_PLAINS_HOUSE, BuiltInLootTables.STRONGHOLD_CORRIDOR, BuiltInLootTables.VILLAGE_MASON)
+					: List.of(BuiltInLootTables.VILLAGE_PLAINS_HOUSE, BuiltInLootTables.VILLAGE_TAIGA_HOUSE);
+		};
+		return t.get(h % t.size());
 	}
 }

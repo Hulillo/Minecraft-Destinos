@@ -115,6 +115,27 @@ public final class ColocacionCapital extends StructurePlacement {
 		return null;
 	}
 
+	/** La capital a menos de radio chunks (en cada eje) del chunk (cx, cz), o null. */
+	static MapaTerreno.Capital capitalCerca(int cx, int cz, int radio) {
+		MapaTerreno mapa = DestinosCore.mapaActual();
+		if (mapa == null) {
+			return null;
+		}
+		int dcx = Geo.celdaDucado(cx * 16 + 8);
+		int dcz = Geo.celdaDucado(cz * 16 + 8);
+		Cerca cerca = CERCA.get();
+		if (cerca == null || cerca.mapa() != mapa || cerca.dcx() != dcx || cerca.dcz() != dcz) {
+			cerca = new Cerca(mapa, dcx, dcz, capitalesCerca(mapa, dcx, dcz));
+			CERCA.set(cerca);
+		}
+		for (MapaTerreno.Capital capital : cerca.capitales()) {
+			if (Math.abs((capital.x() >> 4) - cx) <= radio && Math.abs((capital.z() >> 4) - cz) <= radio) {
+				return capital;
+			}
+		}
+		return null;
+	}
+
 	@Override
 	public StructurePlacementType<?> type() {
 		return TIPO;
