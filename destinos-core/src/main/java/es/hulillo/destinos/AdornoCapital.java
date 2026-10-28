@@ -47,8 +47,8 @@ public final class AdornoCapital extends StructurePiece {
 	static final int DESIERTO = 4;
 	/** Radio de la plaza mayor alrededor del centro de la capital. */
 	static final int PLAZA = 20;
-	/** Hasta dónde la plaza mayor es del todo llana; de ahí al borde, bancales. */
-	private static final int LLANO = 10;
+	/** Hasta dónde llegan, pasado el borde de la plaza mayor, las rampas de las avenidas. */
+	private static final int RAMPA = 14;
 	/** Distancia del centro a los puestos de mercado. */
 	private static final int ANILLO_MERCADO = 12;
 	/** Distancia del centro a los bancos de la plaza (entre el pozo o la fuente del centro y los puestos). */
@@ -359,16 +359,20 @@ public final class AdornoCapital extends StructurePiece {
 	}
 
 	/**
-	 * La plaza mayor en bancales: llana a la altura py hasta LLANO del centro y de ahí al borde sube o baja como mucho
-	 * un bloque cada tres (el terreno se rellena o se rebaja; solo el natural, nunca lo construido). Justo fuera del
-	 * borde, si el terreno queda más alto o más bajo, un murete de contención de la piedra de las calles.
+	 * La plaza mayor llana, a la altura py: el terreno de dentro se rellena o se rebaja (solo el natural, nunca lo
+	 * construido). Justo fuera del borde, si el terreno queda más alto o más bajo, un murete de contención de la piedra
+	 * de las calles (con pretil donde la plaza queda en alto), salvo donde entran las avenidas: ahí una rampa de un
+	 * bloque por bloque que sube o baja hasta el terreno.
 	 */
 	private void allana(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z) {
 		if (py == Integer.MIN_VALUE) {
 			return;
 		}
-		double r = Math.sqrt((double) (x - px) * (x - px) + (double) (z - pz) * (z - pz));
-		if (r > PLAZA + 1.5) {
+		int dx = x - px;
+		int dz = z - pz;
+		double r = Math.sqrt((double) dx * dx + (double) dz * dz);
+		boolean avenida = Math.abs(dx) <= 2 || Math.abs(dz) <= 2;
+		if (r > PLAZA + (avenida ? RAMPA : 1.5)) {
 			return;
 		}
 		int h = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
@@ -381,36 +385,55 @@ public final class AdornoCapital extends StructurePiece {
 			h--;
 			arriba = level.getBlockState(pos.set(x, h, z));
 		}
-		if (!SueloNatural.natural(arriba) && !arriba.is(Blocks.DIRT_PATH)) {
+		boolean calle = arriba.is(Blocks.DIRT_PATH) || empedrado(arriba);
+		if (!SueloNatural.natural(arriba) && !calle) {
 			return;
 		}
-		int margen = Math.max(0, (int) ((Math.min(r, PLAZA) - LLANO) / 3));
-		int objetivo = Math.clamp(h, py - margen, py + margen);
+		if (r > PLAZA && avenida) {
+			// la rampa de la avenida, de tierra pisada (luego se empiedra como calle)
+			int m = (int) Math.ceil(r - PLAZA);
+			mueve(level, pos, x, z, h, Math.clamp(h, py - m, py + m), Blocks.DIRT_PATH.defaultBlockState());
+			return;
+		}
 		if (r > PLAZA) {
-			// el murete de fuera, hasta la altura del borde de la plaza
-			if (Math.abs(h - objetivo) > 1) {
-				for (int y = Math.min(h, objetivo) + 1; y <= Math.max(h, objetivo); y++) {
+			if (Math.abs(h - py) > 1) {
+				for (int y = Math.min(h, py) + 1; y <= Math.max(h, py); y++) {
 					level.setBlock(pos.set(x, y, z), calle(x, z + y), 2);
+				}
+				// la plaza en alto: pretil para no caerse
+				if (h < py && level.getBlockState(pos.set(x, py + 1, z)).isAir()) {
+					level.setBlock(pos, pretil(), 2);
 				}
 			}
 			return;
 		}
+		mueve(level, pos, x, z, h, py, Blocks.GRASS_BLOCK.defaultBlockState());
+	}
+
+	/** Lleva el suelo de la columna de h a objetivo: rellena de tierra o rebaja el terreno, y deja cima encima. */
+	private void mueve(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int h, int objetivo, BlockState cima) {
 		if (h < objetivo) {
 			for (int y = h + 1; y <= objetivo; y++) {
-				level.setBlock(pos.set(x, y, z), (y == objetivo ? Blocks.GRASS_BLOCK : Blocks.DIRT).defaultBlockState(), 2);
+				level.setBlock(pos.set(x, y, z), y == objetivo ? cima : Blocks.DIRT.defaultBlockState(), 2);
 			}
 		} else if (h > objetivo) {
 			for (int y = h + 3; y > objetivo; y--) {
 				BlockState b = level.getBlockState(pos.set(x, y, z));
-				if (SueloNatural.natural(b) || b.is(Blocks.DIRT_PATH) || !b.isAir() && b.canBeReplaced() && b.getFluidState().isEmpty()) {
+				if (SueloNatural.natural(b) || b.is(Blocks.DIRT_PATH) || empedrado(b) || !b.isAir() && b.canBeReplaced() && b.getFluidState().isEmpty()) {
 					level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
 				}
 			}
-			BlockState b = level.getBlockState(pos.set(x, objetivo, z));
-			if (!SueloNatural.natural(b)) {
-				level.setBlock(pos, Blocks.GRASS_BLOCK.defaultBlockState(), 2);
-			}
+			level.setBlock(pos.set(x, objetivo, z), cima, 2);
 		}
+	}
+
+	private BlockState pretil() {
+		return switch (estilo) {
+			case DESIERTO -> Blocks.SANDSTONE_WALL.defaultBlockState();
+			case SABANA -> Blocks.MUD_BRICK_WALL.defaultBlockState();
+			case TAIGA, NIEVE -> Blocks.MOSSY_COBBLESTONE_WALL.defaultBlockState();
+			default -> Blocks.COBBLESTONE_WALL.defaultBlockState();
+		};
 	}
 
 	private void empiedra(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z) {
