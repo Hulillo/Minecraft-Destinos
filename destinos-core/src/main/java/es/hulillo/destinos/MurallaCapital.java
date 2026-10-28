@@ -34,6 +34,8 @@ public final class MurallaCapital extends StructurePiece {
 	private static final int RADIO_TORRE = 3;
 	private static final int[] ALTO = {4, 5, 7};
 	private static final int[] GRUESO = {1, 2, 3};
+	/** El alto libre bajo el dintel de las puertas. */
+	private static final int PASO = 4;
 
 	private final int cx;
 	private final int cz;
@@ -151,9 +153,34 @@ public final class MurallaCapital extends StructurePiece {
 		}
 	}
 
-	/** Una columna de muralla sobre el suelo natural; nada si hay agua, calle o casa. */
+	/**
+	 * Una columna de muralla sobre el suelo natural; nada si hay agua o casa. Sobre una calle, la puerta: se deja
+	 * paso de cuatro de alto y encima va el dintel, así la muralla no se corta donde la cruza una calle.
+	 */
 	private void columna(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int alto) {
 		BlockState s = SueloNatural.superficie(level, pos, x, z);
+		if (calle(s)) {
+			if (alto <= PASO) {
+				return;
+			}
+			boolean arena = s.is(Blocks.SMOOTH_SANDSTONE);
+			BlockState dintel = switch (nivel) {
+				case 0 -> arena ? Blocks.STRIPPED_ACACIA_LOG.defaultBlockState() : Blocks.SPRUCE_LOG.defaultBlockState();
+				case 1 -> arena ? Blocks.SANDSTONE.defaultBlockState() : Blocks.COBBLESTONE.defaultBlockState();
+				default -> arena ? Blocks.CUT_SANDSTONE.defaultBlockState() : Blocks.STONE_BRICKS.defaultBlockState();
+			};
+			for (int i = 1; i <= alto; i++) {
+				pos.move(0, 1, 0);
+				BlockState aqui = level.getBlockState(pos);
+				if (!aqui.isAir() && !aqui.canBeReplaced()) {
+					return;
+				}
+				if (i > PASO) {
+					level.setBlock(pos, dintel, 2);
+				}
+			}
+			return;
+		}
 		if (!SueloNatural.natural(s)) {
 			return;
 		}
@@ -173,5 +200,10 @@ public final class MurallaCapital extends StructurePiece {
 			}
 			level.setBlock(pos, bloque, 2);
 		}
+	}
+
+	/** El suelo de una calle (de las de la capital o de los caminos de los pueblos). */
+	private static boolean calle(BlockState s) {
+		return s.is(Blocks.DIRT_PATH) || s.is(Blocks.SMOOTH_SANDSTONE) || s.is(Blocks.COBBLESTONE) || s.is(Blocks.OAK_PLANKS);
 	}
 }
