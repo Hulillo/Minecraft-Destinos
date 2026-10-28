@@ -56,6 +56,7 @@ public final class DestinosCore implements ModInitializer {
 		CastilloCapital.registra();
 		AdornoCapital.registra();
 		CasaNoble.registra();
+		PlazaMercado.registra();
 		PayloadTypeRegistry.playS2C().register(PaqueteTerritorio.TIPO, PaqueteTerritorio.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaquetePolitica.TIPO, PaquetePolitica.CODEC);
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ENVIO.olvida(handler.getPlayer().getUUID()));

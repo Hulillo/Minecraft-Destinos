@@ -15,7 +15,7 @@ import net.minecraft.world.level.WorldGenLevel;
 
 /**
  * Los seres que trae una obra (Obra.ser): caballos en las cuadras, el herrero, un gato, un preso y armaduras en sus
- * soportes. Se ponen al generar el chunk en el que caen, como los guardianes de los monumentos, y no desaparecen.
+ * soportes, y el ganado de los corrales del mercado. Se ponen al generar el chunk en el que caen, como los guardianes de los monumentos, y no desaparecen.
  */
 final class SeresObra {
 	static final String CABALLO = "caballo";
@@ -28,6 +28,11 @@ final class SeresObra {
 	static final String MALLA = "malla";
 	static final String ORO = "oro";
 	static final String PELELE = "pelele";
+	/** El ganado de los corrales del mercado. */
+	static final String OVEJA = "oveja";
+	static final String CERDO = "cerdo";
+	static final String GALLINA = "gallina";
+	static final String VACA = "vaca";
 
 	private SeresObra() {
 	}
@@ -41,6 +46,10 @@ final class SeresObra {
 			case HERRERO -> EntityType.VILLAGER;
 			case GATO -> EntityType.CAT;
 			case PRESO -> EntityType.ZOMBIE_VILLAGER;
+			case OVEJA -> EntityType.SHEEP;
+			case CERDO -> EntityType.PIG;
+			case GALLINA -> EntityType.CHICKEN;
+			case VACA -> EntityType.COW;
 			default -> EntityType.ARMOR_STAND;
 		};
 		Entity e = tipo.create(sl, EntitySpawnReason.STRUCTURE);

@@ -59,13 +59,16 @@ public final class AdornoCapital extends StructurePiece {
 	private final int estilo;
 	/** Color del reino (id de DyeColor), o -1 si no se sabe. */
 	private final int color;
+	/** Si lleva el anillo de puestos en la plaza (solo si la capital no tiene plaza del mercado). */
+	private final boolean puestos;
 
-	AdornoCapital(int px, int pz, int estilo, int color, BoundingBox capital, int techo) {
+	AdornoCapital(int px, int pz, int estilo, int color, BoundingBox capital, int techo, boolean puestos) {
 		super(TIPO, 0, new BoundingBox(capital.minX(), techo, capital.minZ(), capital.maxX(), techo, capital.maxZ()));
 		this.px = px;
 		this.pz = pz;
 		this.estilo = estilo;
 		this.color = color;
+		this.puestos = puestos;
 	}
 
 	private AdornoCapital(CompoundTag t) {
@@ -74,6 +77,7 @@ public final class AdornoCapital extends StructurePiece {
 		pz = t.getIntOr("pz", 0);
 		estilo = t.getIntOr("estilo", TEMPLADO);
 		color = t.getIntOr("color", -1);
+		puestos = t.getBooleanOr("puestos", true);
 	}
 
 	static void registra() {
@@ -126,6 +130,7 @@ public final class AdornoCapital extends StructurePiece {
 		t.putInt("pz", pz);
 		t.putInt("estilo", estilo);
 		t.putInt("color", color);
+		t.putBoolean("puestos", puestos);
 	}
 
 	@Override
@@ -162,7 +167,9 @@ public final class AdornoCapital extends StructurePiece {
 			double a = Math.PI / 8 + i * Math.PI / 4;
 			int x = px + (int) Math.round(Math.cos(a) * ANILLO_MERCADO);
 			int z = pz + (int) Math.round(Math.sin(a) * ANILLO_MERCADO);
-			puesto(level, caja, pos, x, z, Geo.hash(x, z, K_PIEDRA));
+			if (puestos) {
+				puesto(level, caja, pos, x, z, Geo.hash(x, z, K_PIEDRA));
+			}
 			// y por fuera de cada puesto, hacia el borde, una jardinera con flores y un árbol
 			int jx = px + (int) Math.round(Math.cos(a) * ANILLO_JARDIN);
 			int jz = pz + (int) Math.round(Math.sin(a) * ANILLO_JARDIN);

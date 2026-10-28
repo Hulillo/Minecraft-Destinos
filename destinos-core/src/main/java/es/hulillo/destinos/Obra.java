@@ -13,6 +13,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CrossCollisionBlock;
 import net.minecraft.world.level.block.FenceBlock;
 import net.minecraft.world.level.block.IronBarsBlock;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.WallBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
@@ -602,6 +603,41 @@ final class Obra {
 			b = Blocks.OAK_FENCE_GATE;
 		}
 		return mira(b, mira);
+	}
+
+	/**
+	 * Copia aquí otra obra hecha en local (un puesto de mercado…), con su centro en (du, dv) y girada rot × 90 grados
+	 * en el sentido de las agujas del reloj (como PiezaObra: 1 lleva su norte al este).
+	 */
+	void incrusta(Obra otra, int du, int dv, int rot) {
+		Rotation giro = switch (rot) {
+			case 1 -> Rotation.CLOCKWISE_90;
+			case 2 -> Rotation.CLOCKWISE_180;
+			case 3 -> Rotation.COUNTERCLOCKWISE_90;
+			default -> Rotation.NONE;
+		};
+		for (Map.Entry<Long, Columna> e : otra.columnas.entrySet()) {
+			int u = (int) (e.getKey() >> 32);
+			int v = (int) (long) e.getKey();
+			int wu = du + switch (rot) {
+				case 1 -> -v;
+				case 2 -> -u;
+				case 3 -> v;
+				default -> u;
+			};
+			int wv = dv + switch (rot) {
+				case 1 -> u;
+				case 2 -> -v;
+				case 3 -> -u;
+				default -> v;
+			};
+			for (int ly = MIN; ly <= otra.alto; ly++) {
+				BlockState b = e.getValue().get(ly);
+				if (b != null) {
+					pon(wu, ly, wv, b.rotate(giro));
+				}
+			}
+		}
 	}
 
 	// ---- seres: animales, gente y armaduras que se ponen con la obra ----

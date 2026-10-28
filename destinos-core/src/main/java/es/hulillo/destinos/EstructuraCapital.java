@@ -164,6 +164,9 @@ public final class EstructuraCapital extends Structure {
 		int techo = ctx.heightAccessor().getMinY() + ctx.heightAccessor().getHeight() - 1;
 		// el barrio noble: casas nobles mirando a la plaza mayor, más cuanto más rica es la capital
 		List<StructurePiece> grandes = new ArrayList<>(castillo.stream().toList());
+		// la plaza del mercado mayor, a otro lado de la plaza del pueblo (todas las capitales)
+		Optional<PlazaMercado> mercado = mercado(ctx, agua, principal, nivel, estilo, madera, color, grandes);
+		mercado.ifPresent(grandes::add);
 		List<CasaNoble> nobles = nobles(ctx, agua, principal, nivel == 2 ? 4 : nivel == 1 ? 2 : 0, estilo, madera, color, grandes);
 		grandes.addAll(nobles);
 		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
@@ -209,10 +212,11 @@ public final class EstructuraCapital extends Structure {
 			puestas.forEach(pieza -> cajas.add(pieza.getBoundingBox()));
 			enMuralla.forEach(pieza -> cajas.add(pieza.getBoundingBox()));
 			BoundingBox.encapsulatingBoxes(cajas).ifPresent(caja -> piezas.addPiece(
-					new AdornoCapital(principal.position().getX(), principal.position().getZ(), estilo, color, caja, techo)));
+					new AdornoCapital(principal.position().getX(), principal.position().getZ(), estilo, color, caja, techo,
+							mercado.isEmpty())));
 			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} de {} piezas del centro, {} barrios, {} piezas en total · pedida por {}",
 					principal.position().getX(), principal.position().getY(), principal.position().getZ(), nivel,
-					(castillo.isPresent() ? ", con castillo" : "") + (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles"), delCentro.stream()
+					(castillo.isPresent() ? ", con castillo" : "") + (mercado.isPresent() ? ", con mercado" : "") + (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles"), delCentro.stream()
 							.filter(puestas::contains).count(), delCentro.size(), barrios.size(), puestas.size() + enCalles,
 					ColocacionCapital.quien());
 		}));
@@ -246,6 +250,41 @@ public final class EstructuraCapital extends Structure {
 			DestinosCore.LOG.info("Destinos Core: la capital del chunk {} es rica pero no tiene sitio para el castillo", ctx.chunkPos());
 		}
 		return Optional.ofNullable(mejor);
+	}
+
+	/**
+	 * Dónde va la plaza del mercado: pegada a un lado de la plaza del pueblo, sin tocar la plaza, el agua ni el
+	 * castillo, y donde quite menos casas. Con la entrada hacia la plaza. Si no cabe, se prueba más pequeña.
+	 */
+	private static Optional<PlazaMercado> mercado(Structure.GenerationContext ctx, Agua agua, Montado principal, int nivel, int estilo, int madera,
+			int color, List<StructurePiece> grandes) {
+		int px = principal.position().getX();
+		int pz = principal.position().getZ();
+		for (int n = nivel; n >= 0; n--) {
+			PlazaMercado mejor = null;
+			long quita = Long.MAX_VALUE;
+			int medio = PlazaMercado.medio(n);
+			for (int distancia : new int[] {AdornoCapital.PLAZA + medio + 2, AdornoCapital.PLAZA + medio + 10}) {
+				for (int[] d : CRUZ) {
+					int x = px + d[0] * distancia;
+					int z = pz + d[1] * distancia;
+					PlazaMercado m = new PlazaMercado(x, z, suelo(ctx, x, z), CastilloCapital.giroHacia(-d[0], -d[1]), estilo, madera, color, n);
+					if (agua.toca(m) || enPlanta(m, principal.piezas().get(0)) || grandes.stream().anyMatch(g -> enPlanta(g, m))) {
+						continue;
+					}
+					long q = principal.piezas().stream().filter(p -> enPlanta(m, p)).count();
+					if (q < quita) {
+						mejor = m;
+						quita = q;
+					}
+				}
+			}
+			if (mejor != null) {
+				return Optional.of(mejor);
+			}
+		}
+		DestinosCore.LOG.info("Destinos Core: la capital del chunk {} no tiene sitio para la plaza del mercado", ctx.chunkPos());
+		return Optional.empty();
 	}
 
 	/**
