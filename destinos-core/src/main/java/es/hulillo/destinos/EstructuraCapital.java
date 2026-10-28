@@ -54,7 +54,7 @@ public final class EstructuraCapital extends Structure {
 	/** Largo de cada tramo de calle entre el centro y un barrio. */
 	private static final int TRAMO = 16;
 	/** A qué distancias de la plaza (en un eje) se prueba el castillo de las capitales ricas, de más cerca a más lejos. */
-	private static final int[] DISTANCIAS_CASTILLO = {32, 48};
+	private static final int[] DISTANCIAS_CASTILLO = {40, 56};
 	/** Agua seguida que puede cruzar una calle (con tablones); más, y esa calle no se hace. */
 	private static final int MAX_AGUA_CALLE = 8;
 
@@ -146,8 +146,6 @@ public final class EstructuraCapital extends Structure {
 		List<StructurePiece> muralla = new ArrayList<>();
 		MurallaCapital.piezas(principal.position().getX(), principal.position().getZ(), nivel, (mx, mz) -> suelo(ctx, mx, mz),
 				muralla);
-		// y las capitales ricas, su castillo dentro de la muralla
-		Optional<CastilloCapital> castillo = nivel == 2 ? castillo(ctx, agua, bioma, principal) : Optional.empty();
 		// lo bonito (calles empedradas, plaza mayor, farolas): con el estilo del pueblo y el color del reino
 		int estilo = AdornoCapital.estilo(pueblo.getRegisteredName(), bioma.value().getBaseTemperature());
 		MapaTerreno mapa = DestinosCore.mapaActual();
@@ -159,6 +157,8 @@ public final class EstructuraCapital extends Structure {
 			tinte = AdornoCapital.tinte(Geo.colorReino(reino.kx(), reino.kz(), mapa.sal()));
 		}
 		int color = tinte;
+		// y las capitales ricas, su castillo dentro de la muralla
+		Optional<CastilloCapital> castillo = nivel == 2 ? castillo(ctx, agua, principal, estilo, color) : Optional.empty();
 		int techo = ctx.heightAccessor().getMinY() + ctx.heightAccessor().getHeight() - 1;
 		// el barrio noble: casas nobles mirando a la plaza mayor, más cuanto más rica es la capital
 		List<StructurePiece> grandes = new ArrayList<>(castillo.stream().toList());
@@ -220,17 +220,16 @@ public final class EstructuraCapital extends Structure {
 	 * Dónde va el castillo: a un lado de la plaza (norte, este, sur u oeste, primero cerca), sin tocar la plaza ni el
 	 * agua, y donde quite menos casas del centro. Con la puerta hacia la plaza.
 	 */
-	private static Optional<CastilloCapital> castillo(Structure.GenerationContext ctx, Agua agua, Holder<Biome> bioma, Montado principal) {
+	private static Optional<CastilloCapital> castillo(Structure.GenerationContext ctx, Agua agua, Montado principal, int estilo, int color) {
 		int px = principal.position().getX();
 		int pz = principal.position().getZ();
-		boolean desierto = bioma.value().getBaseTemperature() > 1.5F;
 		CastilloCapital mejor = null;
 		long quita = Long.MAX_VALUE;
 		for (int distancia : DISTANCIAS_CASTILLO) {
 			for (int[] d : CRUZ) {
 				int x = px + d[0] * distancia;
 				int z = pz + d[1] * distancia;
-				CastilloCapital c = new CastilloCapital(x, z, suelo(ctx, x, z), CastilloCapital.giroHacia(-d[0], -d[1]), desierto);
+				CastilloCapital c = new CastilloCapital(x, z, suelo(ctx, x, z), CastilloCapital.giroHacia(-d[0], -d[1]), estilo, color);
 				if (agua.toca(c) || enPlanta(c, principal.piezas().get(0))) {
 					continue;
 				}
