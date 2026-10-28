@@ -107,10 +107,11 @@ public final class CastilloCapital extends PiezaObra {
 				torre(o, su, sv);
 			}
 		}
-		puerta(o);
+		// los cubos antes que la puerta, que abre las puertas del paso y de la sala de la guardia en sus muros
 		for (int s = -1; s <= 1; s += 2) {
 			cubo(o, s);
 		}
+		puerta(o);
 		establo(o);
 		herreria(o);
 		for (int s = -1; s <= 1; s += 2) {
@@ -193,6 +194,14 @@ public final class CastilloCapital extends PiezaObra {
 			o.pon(cu - t, y, cv + d, o.p.piedra(o, cu - t, y, cv + d));
 			o.pon(cu + t, y, cv + d, o.p.piedra(o, cu + t, y, cv + d));
 		}
+	}
+
+	/** El techo de la sala de arriba de una torre (medio lado interior r): tablas con una cruz de vigas y un farol en medio, para no ver el chapitel por dentro. */
+	private static void techoSala(Obra o, int cu, int cv, int r, int y) {
+		o.caja(cu - r, y, cv - r, cu + r, y, cv + r, o.p.tablas);
+		o.viga(cu - r, cv, cu + r, cv, y);
+		o.viga(cu, cv - r, cu, cv + r, y);
+		o.pon(cu, y - 1, cv, Obra.farolColgado());
 	}
 
 	/** El remate de una torre: chapitel con una buhardilla en cada cara, o almenas en el desierto. */
@@ -318,7 +327,75 @@ public final class CastilloCapital extends PiezaObra {
 				}
 			}
 		}
+		jardinesRonda(o);
 	}
+
+	/**
+	 * La decoración de la ronda: a los lados, un camino de tierra con macizos de flores contra los edificios y, contra
+	 * la muralla, árboles, farolas y bancos; detrás del palacio, el camino, los macizos y el huerto con sus surcos, la
+	 * acequia, el pozo en medio, un espantapájaros y los barriles del hortelano.
+	 */
+	private void jardinesRonda(Obra o) {
+		Paleta p = o.p;
+		BlockState camino = p.desierto ? Blocks.SMOOTH_SANDSTONE.defaultBlockState() : Blocks.DIRT_PATH.defaultBlockState();
+		for (int s = -1; s <= 1; s += 2) {
+			Direction alCamino = lado(-s);
+			for (int v = -24; v <= 24; v++) {
+				o.pon(s * 28, 0, v, camino);
+				o.pon(s * 29, 0, v, camino);
+				o.aire(s * 28, 1, v, s * 29, 1, v);
+				o.parterre(s * 27, 1, v);
+				o.aire(s * 30, 1, v, s * 31, 1, v);
+			}
+			for (int v : new int[] {-18, -6, 6, 18}) {
+				o.arbol(s * 31, 1, v, 5);
+			}
+			for (int v : new int[] {-12, 0, 12}) {
+				o.farola(s * 30, 1, v, alCamino);
+			}
+			for (int v : new int[] {-22, -9, 3, 15}) {
+				o.silla(s * 31, 1, v, lado(s));
+				o.silla(s * 31, 1, v + 1, lado(s));
+				o.pon(s * 31, 1, v - 1, Obra.trampilla(p.trampilla, Direction.NORTH, false, true));
+				o.pon(s * 31, 1, v + 2, Obra.trampilla(p.trampilla, Direction.SOUTH, false, true));
+			}
+			o.parterre(s * 30, 1, -15);
+			o.parterre(s * 30, 1, 9);
+			o.pon(s * 30, 1, -3, Blocks.HAY_BLOCK);
+			o.pon(s * 31, 1, 21, Blocks.BARREL);
+		}
+		// detrás del palacio: camino, macizos y el huerto
+		for (int u = -26; u <= 26; u++) {
+			o.parterre(u, 1, 27);
+			o.pon(u, 0, 28, camino);
+			o.aire(u, 1, 28, u, 1, 31);
+		}
+		BlockState tierra = Blocks.FARMLAND.defaultBlockState().setValue(BlockStateProperties.MOISTURE, 7);
+		Block[] cultivos = {Blocks.WHEAT, Blocks.CARROTS, Blocks.POTATOES, Blocks.BEETROOTS};
+		for (int s = -1; s <= 1; s += 2) {
+			for (int x = 4; x <= 24; x++) {
+				int u = s * x;
+				Block c = cultivos[Math.floorMod((x - 4) / 5 + (s > 0 ? 2 : 0), cultivos.length)];
+				BlockState planta = c == Blocks.BEETROOTS ? c.defaultBlockState().setValue(BlockStateProperties.AGE_3, 2 + o.azar(u, 1, 29, 2))
+						: c.defaultBlockState().setValue(BlockStateProperties.AGE_7, 4 + o.azar(u, 1, 29, 4));
+				for (int v : new int[] {29, 31}) {
+					o.pon(u, 0, v, tierra);
+					o.pon(u, 1, v, planta);
+				}
+				o.pon(u, 0, 30, Blocks.WATER);
+				o.pon(u, -1, 30, p.zocalo);
+			}
+			o.pon(s * 3, 0, 30, Obra.tronco(p.tronco, Direction.Axis.X));
+			o.pon(s * 25, 0, 30, Obra.tronco(p.tronco, Direction.Axis.X));
+			o.pon(s * 25, 1, 29, Blocks.COMPOSTER);
+			o.pon(s * 26, 1, 29, Blocks.BARREL);
+			o.pon(s * 26, 1, 31, Blocks.HAY_BLOCK);
+			o.pon(s * 25, 1, 31, Obra.mira(Blocks.CHEST, Direction.NORTH));
+			o.ser(SeresObra.PELELE, s * 14, 1, 29, Direction.NORTH);
+		}
+		pozo(o, 0, 30);
+	}
+
 
 	/** El patio de armas, entre la puerta y el patio de honor: empedrado, escaleras al adarve, campo de tiro y pozo. */
 	private void patioDeArmas(Obra o) {
@@ -521,7 +598,7 @@ public final class CastilloCapital extends PiezaObra {
 		}
 		o.paredes(cu - t, ALTO_MURO, cv - t, cu + t, ALTO_MURO, cv + t, p.moldura);
 		o.paredes(cu - t, alta, cv - t, cu + t, alta, cv + t, p.moldura);
-		o.escaleraU(cu - 2 * su, cv - 5 * sv, hb, ha, 3, 2, 2, 4, PISOS_TORRE, p.piedraEscalon, p.zocalo);
+		o.escaleraU(cu - 2 * su, cv - 5 * sv, hb, ha, 3, 2, 2, 4, PISOS_TORRE, p.piedraEscalon, Obra.losa(p.piedraLosa, true));
 		// abajo, una puerta a la ronda por cada lado; arriba, puertas de dos de ancho al adarve de las dos murallas
 		o.puerta(cu - t * su, 1, cv - r * sv, ha);
 		o.puerta(cu - r * su, 1, cv - t * sv, hb);
@@ -596,6 +673,7 @@ public final class CastilloCapital extends PiezaObra {
 			o.pon(a4, PISOS_TORRE[n + 1] - 1, cv + 4 * sv, Obra.farolColgado());
 		}
 		o.pon(a5, alta + 1, cv - sv, Blocks.LANTERN);
+		techoSala(o, cu, cv, r, arriba);
 		remate(o, cu, cv, t, arriba);
 	}
 
@@ -671,7 +749,7 @@ public final class CastilloCapital extends PiezaObra {
 		}
 		o.paredes(cu - t, ALTO_MURO, cv - t, cu + t, ALTO_MURO, cv + t, p.moldura);
 		o.paredes(cu - t, alta, cv - t, cu + t, alta, cv + t, p.moldura);
-		o.escaleraU(cu - 3 * s, cv + 3, Direction.NORTH, lado(s), 3, 2, 2, PISOS_CUBO, p.piedraEscalon, p.zocalo);
+		o.escaleraU(cu - 3 * s, cv + 3, Direction.NORTH, lado(s), 3, 2, 2, PISOS_CUBO, p.piedraEscalon, Obra.losa(p.piedraLosa, true));
 		// al adarve de fuera (las de dentro las abre la puerta)
 		o.aire(cu + t * s, ALTO_MURO + 1, cv + 2, cu + t * s, ALTO_MURO + 3, cv + 3);
 		// ventanas encima de cada descansillo, y en la sala de arriba por las tres caras que dan fuera
@@ -687,6 +765,7 @@ public final class CastilloCapital extends PiezaObra {
 		o.pon(cu - 2 * s, alta + 1, cv - 3, Blocks.BARREL);
 		o.pon(cu - 2 * s, alta + 2, cv - 3, Blocks.LANTERN);
 		o.estandarte(cu, alta + 3, cv - r, Direction.SOUTH);
+		techoSala(o, cu, cv, r, arriba);
 		remate(o, cu, cv, t, arriba);
 	}
 
@@ -701,11 +780,9 @@ public final class CastilloCapital extends PiezaObra {
 				o.pon(u, 0, v, v <= -20 ? Blocks.COARSE_DIRT.defaultBlockState() : p.adoquin(o, u, v));
 			}
 		}
-		o.sillares(ua, 1, va, ub, 5, va, false);
-		o.sillares(ua, 1, va, ua, 1, vb, false);
-		o.sillares(ub, 1, va, ub, 1, vb, false);
-		muroEntramado(o, ua, va, ua, vb, 2, 5, 5);
-		muroEntramado(o, ub, va, ub, vb, 2, 5, 5);
+		muroEntramado(o, ua, va, ub, va, 1, 5, 5);
+		muroEntramado(o, ua, va, ua, vb, 1, 5, 5);
+		muroEntramado(o, ub, va, ub, vb, 1, 5, 5);
 		// la fachada abierta: postes y viga
 		for (int u = ua; u <= ub; u += 3) {
 			o.caja(u, 1, vb, u, 4, vb, Obra.tronco(p.tronco, Direction.Axis.Y));
@@ -764,9 +841,9 @@ public final class CastilloCapital extends PiezaObra {
 				o.pon(u, 0, v, p.zocalo);
 			}
 		}
-		o.sillares(ua, 1, va, ub, 5, va, false);
-		o.sillares(ua, 1, va, ua, 5, vb, false);
-		o.sillares(ub, 1, va, ub, 5, vb, false);
+		muroEntramado(o, ua, va, ub, va, 1, 5, 5);
+		muroEntramado(o, ua, va, ua, vb, 1, 5, 5);
+		muroEntramado(o, ub, va, ub, vb, 1, 5, 5);
 		for (int u : new int[] {7, 10}) {
 			o.caja(u, 1, vb, u, 4, vb, Obra.tronco(p.tronco, Direction.Axis.Y));
 		}
@@ -798,7 +875,7 @@ public final class CastilloCapital extends PiezaObra {
 		o.ser(SeresObra.MALLA, 12, 1, -19, Direction.WEST);
 		o.ser(SeresObra.HERRERO, 8, 1, -22, Direction.NORTH);
 		o.pon(12, 1, -17, Obra.trampilla(p.trampilla, Direction.WEST, false, true));
-		tejado(o, ua - 1, va, ub + 1, vb + 1, 6, false, p.piedra(o, 0, 6, va), true);
+		tejado(o, ua - 1, va, ub + 1, vb + 1, 6, false, p.enlucido, true);
 		if (!p.desierto) {
 			o.pon(6, 9, -21, Obra.farolColgado());
 			o.pon(11, 9, -21, Obra.farolColgado());
@@ -936,11 +1013,9 @@ public final class CastilloCapital extends PiezaObra {
 	/** Oeste, abajo delante: la guardia de las mazmorras, con la bajada de tres de ancho y su barandilla. */
 	private void guardiaMazmorras(Obra o) {
 		Paleta p = o.p;
-		for (int v = -8; v <= -6; v++) {
+		// barandilla a lo largo de todo el hueco de la bajada
+		for (int v = -11; v <= -6; v++) {
 			o.pon(-22, 1, v, p.valla);
-		}
-		for (int u = -25; u <= -23; u++) {
-			o.pon(u, 1, -9, p.valla);
 		}
 		o.mesa(-21, -11, -20, -11, 1, false);
 		o.silla(-21, 1, -10, Direction.NORTH);
@@ -1024,13 +1099,8 @@ public final class CastilloCapital extends PiezaObra {
 		// paredes de fuera: piedra abajo y entramado arriba
 		o.paredes(-e, 0, va, e, 0, vb, p.zocalo);
 		o.sillares(-e, 1, va, e, 5, vb, true);
-		// la fachada: entramado a los lados y de piedra entre las dos torres del homenaje, como ellas
-		for (int s = -1; s <= 1; s += 2) {
-			muroEntramado(o, s * 7, va, s * e, va, 6, 18, 6, 12, 18);
-		}
-		o.sillares(-6, 6, va, 6, 18, va, false);
-		o.caja(-6, 6, va, 6, 6, va, p.moldura);
-		o.caja(-6, 18, va, 6, 18, va, p.moldura);
+		// la fachada, toda de entramado desde el suelo, sin cambiar de piedra a terracota a media altura
+		muroEntramado(o, -e, va, e, va, 1, 18, 6, 12, 18);
 		muroEntramado(o, -e, vb, e, vb, 6, 18, 6, 12, 18);
 		muroEntramado(o, -e, va, -e, vb, 6, 18, 6, 12, 18);
 		muroEntramado(o, e, va, e, vb, 6, 18, 6, 12, 18);
@@ -1143,11 +1213,9 @@ public final class CastilloCapital extends PiezaObra {
 				ventanas(o, s * e, f + 2, 10, s * e, f + 3, 11);
 				ventanas(o, s * e, f + 2, 16, s * e, f + 3, 17);
 				ventanas(o, s * e, f + 2, 22, s * e, f + 3, 23);
-				// detrás y delante, en los cuartos
+				// detrás, en los cuartos (delante está el ala pegada)
 				ventanas(o, s * 16, f + 2, FONDO, s * 17, f + 3, FONDO);
 				ventanas(o, s * 22, f + 2, FONDO, s * 23, f + 3, FONDO);
-				ventanas(o, s * 19, f + 2, FACHADA, s * 20, f + 3, FACHADA);
-				ventanas(o, s * 22, f + 2, FACHADA, s * 23, f + 3, FACHADA);
 			}
 			// el salón (altas, a los dos lados del trono y en la fachada) y la cámara del rey
 			ventanas(o, s * 4, 8, FONDO, s * 5, 10, FONDO);
@@ -1602,9 +1670,7 @@ public final class CastilloCapital extends PiezaObra {
 		for (int u = -5; u <= 5; u++) {
 			o.aire(u, 19, FACHADA, u, 18 + 6 - Math.abs(u), FACHADA + 4);
 		}
-		o.dosAguas(-6, FACHADA - 1, 6, FACHADA + 5, 18, true, p.piedra(o, 0, 20, FACHADA), false);
-		o.caja(-1, 20, FACHADA, 1, 21, FACHADA, Blocks.GLASS_PANE);
-		o.pon(0, 22, FACHADA, Blocks.GLASS_PANE);
+		o.dosAguas(-6, FACHADA - 1, 6, FACHADA + 5, 18, true, p.enlucido, false);
 		for (int s = -1; s <= 1; s += 2) {
 			o.buhardilla(s * 5, FONDO, Direction.SOUTH, 19, 1);
 			o.buhardilla(s * 19, FONDO, Direction.SOUTH, 19, 1);
@@ -1633,7 +1699,7 @@ public final class CastilloCapital extends PiezaObra {
 		for (int f : new int[] {18, 24}) {
 			o.paredes(cu - t, f, cv - t, cu + t, f, cv + t, p.moldura);
 		}
-		o.escaleraU(s * 8, 11, Direction.NORTH, lado(s), 3, 2, 2, PISOS_HOMENAJE, p.piedraEscalon, p.zocalo);
+		o.escaleraU(s * 8, 11, Direction.NORTH, lado(s), 3, 2, 2, PISOS_HOMENAJE, p.piedraEscalon, Obra.losa(p.piedraLosa, true));
 		// puertas en los rellanos
 		o.aire(s * 7, 1, 10, s * 7, 3, 11);
 		o.aire(s * 7, 7, 10, s * 7, 9, 11);
@@ -1654,9 +1720,9 @@ public final class CastilloCapital extends PiezaObra {
 		}
 		o.estandarte(cu - 2, 10, cv - t - 1, Direction.NORTH);
 		o.estandarte(cu + 2, 10, cv - t - 1, Direction.NORTH);
-		// el balcón: tres de ancho alrededor, con ménsulas y antepecho, sin meterse en el tejado de detrás
+		// el balcón: tres de ancho alrededor de toda la torre, con ménsulas y antepecho (por detrás pasa por encima del tejado)
 		for (int du = -7; du <= 7; du++) {
-			for (int dv = -7; dv <= 5; dv++) {
+			for (int dv = -7; dv <= 7; dv++) {
 				int anillo = Math.max(Math.abs(du), Math.abs(dv));
 				if (anillo < 5) {
 					continue;
@@ -1665,7 +1731,8 @@ public final class CastilloCapital extends PiezaObra {
 				Direction aLaTorre = Math.abs(du) >= Math.abs(dv) ? lado(-du) : (dv > 0 ? Direction.NORTH : Direction.SOUTH);
 				o.pon(u, BALCON, v, p.losa);
 				o.pon(u, BALCON - 1, v, anillo == 7 ? Obra.escalon(p.piedraEscalon, aLaTorre, true) : p.piedra(o, u, BALCON - 1, v));
-				if (anillo == 7 || dv == 5) {
+				o.aire(u, BALCON + 1, v, u, BALCON + 3, v);
+				if (anillo == 7) {
 					o.pon(u, BALCON + 1, v, p.muroBajo);
 				}
 			}
@@ -1685,6 +1752,7 @@ public final class CastilloCapital extends PiezaObra {
 		o.pon(s * 13, CIMA + 1, cv - r, Blocks.LANTERN);
 		o.estandarte(cu - 2, CIMA + 2, cv - r, Direction.SOUTH);
 		o.estandarte(cu + 2, CIMA + 2, cv - r, Direction.SOUTH);
+		techoSala(o, cu, cv, r, arriba);
 		remate(o, cu, cv, t, arriba);
 	}
 
@@ -1701,6 +1769,10 @@ public final class CastilloCapital extends PiezaObra {
 		o.sillares(-26, -7, vb, -22, -1, -5, false);
 		for (int u = -25; u <= -23; u++) {
 			o.escalera(u, -6, vb, Direction.SOUTH, 6, p.piedraEscalon, p.zocalo);
+		}
+		// el hueco abierto hasta el suelo de la guardia por encima de toda la escalera, para verla y bajar de pie
+		for (int i = 0; i < 6; i++) {
+			o.aire(-25, -5 + i, vb + i, -23, 0, vb + i);
 		}
 		// la antesala, cerrada por un muro con puerta de tres
 		o.sillares(ua + 1, -6, -16, ub - 1, -2, -16, false);

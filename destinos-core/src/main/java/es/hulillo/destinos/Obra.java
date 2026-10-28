@@ -476,8 +476,9 @@ final class Obra {
 	 * media altura: dos bandas de banda de ancho a los lados de un muro de en medio. Desde el rellano de cada piso (de
 	 * cerca de fondo) se sube por la primera banda hacia fondo, se gira en el descansillo del fondo (de lejos de
 	 * fondo) y se llega por la segunda al rellano del piso de arriba. (u0, v0) es la esquina del rellano en la primera
-	 * banda y lado va de la primera banda a la segunda. Los suelos se ponen antes: aquí se abren sus huecos, se
-	 * rellena bajo los peldaños (sin rincones muertos debajo) y arriba del todo se pone barandilla al hueco.
+	 * banda y lado va de la primera banda a la segunda. Los suelos se ponen antes: aquí se abre el hueco de la
+	 * escalera en ellos. Es volada: cada peldaño lleva debajo otro del revés y el descansillo es de una pieza (relleno),
+	 * así por debajo se puede pasar y por encima queda alto de sobra; arriba del todo, barandilla al hueco.
 	 */
 	void escaleraU(int u0, int v0, Direction fondo, Direction lado, int banda, int cerca, int lejos, int[] pisos, Block peldano,
 			BlockState relleno) {
@@ -494,6 +495,8 @@ final class Obra {
 			int h = pisos[n + 1] - f;
 			int ha = h / 2;
 			int hb = h - ha;
+			// en el último tramo no se abre el suelo de arriba más que por donde se llega
+			int techo = n + 2 == pisos.length ? f + h - 1 : f + h + 1;
 			for (int i = 0; i <= 2 * banda; i++) {
 				boolean primera = i < banda;
 				for (int j = cerca; j < fin; j++) {
@@ -507,20 +510,19 @@ final class Obra {
 					int m = tramo - 1 - k;
 					if (primera && k < ha) {
 						int y = f + 1 + k;
-						caja(u, f + 1, v, u, y - 1, v, relleno);
 						pon(u, y, v, escalon(peldano, fondo, false));
-						// tres de hueco encima, sin abrir el suelo de arriba
-						caja(u, y + 1, v, u, Math.min(y + 3, f + h - 1), v, Blocks.AIR);
+						if (y - 1 > f) {
+							pon(u, y - 1, v, escalon(peldano, fondo.getOpposite(), true));
+						}
+						caja(u, y + 1, v, u, Math.min(y + 3, techo), v, Blocks.AIR);
 					} else if (k >= tramo || primera || m >= hb) {
-						// el descansillo
-						caja(u, f + 1, v, u, f + ha, v, relleno);
-						caja(u, f + ha + 1, v, u, Math.min(f + ha + 3, f + h - 1), v, Blocks.AIR);
+						// el descansillo, volado
+						pon(u, f + ha, v, relleno);
+						caja(u, f + ha + 1, v, u, Math.min(f + ha + 3, techo), v, Blocks.AIR);
 					} else {
 						int y = f + ha + 1 + m;
-						// debajo, relleno hasta dejar paso sobre el tramo de abajo (o hasta el suelo en el primer piso)
-						int abajo = n == 0 ? f + 1 : Math.max(f + 1, y - h + 4);
-						caja(u, abajo, v, u, y - 1, v, relleno);
 						pon(u, y, v, escalon(peldano, fondo.getOpposite(), false));
+						pon(u, y - 1, v, escalon(peldano, fondo, true));
 						caja(u, y + 1, v, u, y + 3, v, Blocks.AIR);
 					}
 				}
@@ -569,6 +571,14 @@ final class Obra {
 			}
 		}
 		int r = medio + 1;
+		// las mejillas de fuera, hasta el alero del tejadillo, para que no quede hueco con el tejado de debajo
+		for (int s = -r; s <= r; s += 2 * r) {
+			for (int t = 0; t <= 2; t++) {
+				int cu = u + lado.getStepX() * s + dentro.getStepX() * t;
+				int cv = v + lado.getStepZ() * s + dentro.getStepZ() * t;
+				caja(cu, ly, cv, cu, ly + 1, cv, p.desierto ? p.tablas : p.enlucido);
+			}
+		}
 		int au = u + mira.getStepX() + lado.getStepX() * -r;
 		int av = v + mira.getStepZ() + lado.getStepZ() * -r;
 		int bu = u + dentro.getStepX() * 3 + lado.getStepX() * r;
