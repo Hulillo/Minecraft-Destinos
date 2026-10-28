@@ -1,6 +1,11 @@
 package es.hulillo.destinos;
 
+import java.util.List;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.RandomizableContainer;
+import net.minecraft.world.level.storage.loot.BuiltInLootTables;
+import net.minecraft.world.level.storage.loot.LootTable;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
@@ -120,7 +125,7 @@ abstract class PiezaObra extends StructurePiece {
 				};
 				Obra.Columna c = o.columna(u, v);
 				if (c != null) {
-					columna(level, pos, x, z, c, o.p, giro);
+					columna(level, azar, pos, x, z, c, o.p, giro);
 				}
 			}
 		}
@@ -144,7 +149,7 @@ abstract class PiezaObra extends StructurePiece {
 		}
 	}
 
-	private void columna(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, Obra.Columna c, Paleta p, Rotation giro) {
+	private void columna(WorldGenLevel level, RandomSource azar, BlockPos.MutableBlockPos pos, int x, int z, Obra.Columna c, Paleta p, Rotation giro) {
 		int fondo = c.fondo();
 		if (c.planta) {
 			// cimiento: hacia abajo hasta tocar suelo firme, para que no cuelgue en las cuestas
@@ -183,6 +188,28 @@ abstract class PiezaObra extends StructurePiece {
 				b = Blocks.AIR.defaultBlockState();
 			}
 			level.setBlock(pos.immutable(), b.rotate(giro), 2);
+			botin(level, azar, pos.immutable(), b);
+		}
+	}
+
+	/** Cofres de armas y armaduras, víveres y tesoros sueltos; barriles, uno de cada tres, de víveres. */
+	private static final List<ResourceKey<LootTable>> COFRES = List.of(BuiltInLootTables.VILLAGE_WEAPONSMITH, BuiltInLootTables.VILLAGE_ARMORER,
+			BuiltInLootTables.VILLAGE_TOOLSMITH, BuiltInLootTables.SIMPLE_DUNGEON, BuiltInLootTables.STRONGHOLD_CORRIDOR,
+			BuiltInLootTables.VILLAGE_PLAINS_HOUSE, BuiltInLootTables.VILLAGE_CARTOGRAPHER);
+	private static final List<ResourceKey<LootTable>> BARRILES = List.of(BuiltInLootTables.VILLAGE_PLAINS_HOUSE,
+			BuiltInLootTables.VILLAGE_TAIGA_HOUSE, BuiltInLootTables.VILLAGE_BUTCHER, BuiltInLootTables.VILLAGE_FISHER);
+
+	/** El botín de los cofres y barriles de la obra, de las tablas de Minecraft (se llenan al abrirlos). */
+	private void botin(WorldGenLevel level, RandomSource azar, BlockPos pos, BlockState b) {
+		int h = Math.floorMod(Geo.hash(pos.getX(), pos.getZ(), pos.getY() * 31 + 6029), 21);
+		ResourceKey<LootTable> tabla = null;
+		if (b.is(Blocks.CHEST)) {
+			tabla = COFRES.get(h % COFRES.size());
+		} else if (b.is(Blocks.BARREL) && h % 3 == 0) {
+			tabla = BARRILES.get(h / 3 % BARRILES.size());
+		}
+		if (tabla != null) {
+			RandomizableContainer.setBlockEntityLootTable(level, azar, pos, tabla);
 		}
 	}
 }

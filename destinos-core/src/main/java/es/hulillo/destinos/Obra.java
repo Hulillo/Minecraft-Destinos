@@ -14,6 +14,9 @@ import net.minecraft.world.level.block.CrossCollisionBlock;
 import net.minecraft.world.level.block.FenceBlock;
 import net.minecraft.world.level.block.IronBarsBlock;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.TransparentBlock;
+import net.minecraft.world.level.block.WallBannerBlock;
 import net.minecraft.world.level.block.WallBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
@@ -317,9 +320,9 @@ final class Obra {
 							pon(u, y - 1, v, escalon(borde ? p.remateEscalon : p.maderaEscalon, alto.getOpposite(), true));
 						}
 					}
-					// la cumbrera por encima, que en las puntas remata con un peldaño que baja hacia fuera
+					// la cumbrera por encima, que en las puntas remata con un peldaño del revés
 					if (cumbre) {
-						pon(u, y + 1, v, borde ? escalon(p.remateEscalon, dentro, false) : losa(p.remateLosa, false));
+						pon(u, y + 1, v, borde ? escalon(p.remateEscalon, dentro, true) : losa(p.remateLosa, false));
 					}
 					// ménsulas bajo el alero, una sí y otra no
 					if (d == 0 && !borde && k % 2 == 1 && vacio(u, y - 1, v)) {
@@ -390,10 +393,17 @@ final class Obra {
 		if (h > 1) {
 			anillo(cu, cv, y++, h - 1, true);
 		}
-		for (int r = h - 2; r >= 1; r--) {
+		// la falda, de un peldaño por altura hasta media altura, forrada de madera por dentro
+		int r0 = h - 2;
+		for (; r0 > h / 2 && r0 >= 2; r0--) {
+			anillo(cu, cv, y, r0, true);
+			forro(cu, cv, y - 1, r0);
+			y++;
+		}
+		for (int r = r0; r >= 1; r--) {
 			anillo(cu, cv, y, r, false);
 			// lucernas en el primer anillo empinado
-			if (r == h - 2 && r >= 2) {
+			if (r == r0 && r >= 2) {
 				pon(cu, y, cv - r, Blocks.GLASS_PANE);
 				pon(cu, y, cv + r, Blocks.GLASS_PANE);
 				pon(cu - r, y, cv, Blocks.GLASS_PANE);
@@ -404,6 +414,23 @@ final class Obra {
 		}
 		pon(cu, y, cv, tronco(p.remateTronco, Direction.Axis.Y));
 		aguja(cu, y + 1, cv);
+	}
+
+	/** El forro de madera bajo un anillo de peldaños del chapitel (anillo r en y, por dentro de lo que ya hay). */
+	private void forro(int cu, int cv, int y, int r) {
+		for (int u = -r; u <= r; u++) {
+			for (int v = -r; v <= r; v++) {
+				if (Math.max(Math.abs(u), Math.abs(v)) != r || !vacio(cu + u, y, cv + v)) {
+					continue;
+				}
+				if (Math.abs(u) == Math.abs(v)) {
+					pon(cu + u, y, cv + v, p.tablas);
+					continue;
+				}
+				Direction fuera = Math.abs(u) == r ? (u > 0 ? Direction.EAST : Direction.WEST) : (v > 0 ? Direction.SOUTH : Direction.NORTH);
+				pon(cu + u, y, cv + v, escalon(p.maderaEscalon, fuera, true));
+			}
+		}
 	}
 
 	/** Un anillo del chapitel: de peldaños hacia dentro, o lleno; las esquinas siempre del remate. */
@@ -496,8 +523,7 @@ final class Obra {
 			int h = pisos[n + 1] - f;
 			int ha = h / 2;
 			int hb = h - ha;
-			// en el último tramo no se abre el suelo de arriba más que por donde se llega
-			int techo = n + 2 == pisos.length ? f + h - 1 : f + h + 1;
+			int techo = f + h + 1;
 			for (int i = 0; i <= 2 * banda; i++) {
 				boolean primera = i < banda;
 				for (int j = cerca; j < fin; j++) {
@@ -516,7 +542,10 @@ final class Obra {
 							pon(u, y - 1, v, escalon(peldano, fondo.getOpposite(), true));
 						}
 						caja(u, y + 1, v, u, Math.min(y + 3, techo), v, Blocks.AIR);
-					} else if (k >= tramo || primera || m >= hb) {
+					} else if (!primera && k < tramo && m >= hb) {
+						// donde se llega arriba por la segunda banda: el suelo del piso de arriba, tal cual
+						continue;
+					} else if (k >= tramo || primera) {
 						// el descansillo, volado
 						pon(u, f + ha, v, relleno);
 						caja(u, f + ha + 1, v, u, Math.min(f + ha + 3, techo), v, Blocks.AIR);
@@ -540,9 +569,26 @@ final class Obra {
 				pon(u, top + 1, v, p.valla);
 			}
 		}
-		for (int i = banda + 1; i <= 2 * banda; i++) {
-			int j = cerca + tramo;
-			pon(u0 + lado.getStepX() * i + fondo.getStepX() * j, top + 1, v0 + lado.getStepZ() * i + fondo.getStepZ() * j, p.valla);
+		// en cada piso, barandilla alrededor del hueco que abre la escalera en el suelo (por donde no se sube)
+		for (int n = 1; n < pisos.length; n++) {
+			int y = pisos[n];
+			for (int i = -1; i <= 2 * banda + 1; i++) {
+				for (int j = cerca - 1; j <= fin; j++) {
+					int u = u0 + lado.getStepX() * i + fondo.getStepX() * j;
+					int v = v0 + lado.getStepZ() * i + fondo.getStepZ() * j;
+					BlockState suelo = en(u, y, v);
+					if (suelo == null || suelo.isAir() || suelo.getBlock() instanceof StairBlock || !vacio(u, y + 1, v)) {
+						continue;
+					}
+					for (Direction d : Direction.Plane.HORIZONTAL) {
+						BlockState junto = en(u + d.getStepX(), y, v + d.getStepZ());
+						if (junto != null && junto.isAir()) {
+							pon(u, y + 1, v, p.valla);
+							break;
+						}
+					}
+				}
+			}
 		}
 	}
 
@@ -781,6 +827,56 @@ final class Obra {
 		}
 	}
 
+	/**
+	 * Faroles donde queda oscuro: en la caja (u1, v1)–(u2, v2) y entre los pisos y1 e y2, cada hueco de aire con suelo
+	 * debajo y techo a menos de seis bloques (un sitio cerrado) que no tenga ninguna luz a menos de radio, lleva un
+	 * farol colgado del techo. Se mira de paso en paso para no llenarlo todo.
+	 */
+	void alumbra(int u1, int v1, int u2, int v2, int y1, int y2, int radio) {
+		List<int[]> luces = new ArrayList<>();
+		for (Map.Entry<Long, Columna> e : columnas.entrySet()) {
+			int u = (int) (e.getKey() >> 32);
+			int v = e.getKey().intValue();
+			for (int ly = y1; ly <= y2 + 6; ly++) {
+				BlockState b = e.getValue().get(ly);
+				if (b != null && b.getLightEmission() > 0) {
+					luces.add(new int[] {u, ly, v});
+				}
+			}
+		}
+		for (int u = Math.min(u1, u2); u <= Math.max(u1, u2); u += 2) {
+			for (int v = Math.min(v1, v2); v <= Math.max(v1, v2); v += 2) {
+				for (int ly = y1 + 1; ly <= y2; ly++) {
+					BlockState suelo = en(u, ly - 1, v);
+					if (suelo == null || suelo.isAir() || !suelo.canOcclude() || !vacio(u, ly, v) || !vacio(u, ly + 1, v)) {
+						continue;
+					}
+					int techo = -1;
+					for (int y = ly + 2; y <= ly + 5; y++) {
+						if (!vacio(u, y, v)) {
+							techo = y;
+							break;
+						}
+					}
+					if (techo < 0 || !vacio(u, techo - 1, v)) {
+						continue;
+					}
+					boolean hayLuz = false;
+					for (int[] l : luces) {
+						if (Math.abs(l[0] - u) <= radio && Math.abs(l[2] - v) <= radio && Math.abs(l[1] - ly) <= 4) {
+							hayLuz = true;
+							break;
+						}
+					}
+					if (!hayLuz) {
+						pon(u, techo - 1, v, farolColgado());
+						luces.add(new int[] {u, techo - 1, v});
+					}
+				}
+			}
+		}
+	}
+
 	// ---- al final: unir vallas, cristales, barrotes y muros con lo que tienen al lado ----
 
 	void conecta() {
@@ -794,6 +890,15 @@ final class Obra {
 					continue;
 				}
 				int ly = i + MIN;
+				if (b.getBlock() instanceof WallBannerBlock) {
+					// un estandarte solo cuelga de una pared de verdad: sobre cristal, barrotes o nada, fuera
+					Direction d = b.getValue(WallBannerBlock.FACING);
+					BlockState detras = en(u - d.getStepX(), ly, v - d.getStepZ());
+					if (detras == null || detras.isAir() || !detras.canOcclude() || detras.getBlock() instanceof TransparentBlock) {
+						c.b[i] = Blocks.AIR.defaultBlockState();
+					}
+					continue;
+				}
 				if (b.getBlock() instanceof CrossCollisionBlock) {
 					for (Direction d : Direction.Plane.HORIZONTAL) {
 						BlockState junto = en(u + d.getStepX(), ly, v + d.getStepZ());
