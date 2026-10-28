@@ -197,7 +197,8 @@ public final class CasaNoble extends PiezaObra {
 	private void desvan(Obra o) {
 		int y = TEJADO + 1;
 		BlockState escala = Obra.mira(Blocks.LADDER, Direction.NORTH);
-		o.caja(2, PISO + 1, LARGO - 1, 2, TEJADO, LARGO - 1, escala);
+		// pegada al poste de en medio de la pared de atrás, no delante de una ventana
+		o.caja(0, PISO + 1, LARGO - 1, 0, TEJADO, LARGO - 1, escala);
 		o.pon(-2, y, -5, Blocks.BARREL);
 		o.pon(-2, y + 1, -5, Blocks.BARREL);
 		o.pon(-1, y, -5, Blocks.BARREL);

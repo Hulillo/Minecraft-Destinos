@@ -378,17 +378,31 @@ public final class AdornoCapital extends StructurePiece {
 				level.getBlockState(pos.set(x + 1, y + 4, z)));
 	}
 
+	/** Sitios de alrededor que se prueban, por orden, si el puesto no cabe donde le toca. */
+	private static final int[][] PRUEBAS_PUESTO = {{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {2, 0}, {-2, 0}, {0, 2}, {0, -2},
+			{2, 2}, {-2, -2}, {2, -2}, {-2, 2}, {3, 0}, {-3, 0}, {0, 3}, {0, -3}, {4, 0}, {-4, 0}, {0, 4}, {0, -4}};
+
 	/**
 	 * Un puesto de mercado (de toldo, de verduras, de flores o un carro; ver PuestoMercado) con el mostrador hacia el
-	 * centro de la plaza, si cabe en plaza libre y llana. Se arrima un poco para caber entero en este chunk: así lo
-	 * pone uno solo y nunca queda a medias.
+	 * centro de la plaza. Si donde le toca no cabe (una casa, un pozo, un desnivel), prueba un poco más allá; vale
+	 * suelo empedrado o natural con un escalón de un bloque como mucho, que se enlosa al ponerlo. Se arrima un poco
+	 * para caber entero en este chunk: así lo pone uno solo y nunca queda a medias.
 	 */
 	private void puesto(WorldGenLevel level, BoundingBox caja, BlockPos.MutableBlockPos pos, int x, int z, int h) {
 		if (!dentro(caja, x, z, x, z)) {
 			return;
 		}
-		x = Math.clamp(x, caja.minX() + 2, caja.maxX() - 2);
-		z = Math.clamp(z, caja.minZ() + 2, caja.maxZ() - 2);
+		Obra o = PuestoMercado.construye(h, estilo, color, h);
+		for (int[] d : PRUEBAS_PUESTO) {
+			int cx = Math.clamp(x + d[0], caja.minX() + 2, caja.maxX() - 2);
+			int cz = Math.clamp(z + d[1], caja.minZ() + 2, caja.maxZ() - 2);
+			if (ponPuesto(level, pos, o, cx, cz, h)) {
+				return;
+			}
+		}
+	}
+
+	private boolean ponPuesto(WorldGenLevel level, BlockPos.MutableBlockPos pos, Obra o, int x, int z, int h) {
 		int hx = px - x;
 		int hz = pz - z;
 		int rot = Math.abs(hx) >= Math.abs(hz) ? (hx > 0 ? 1 : 3) : (hz > 0 ? 2 : 0);
@@ -398,7 +412,6 @@ public final class AdornoCapital extends StructurePiece {
 			case 3 -> Rotation.COUNTERCLOCKWISE_90;
 			default -> Rotation.NONE;
 		};
-		Obra o = PuestoMercado.construye(h, estilo, color, h);
 		int y = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
 		for (int fase = 0; fase < 2; fase++) {
 			for (int u = -2; u <= 2; u++) {
@@ -420,13 +433,18 @@ public final class AdornoCapital extends StructurePiece {
 						case 3 -> -u;
 						default -> v;
 					};
+					int sy = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, wx, wz) - 1;
 					if (fase == 0) {
-						int sy = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, wx, wz) - 1;
-						if (sy != y || !empedrado(level.getBlockState(pos.set(wx, y, wz)))
-								|| !libre(level, pos, wx, y + 1, wz, PuestoMercado.ALTO - 1)) {
-							return;
+						BlockState suelo = level.getBlockState(pos.set(wx, sy, wz));
+						boolean firme = empedrado(suelo) || SueloNatural.natural(suelo) || suelo.is(Blocks.DIRT_PATH);
+						if (sy < y - 1 || sy > y || !firme || !libre(level, pos, wx, y + 1, wz, PuestoMercado.ALTO - 1)) {
+							return false;
 						}
 						continue;
+					}
+					// el suelo, enlosado y a nivel
+					if (!empedrado(level.getBlockState(pos.set(wx, y, wz)))) {
+						level.setBlock(pos.immutable(), plaza(wx - px, wz - pz), 2);
 					}
 					for (int ly = 1; ly < PuestoMercado.ALTO; ly++) {
 						BlockState b = c.get(ly);
@@ -438,6 +456,7 @@ public final class AdornoCapital extends StructurePiece {
 			}
 		}
 		DestinosCore.LOG.info("Destinos Core: puesto de mercado en {}, {}, {} (tipo {})", x, y, z, Math.floorMod(h, PuestoMercado.TIPOS));
+		return true;
 	}
 
 	/** El bloque del color del reino de ese tipo (wool, wall_banner…). */

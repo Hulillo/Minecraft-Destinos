@@ -124,6 +124,24 @@ abstract class PiezaObra extends StructurePiece {
 				}
 			}
 		}
+		// y los seres que caen en este chunk
+		for (Obra.Ser s : o.seres()) {
+			int x = cx + switch (rot) {
+				case 1 -> -s.v();
+				case 2 -> -s.u();
+				case 3 -> s.v();
+				default -> s.u();
+			};
+			int z = cz + switch (rot) {
+				case 1 -> s.u();
+				case 2 -> -s.v();
+				case 3 -> -s.u();
+				default -> s.v();
+			};
+			if (x >= caja.minX() && x <= caja.maxX() && z >= caja.minZ() && z <= caja.maxZ()) {
+				SeresObra.pon(level, s, new BlockPos(x, y0 + s.ly(), z), rot);
+			}
+		}
 	}
 
 	private void columna(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, Obra.Columna c, Paleta p, Rotation giro) {

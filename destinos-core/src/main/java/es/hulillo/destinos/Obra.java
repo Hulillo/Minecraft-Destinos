@@ -1,6 +1,8 @@
 package es.hulillo.destinos;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -264,6 +266,11 @@ final class Obra {
 	 * entramado y ventanas si es el enlucido), o se dejan si es null.
 	 */
 	void dosAguas(int u1, int v1, int u2, int v2, int ly, boolean aLoLargoDeV, BlockState hastial) {
+		dosAguas(u1, v1, u2, v2, ly, aLoLargoDeV, hastial, true);
+	}
+
+	/** Igual, pero con atras falso solo se cierra el hastial del principio (u o v más bajas): para hastiales que salen de otro tejado. */
+	void dosAguas(int u1, int v1, int u2, int v2, int ly, boolean aLoLargoDeV, BlockState hastial, boolean atras) {
 		int ua = Math.min(u1, u2), ub = Math.max(u1, u2), va = Math.min(v1, v2), vb = Math.max(v1, v2);
 		int ancho = aLoLargoDeV ? ub - ua : vb - va;
 		int largo = aLoLargoDeV ? vb - va : ub - ua;
@@ -280,11 +287,17 @@ final class Obra {
 					int v = aLoLargoDeV ? va + k : va + a;
 					Direction alto = aLoLargoDeV ? (lado == 0 ? Direction.EAST : Direction.WEST)
 							: (lado == 0 ? Direction.SOUTH : Direction.NORTH);
+					// hacia dentro del tejado a lo largo (desde el borde por el que se mira)
+					Direction dentro = aLoLargoDeV ? (k == 0 ? Direction.SOUTH : Direction.NORTH) : (k == 0 ? Direction.EAST : Direction.WEST);
 					if (unaFila) {
 						Direction.Axis eje = aLoLargoDeV ? Direction.Axis.Z : Direction.Axis.X;
 						pon(u, y, v, borde ? tronco(p.remateTronco, eje) : p.tejadoLleno);
 						if (!borde && d > 0 && vacio(u, y - 1, v)) {
 							pon(u, y - 1, v, tronco(p.troncoPelado, eje));
+						}
+						// bajo la punta de la viga de cumbrera, su ménsula
+						if (borde && d > 0 && vacio(u, y - 1, v)) {
+							pon(u, y - 1, v, escalon(p.remateEscalon, dentro, true));
 						}
 					} else {
 						pon(u, y, v, escalon(borde ? p.remateEscalon : p.tejadoEscalon, alto, false));
@@ -293,9 +306,9 @@ final class Obra {
 							pon(u, y - 1, v, escalon(borde ? p.remateEscalon : p.maderaEscalon, alto.getOpposite(), true));
 						}
 					}
-					// la cumbrera por encima
+					// la cumbrera por encima, que en las puntas remata con un peldaño que baja hacia fuera
 					if (cumbre) {
-						pon(u, y + 1, v, losa(p.remateLosa, false));
+						pon(u, y + 1, v, borde ? escalon(p.remateEscalon, dentro, false) : losa(p.remateLosa, false));
 					}
 					// ménsulas bajo el alero, una sí y otra no
 					if (d == 0 && !borde && k % 2 == 1 && vacio(u, y - 1, v)) {
@@ -303,7 +316,7 @@ final class Obra {
 					}
 				}
 				// los hastiales: el triángulo de los dos extremos, por dentro del alero
-				if (hastial != null && (k == 1 || k == largo - 1)) {
+				if (hastial != null && (k == 1 || atras && k == largo - 1)) {
 					for (int a = d + 1; a < ancho - d; a++) {
 						int u = aLoLargoDeV ? ua + a : ua + k;
 						int v = aLoLargoDeV ? va + k : va + a;
@@ -446,6 +459,132 @@ final class Obra {
 			pon(uu, y + 2, vv, Blocks.AIR);
 			pon(uu, y + 3, vv, Blocks.AIR);
 		}
+	}
+
+	/**
+	 * Escalera de ida y vuelta que sube por todos los pisos (pisos: sus suelos, de abajo arriba), con descansillo a
+	 * media altura: dos bandas de banda de ancho a los lados de un muro de en medio. Desde el rellano de cada piso (de
+	 * cerca de fondo) se sube por la primera banda hacia fondo, se gira en el descansillo del fondo (de lejos de
+	 * fondo) y se llega por la segunda al rellano del piso de arriba. (u0, v0) es la esquina del rellano en la primera
+	 * banda y lado va de la primera banda a la segunda. Los suelos se ponen antes: aquí se abren sus huecos, se
+	 * rellena bajo los peldaños (sin rincones muertos debajo) y arriba del todo se pone barandilla al hueco.
+	 */
+	void escaleraU(int u0, int v0, Direction fondo, Direction lado, int banda, int cerca, int lejos, int[] pisos, Block peldano,
+			BlockState relleno) {
+		int tramo = 3;
+		int fin = cerca + tramo + lejos;
+		int top = pisos[pisos.length - 1];
+		for (int n = 0; n + 1 < pisos.length; n++) {
+			int f = pisos[n];
+			int h = pisos[n + 1] - f;
+			int ha = h / 2;
+			int hb = h - ha;
+			for (int i = 0; i <= 2 * banda; i++) {
+				boolean primera = i < banda;
+				for (int j = cerca; j < fin; j++) {
+					// por el muro de en medio solo pasa el descansillo
+					if (i == banda && j < cerca + tramo) {
+						continue;
+					}
+					int u = u0 + lado.getStepX() * i + fondo.getStepX() * j;
+					int v = v0 + lado.getStepZ() * i + fondo.getStepZ() * j;
+					int k = j - cerca;
+					int m = tramo - 1 - k;
+					if (primera && k < ha) {
+						int y = f + 1 + k;
+						caja(u, f + 1, v, u, y - 1, v, relleno);
+						pon(u, y, v, escalon(peldano, fondo, false));
+						caja(u, y + 1, v, u, y + 2, v, Blocks.AIR);
+					} else if (k >= tramo || primera || m >= hb) {
+						// el descansillo
+						caja(u, f + 1, v, u, f + ha, v, relleno);
+						caja(u, f + ha + 1, v, u, f + ha + 2, v, Blocks.AIR);
+					} else {
+						int y = f + ha + 1 + m;
+						// debajo, relleno hasta dejar paso sobre el tramo de abajo (o hasta el suelo en el primer piso)
+						int abajo = n == 0 ? f + 1 : Math.max(f + 1, y - h + 3);
+						caja(u, abajo, v, u, y - 1, v, relleno);
+						pon(u, y, v, escalon(peldano, fondo.getOpposite(), false));
+						caja(u, y + 1, v, u, y + 2, v, Blocks.AIR);
+					}
+				}
+			}
+		}
+		// el muro de en medio, de abajo arriba, y la barandilla del hueco en el último piso
+		for (int j = cerca; j < cerca + tramo; j++) {
+			int u = u0 + lado.getStepX() * banda + fondo.getStepX() * j;
+			int v = v0 + lado.getStepZ() * banda + fondo.getStepZ() * j;
+			for (int y = pisos[0] + 1; y <= top; y++) {
+				pon(u, y, v, p.piedra(this, u, y, v));
+			}
+			if (j > cerca) {
+				pon(u, top + 1, v, p.valla);
+			}
+		}
+		for (int i = banda + 1; i <= 2 * banda; i++) {
+			int j = cerca + tramo;
+			pon(u0 + lado.getStepX() * i + fondo.getStepX() * j, top + 1, v0 + lado.getStepZ() * i + fondo.getStepZ() * j, p.valla);
+		}
+	}
+
+	/**
+	 * Buhardilla con el frente centrado en (u, v), en el plano de la pared o del faldón, mirando hacia mira: ventana
+	 * de 2·medio - 1 de ancho en ly y ly + 1 entre dos postes, alféizar, mejillas, hueco por dentro para asomarse y
+	 * tejadillo a dos aguas con su hastial de entramado.
+	 */
+	void buhardilla(int u, int v, Direction mira, int ly, int medio) {
+		Direction dentro = mira.getOpposite();
+		Direction lado = mira.getClockWise();
+		Direction.Axis ejeLado = lado.getAxis();
+		for (int s = -medio; s <= medio; s++) {
+			int fu = u + lado.getStepX() * s;
+			int fv = v + lado.getStepZ() * s;
+			pon(fu, ly - 1, fv, tronco(p.tronco, ejeLado));
+			boolean poste = Math.abs(s) == medio;
+			for (int y = ly; y <= ly + 1; y++) {
+				pon(fu, y, fv, poste ? tronco(p.tronco, Direction.Axis.Y) : Blocks.GLASS_PANE.defaultBlockState());
+			}
+			for (int t = 1; t <= 2; t++) {
+				int iu = fu + dentro.getStepX() * t;
+				int iv = fv + dentro.getStepZ() * t;
+				for (int y = ly; y <= ly + 2; y++) {
+					pon(iu, y, iv, poste ? (p.desierto ? p.tablas : p.enlucido) : Blocks.AIR.defaultBlockState());
+				}
+			}
+		}
+		int r = medio + 1;
+		int au = u + mira.getStepX() + lado.getStepX() * -r;
+		int av = v + mira.getStepZ() + lado.getStepZ() * -r;
+		int bu = u + dentro.getStepX() * 3 + lado.getStepX() * r;
+		int bv = v + dentro.getStepZ() * 3 + lado.getStepZ() * r;
+		// los dos hastiales empiezan en ly + 2: el de dentro deja libre el paso de abajo
+		dosAguas(au, av, bu, bv, ly + 2, mira.getAxis() == Direction.Axis.Z, p.desierto ? p.tablas : p.enlucido);
+	}
+
+	/** La cancela de la valla de madera de la cultura (en el desierto, de roble), mirando hacia mira. */
+	BlockState portillo(Direction mira) {
+		Block b = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace(
+				BuiltInRegistries.BLOCK.getKey(p.valla.getBlock()).getPath() + "_gate"));
+		if (b == Blocks.AIR) {
+			b = Blocks.OAK_FENCE_GATE;
+		}
+		return mira(b, mira);
+	}
+
+	// ---- seres: animales, gente y armaduras que se ponen con la obra ----
+
+	/** Un ser de tipo (ver SeresObra) en (u, ly, v), mirando hacia mira. */
+	record Ser(String tipo, int u, int ly, int v, Direction mira) {
+	}
+
+	private final List<Ser> seres = new ArrayList<>();
+
+	void ser(String tipo, int u, int ly, int v, Direction mira) {
+		seres.add(new Ser(tipo, u, ly, v, mira));
+	}
+
+	List<Ser> seres() {
+		return seres;
 	}
 
 	/** Chimenea pegada a la pared: hogar con fuego bajo una repisa y el cañón hasta techo; mira hacia la sala. */
