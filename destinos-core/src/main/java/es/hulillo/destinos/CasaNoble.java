@@ -29,7 +29,7 @@ public final class CasaNoble extends PiezaObra {
 	private static final int ALTO = 20;
 
 	CasaNoble(int cx, int cz, int y0, int rot, int estilo, int madera, int color) {
-		super(TIPO, cx, cz, y0, rot, estilo, madera, color, FONDO, ALTO);
+		super(TIPO, cx, cz, y0, rot, estilo, madera, color, FONDO + TALUD, ALTO);
 	}
 
 	private CasaNoble(CompoundTag t) {

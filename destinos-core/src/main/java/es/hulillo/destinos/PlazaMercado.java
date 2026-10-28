@@ -35,7 +35,7 @@ public final class PlazaMercado extends PiezaObra {
 	private final int nivel;
 
 	PlazaMercado(int cx, int cz, int y0, int rot, int estilo, int madera, int color, int nivel) {
-		super(TIPO, cx, cz, y0, rot, estilo, madera, color, medio(nivel), ALTO);
+		super(TIPO, cx, cz, y0, rot, estilo, madera, color, medio(nivel) + TALUD, ALTO);
 		this.nivel = nivel;
 	}
 

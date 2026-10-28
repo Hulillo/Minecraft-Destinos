@@ -11,6 +11,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
@@ -22,12 +23,16 @@ import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
 
 /**
  * Una pieza de la capital hecha a mano con Obra (el castillo, las casas nobles): se construye en local una vez y se
- * pone por chunks, girada, a una altura fija y con cimientos hasta el suelo de verdad.
+ * pone por chunks, girada, a una altura fija y con cimientos hasta el suelo de verdad. Alrededor, hasta el borde de la
+ * caja, el terreno se ataluza: se rellena o se rebaja en bancal de un bloque por bloque de distancia, para que la obra
+ * no quede ni colgando sobre un pilar ni metida en un hoyo.
  *
  * Coordenadas locales: (u, v) desde el centro, con la puerta en v negativa; rot gira lo local al mundo de 90 en 90
  * grados en el sentido de las agujas del reloj (0: la puerta mira al norte).
  */
 abstract class PiezaObra extends StructurePiece {
+	/** Margen de la caja alrededor de las obras pequeñas, para el bancal. */
+	static final int TALUD = 4;
 	/** Hasta dónde se rellena el cimiento por debajo, buscando suelo firme. */
 	private static final int CIMIENTO = 16;
 
@@ -41,6 +46,8 @@ abstract class PiezaObra extends StructurePiece {
 	/** Color del reino (id de DyeColor), o -1 si no se sabe. */
 	protected final int color;
 	private Obra obra;
+	/** Distancia (en planta, en local) de cada columna de la caja a la obra con suelo; se calcula con la obra. */
+	private int[][] distancia;
 
 	PiezaObra(StructurePieceType tipo, int cx, int cz, int y0, int rot, int estilo, int madera, int color, int medio, int alto) {
 		super(tipo, 0, new BoundingBox(cx - medio, y0, cz - medio, cx + medio, y0 + alto, cz + medio));
@@ -89,9 +96,48 @@ abstract class PiezaObra extends StructurePiece {
 			Obra o = new Obra(estilo, madera, color, alto(), Geo.hash(cx, cz, 7919));
 			construye(o);
 			o.conecta();
+			distancia = distancias(o);
 			obra = o;
 		}
 		return obra;
+	}
+
+	/** Medio lado de la caja, en planta. */
+	private int medio() {
+		return (getBoundingBox().getXSpan() - 1) / 2;
+	}
+
+	/** La distancia de cada columna (u, v) de la caja a la columna con suelo más cercana (0 en la obra). */
+	private int[][] distancias(Obra o) {
+		int m = medio();
+		int n = 2 * m + 1;
+		int[][] d = new int[n][n];
+		java.util.ArrayDeque<int[]> cola = new java.util.ArrayDeque<>();
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < n; j++) {
+				Obra.Columna c = o.columna(i - m, j - m);
+				if (c != null && c.planta) {
+					d[i][j] = 0;
+					cola.add(new int[] {i, j});
+				} else {
+					d[i][j] = Integer.MAX_VALUE;
+				}
+			}
+		}
+		while (!cola.isEmpty()) {
+			int[] a = cola.poll();
+			for (int di = -1; di <= 1; di++) {
+				for (int dj = -1; dj <= 1; dj++) {
+					int i = a[0] + di;
+					int j = a[1] + dj;
+					if (i >= 0 && j >= 0 && i < n && j < n && d[i][j] > d[a[0]][a[1]] + 1) {
+						d[i][j] = d[a[0]][a[1]] + 1;
+						cola.add(new int[] {i, j});
+					}
+				}
+			}
+		}
+		return d;
 	}
 
 	@Override
@@ -124,6 +170,12 @@ abstract class PiezaObra extends StructurePiece {
 					default -> dz;
 				};
 				Obra.Columna c = o.columna(u, v);
+				if (c == null || !c.planta) {
+					int m = medio();
+					if (Math.abs(u) <= m && Math.abs(v) <= m) {
+						talud(level, pos, x, z, distancia[u + m][v + m], o.p);
+					}
+				}
 				if (c != null) {
 					columna(level, azar, pos, x, z, c, o.p, giro);
 				}
@@ -147,6 +199,67 @@ abstract class PiezaObra extends StructurePiece {
 				SeresObra.pon(level, s, new BlockPos(x, y0 + s.ly(), z), rot);
 			}
 		}
+	}
+
+	/**
+	 * El bancal alrededor de la obra, a d columnas de ella: el suelo queda entre y0 - (d - 1) y y0 + (d - 1). Más bajo
+	 * se rellena de tierra con hierba (arena en el desierto); más alto se rebaja (solo el terreno: ni troncos, ni
+	 * hojas, ni lo que hayan puesto otras piezas).
+	 */
+	private void talud(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int d, Paleta p) {
+		if (d == Integer.MAX_VALUE || d < 1) {
+			return;
+		}
+		int bajo = y0 - (d - 1);
+		int alto = y0 + (d - 1);
+		// el suelo de verdad: el primer bloque de terreno bajando desde bien arriba
+		int suelo = Integer.MIN_VALUE;
+		for (int y = alto + 24; y >= bajo - 24; y--) {
+			pos.set(x, y, z);
+			if (terreno(level.getBlockState(pos))) {
+				suelo = y;
+				break;
+			}
+		}
+		if (suelo == Integer.MIN_VALUE) {
+			return;
+		}
+		BlockState cesped = (p.desierto ? Blocks.SAND : Blocks.GRASS_BLOCK).defaultBlockState();
+		BlockState relleno = (p.desierto ? Blocks.SANDSTONE : Blocks.DIRT).defaultBlockState();
+		if (suelo < bajo) {
+			for (int y = suelo + 1; y <= bajo; y++) {
+				pos.set(x, y, z);
+				BlockState s = level.getBlockState(pos);
+				if (s.isAir() || s.canBeReplaced()) {
+					level.setBlock(pos, y == bajo ? cesped : relleno, 2);
+				}
+			}
+			if (suelo + 1 <= bajo - 1) {
+				pos.set(x, suelo, z);
+				if (level.getBlockState(pos).is(Blocks.GRASS_BLOCK)) {
+					level.setBlock(pos, relleno, 2);
+				}
+			}
+		} else if (suelo > alto) {
+			for (int y = suelo + 1; y > alto; y--) {
+				pos.set(x, y, z);
+				BlockState s = level.getBlockState(pos);
+				if (terreno(s) || !s.isAir() && s.canBeReplaced() && s.getFluidState().isEmpty()) {
+					level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
+				}
+			}
+			pos.set(x, alto, z);
+			if (terreno(level.getBlockState(pos))) {
+				level.setBlock(pos, cesped, 2);
+			}
+		}
+	}
+
+	/** Si el bloque es terreno natural (tierra, piedra, arena, grava, terracota, nieve), no un tronco ni una obra. */
+	private static boolean terreno(BlockState s) {
+		return s.is(BlockTags.DIRT) || s.is(BlockTags.BASE_STONE_OVERWORLD) || s.is(BlockTags.SAND) || s.is(BlockTags.TERRACOTTA)
+				|| s.is(Blocks.GRAVEL) || s.is(Blocks.SNOW_BLOCK) || s.is(Blocks.SANDSTONE) || s.is(Blocks.RED_SANDSTONE)
+				|| s.is(Blocks.CALCITE) || s.is(Blocks.TUFF) || s.is(Blocks.DIRT_PATH) || s.is(Blocks.COARSE_DIRT);
 	}
 
 	private void columna(WorldGenLevel level, RandomSource azar, BlockPos.MutableBlockPos pos, int x, int z, Obra.Columna c, Paleta p, Rotation giro) {

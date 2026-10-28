@@ -45,6 +45,8 @@ public final class AdornoCapital extends StructurePiece {
 	static final int DESIERTO = 4;
 	/** Radio de la plaza mayor alrededor del centro de la capital. */
 	static final int PLAZA = 20;
+	/** Hasta dónde la plaza mayor es del todo llana; de ahí al borde, bancales. */
+	private static final int LLANO = 10;
 	/** Distancia del centro a los puestos de mercado. */
 	private static final int ANILLO_MERCADO = 12;
 	/** Distancia del centro a las jardineras, detrás de cada puesto. */
@@ -61,14 +63,17 @@ public final class AdornoCapital extends StructurePiece {
 	private final int color;
 	/** Si lleva el anillo de puestos en la plaza (solo si la capital no tiene plaza del mercado). */
 	private final boolean puestos;
+	/** Altura de la plaza mayor (la mediana de su suelo), o MIN_VALUE en las guardadas antes: sin allanar. */
+	private final int py;
 
-	AdornoCapital(int px, int pz, int estilo, int color, BoundingBox capital, int techo, boolean puestos) {
+	AdornoCapital(int px, int py, int pz, int estilo, int color, BoundingBox capital, int techo, boolean puestos) {
 		super(TIPO, 0, new BoundingBox(capital.minX(), techo, capital.minZ(), capital.maxX(), techo, capital.maxZ()));
 		this.px = px;
 		this.pz = pz;
 		this.estilo = estilo;
 		this.color = color;
 		this.puestos = puestos;
+		this.py = py;
 	}
 
 	private AdornoCapital(CompoundTag t) {
@@ -78,6 +83,7 @@ public final class AdornoCapital extends StructurePiece {
 		estilo = t.getIntOr("estilo", TEMPLADO);
 		color = t.getIntOr("color", -1);
 		puestos = t.getBooleanOr("puestos", true);
+		py = t.getIntOr("py", Integer.MIN_VALUE);
 	}
 
 	static void registra() {
@@ -131,6 +137,7 @@ public final class AdornoCapital extends StructurePiece {
 		t.putInt("estilo", estilo);
 		t.putInt("color", color);
 		t.putBoolean("puestos", puestos);
+		t.putInt("py", py);
 	}
 
 	@Override
@@ -148,6 +155,7 @@ public final class AdornoCapital extends StructurePiece {
 		// 1. empedrar: calles (los caminos de tierra) y la plaza (el suelo natural cerca del centro)
 		for (int x = x0; x <= x1; x++) {
 			for (int z = z0; z <= z1; z++) {
+				allana(level, pos, x, z);
 				empiedra(level, pos, x, z);
 			}
 		}
@@ -242,6 +250,61 @@ public final class AdornoCapital extends StructurePiece {
 		}
 		for (int i = 0; i < 4; i++) {
 			level.setBlock(pos.set(x, y + i, z), tronco.defaultBlockState(), 2);
+		}
+	}
+
+	/**
+	 * La plaza mayor en bancales: llana a la altura py hasta LLANO del centro y de ahí al borde sube o baja como mucho
+	 * un bloque cada tres (el terreno se rellena o se rebaja; solo el natural, nunca lo construido). Justo fuera del
+	 * borde, si el terreno queda más alto o más bajo, un murete de contención de la piedra de las calles.
+	 */
+	private void allana(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z) {
+		if (py == Integer.MIN_VALUE) {
+			return;
+		}
+		double r = Math.sqrt((double) (x - px) * (x - px) + (double) (z - pz) * (z - pz));
+		if (r > PLAZA + 1.5) {
+			return;
+		}
+		int h = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
+		BlockState arriba = level.getBlockState(pos.set(x, h, z));
+		if (!arriba.getFluidState().isEmpty()) {
+			return;
+		}
+		// lo de encima del suelo (hierba, flores) no cuenta
+		while (arriba.canBeReplaced() && h > py - 32) {
+			h--;
+			arriba = level.getBlockState(pos.set(x, h, z));
+		}
+		if (!SueloNatural.natural(arriba) && !arriba.is(Blocks.DIRT_PATH)) {
+			return;
+		}
+		int margen = Math.max(0, (int) ((Math.min(r, PLAZA) - LLANO) / 3));
+		int objetivo = Math.clamp(h, py - margen, py + margen);
+		if (r > PLAZA) {
+			// el murete de fuera, hasta la altura del borde de la plaza
+			if (Math.abs(h - objetivo) > 1) {
+				for (int y = Math.min(h, objetivo) + 1; y <= Math.max(h, objetivo); y++) {
+					level.setBlock(pos.set(x, y, z), calle(x, z + y), 2);
+				}
+			}
+			return;
+		}
+		if (h < objetivo) {
+			for (int y = h + 1; y <= objetivo; y++) {
+				level.setBlock(pos.set(x, y, z), (y == objetivo ? Blocks.GRASS_BLOCK : Blocks.DIRT).defaultBlockState(), 2);
+			}
+		} else if (h > objetivo) {
+			for (int y = h + 3; y > objetivo; y--) {
+				BlockState b = level.getBlockState(pos.set(x, y, z));
+				if (SueloNatural.natural(b) || b.is(Blocks.DIRT_PATH) || !b.isAir() && b.canBeReplaced() && b.getFluidState().isEmpty()) {
+					level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
+				}
+			}
+			BlockState b = level.getBlockState(pos.set(x, objetivo, z));
+			if (!SueloNatural.natural(b)) {
+				level.setBlock(pos, Blocks.GRASS_BLOCK.defaultBlockState(), 2);
+			}
 		}
 	}
 
