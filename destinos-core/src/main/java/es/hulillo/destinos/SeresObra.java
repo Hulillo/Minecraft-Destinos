@@ -2,7 +2,6 @@ package es.hulillo.destinos;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
@@ -10,9 +9,6 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.decoration.ArmorStand;
-import net.minecraft.world.entity.monster.ZombieVillager;
-import net.minecraft.world.entity.npc.Villager;
-import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.WorldGenLevel;
@@ -59,12 +55,9 @@ final class SeresObra {
 			m.setYHeadRot(giro);
 			m.setYBodyRot(giro);
 		}
-		if (e instanceof Villager v && HERRERO.equals(s.tipo())) {
-			sl.registryAccess().lookupOrThrow(Registries.VILLAGER_PROFESSION).get(VillagerProfession.ARMORER)
-					.ifPresent(oficio -> v.setVillagerData(v.getVillagerData().withProfession(oficio)));
-		}
-		if (e instanceof ZombieVillager z) {
-			z.setBaby(false);
+		// el herrero coge solo el oficio de armero con el alto horno de la fragua, que tiene al lado
+		if (e instanceof Mob m && PRESO.equals(s.tipo())) {
+			m.setBaby(false);
 		}
 		if (e instanceof ArmorStand a) {
 			viste(a, s.tipo());
