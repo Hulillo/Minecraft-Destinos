@@ -1,98 +1,53 @@
 package es.hulillo.destinos;
 
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
-import net.minecraft.util.RandomSource;
-import net.minecraft.world.item.DyeColor;
-import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.StructureManager;
-import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.AttachFace;
-import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
-import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
-import net.minecraft.world.level.block.state.properties.Half;
-import net.minecraft.world.level.chunk.ChunkGenerator;
-import net.minecraft.world.level.levelgen.structure.BoundingBox;
-import net.minecraft.world.level.levelgen.structure.StructurePiece;
-import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceSerializationContext;
 import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
 
 /**
- * El castillo de una capital rica (muralla de nivel 2): un patio cuadrado con muralla almenada (zócalo,
- * contrafuertes y matacanes), una torre redonda con tejado cónico en cada esquina, una barbacana con rastrillo en la
- * puerta y la torre del homenaje en medio, con tejado a cuatro aguas. El homenaje se vive por dentro: salón del trono
- * abajo, comedor y cocina en el primer piso, dormitorios en el segundo y catacumbas debajo. En el patio, un pozo, el
- * establo y la herrería. Los materiales van con la cultura del pueblo y los estandartes con el color del reino. Todo a
- * una altura fija (el suelo del centro), con cimientos hasta el suelo de verdad.
- *
- * Coordenadas locales: (u, v) desde el centro, con la puerta en v negativa; rot gira lo local al mundo de 90 en
- * 90 grados en el sentido de las agujas del reloj (0: la puerta mira al norte).
+ * El castillo de una capital rica (muralla de nivel 2). Una muralla almenada con torres cuadradas en las esquinas,
+ * rematadas con un piso de madera en voladizo y chapitel, y una barbacana con rastrillo y hastial en la puerta. Al
+ * fondo del patio, el palacio: planta baja de piedra con arcos y dos pisos de entramado en voladizo, tejado a dos
+ * aguas con buhardillas, torrecillas en las esquinas de delante y la torre del homenaje, con escalera de caracol,
+ * balcón y aguja. Dentro: salón del trono, cocina y comedor abajo; sala del consejo y alcobas en el primer piso;
+ * la cámara del señor, el tesoro y la capilla en el segundo; y catacumbas debajo. En el patio, una fuente con
+ * parterres, el establo, el pozo y farolas. Los materiales van con la cultura (Paleta) y los estandartes con el
+ * color del reino.
  */
-public final class CastilloCapital extends StructurePiece {
+public final class CastilloCapital extends PiezaObra {
 	public static final StructurePieceType TIPO = (StructurePieceType.ContextlessType) CastilloCapital::new;
-	/** Muralla: los anillos MURO - 1 y MURO, y por fuera (FUERA) zócalo, contrafuertes, matacanes y parapeto. */
-	private static final int MURO = 14;
-	private static final int FUERA = MURO + 1;
-	private static final int ALTO_MURO = 9;
-	/** Torres de las esquinas: centro en (±ESQUINA, ±ESQUINA); el tejado sobresale hasta ALERO. */
-	private static final int ESQUINA = 14;
-	private static final double RADIO_TORRE = 4;
-	private static final double ALERO = 5;
-	private static final int ALTO_TORRE = 15;
-	/** La barbacana: de -BARBACANA a BARBACANA de ancho, desde la cara de dentro de la muralla hasta FRENTE. */
-	private static final int BARBACANA = 4;
-	private static final int FRENTE = -(MURO + 2);
-	private static final int ALTO_PUERTA = 13;
-	/** Torre del homenaje: de -HOMENAJE a HOMENAJE, pisos en PISOS y el desván en ALTO_HOMENAJE. */
-	private static final int HOMENAJE = 6;
-	private static final int[] PISOS = {6, 11};
-	private static final int ALTO_HOMENAJE = 16;
-	/** Las catacumbas, bajo el homenaje: el suelo CRIPTA + 1 por debajo del salón. */
-	private static final int CRIPTA = 5;
-	/** Hasta dónde llega lo más alto (el estandarte de la aguja del homenaje). */
-	private static final int ALTO = 27;
-	/** Medio lado de la caja: la muralla más lo que sobresalen las torres y sus tejados. */
-	static final int MEDIO = ESQUINA + (int) Math.ceil(ALERO);
-	/** Hasta dónde se rellena el cimiento por debajo, buscando suelo firme. */
-	private static final int CIMIENTO = 16;
-	/** Marca del suelo del patio: el que hay, o tierra si ahí no queda nada firme. */
-	private static final BlockState PATIO = Blocks.STRUCTURE_VOID.defaultBlockState();
-
-	private final int cx;
-	private final int cz;
-	private final int y0;
-	private final int rot;
-	private final int estilo;
-	/** Color del reino (id de DyeColor), o -1 si no se sabe. */
-	private final int color;
+	/** Muralla: los anillos MURO - 1 y MURO; por fuera, zócalo y contrafuertes. */
+	private static final int MURO = 18;
+	private static final int ALTO_MURO = 8;
+	/** Torres de las esquinas: centro en (±MURO, ±MURO), medio lado TORRE. */
+	private static final int TORRE = 3;
+	/** El palacio: de -PALACIO a PALACIO a lo ancho y de 0 a FONDO; pisos en 6 y 11 y desván en 16. */
+	private static final int PALACIO = 12;
+	private static final int FONDO = 16;
+	private static final int[] PISOS = {0, 6, 11, 16};
+	/** La torre del homenaje: centro en (0, HV), dentro del palacio, al fondo. */
+	private static final int HV = 13;
+	private static final int BALCON = 26;
+	/** La barbacana: de -BARBACANA a BARBACANA, de FRENTE a MURO - 3 (por dentro). */
+	private static final int BARBACANA = 5;
+	private static final int FRENTE = -(MURO + 3);
+	/** Medio lado de la caja: las torres de las esquinas con su tejado. */
+	static final int MEDIO = MURO + TORRE + 2;
+	private static final int ALTO = 46;
 
 	CastilloCapital(int cx, int cz, int y0, int rot, int estilo, int color) {
-		super(TIPO, 0, new BoundingBox(cx - MEDIO, y0, cz - MEDIO, cx + MEDIO, y0 + ALTO, cz + MEDIO));
-		this.cx = cx;
-		this.cz = cz;
-		this.y0 = y0;
-		this.rot = rot;
-		this.estilo = estilo;
-		this.color = color;
+		super(TIPO, cx, cz, y0, rot, estilo, color, MEDIO, ALTO);
 	}
 
 	private CastilloCapital(CompoundTag t) {
 		super(TIPO, t);
-		cx = t.getIntOr("cx", 0);
-		cz = t.getIntOr("cz", 0);
-		y0 = t.getIntOr("y0", 0);
-		rot = t.getIntOr("rot", 0);
-		// los castillos guardados antes de los estilos solo sabían si eran del desierto
-		estilo = t.getIntOr("estilo", t.getIntOr("desierto", 0) != 0 ? AdornoCapital.DESIERTO : AdornoCapital.TEMPLADO);
-		color = t.getIntOr("color", -1);
 	}
 
 	static void registra() {
@@ -107,786 +62,768 @@ public final class CastilloCapital extends StructurePiece {
 		return dx > 0 ? 1 : 3;
 	}
 
-	@Override
-	protected void addAdditionalSaveData(StructurePieceSerializationContext ctx, CompoundTag t) {
-		t.putInt("cx", cx);
-		t.putInt("cz", cz);
-		t.putInt("y0", y0);
-		t.putInt("rot", rot);
-		t.putInt("estilo", estilo);
-		t.putInt("color", color);
+	/** Dónde está, para el registro: centro, suelo y giro. */
+	String donde() {
+		return cx + ", " + y0 + ", " + cz + " (giro " + rot + ")";
 	}
 
 	@Override
-	public void postProcess(WorldGenLevel level, StructureManager estructuras, ChunkGenerator generador, RandomSource azar,
-			BoundingBox caja, ChunkPos chunk, BlockPos pivote) {
-		BoundingBox mia = getBoundingBox();
-		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-		for (int x = Math.max(mia.minX(), caja.minX()); x <= Math.min(mia.maxX(), caja.maxX()); x++) {
-			for (int z = Math.max(mia.minZ(), caja.minZ()); z <= Math.min(mia.maxZ(), caja.maxZ()); z++) {
-				int dx = x - cx;
-				int dz = z - cz;
-				// del mundo a lo local: el giro al revés
-				int u = switch (rot) {
-					case 1 -> dz;
-					case 2 -> -dx;
-					case 3 -> -dz;
-					default -> dx;
-				};
-				int v = switch (rot) {
-					case 1 -> -dx;
-					case 2 -> -dz;
-					case 3 -> dx;
-					default -> dz;
-				};
-				if (dentro(u, v)) {
-					columna(level, pos, x, z, u, v);
-				}
+	protected void construye(Obra o) {
+		o.planta(-MURO - 1, -MURO - 1, MURO + 1, MURO + 1);
+		o.planta(-BARBACANA, FRENTE, BARBACANA, -MURO);
+		patio(o);
+		muralla(o);
+		for (int su = -1; su <= 1; su += 2) {
+			for (int sv = -1; sv <= 1; sv += 2) {
+				torre(o, su, sv);
 			}
 		}
-	}
-
-	/** Si la columna local (u, v) tiene algo del castillo, aunque sea solo el alero de un tejado. */
-	private static boolean dentro(int u, int v) {
-		return anillo(u, v) <= FUERA || enBarbacana(u, v) || v == FRENTE - 1 && Math.abs(u) <= BARBACANA || torre(u, v) <= ALERO;
-	}
-
-	/** Si la columna local (u, v) se apoya en el suelo (lleva cimiento). */
-	private static boolean planta(int u, int v) {
-		return anillo(u, v) <= FUERA || enBarbacana(u, v) || torre(u, v) <= RADIO_TORRE;
-	}
-
-	private static int anillo(int u, int v) {
-		return Math.max(Math.abs(u), Math.abs(v));
-	}
-
-	/** Distancia al centro de la torre de la esquina más cercana. */
-	private static double torre(int u, int v) {
-		return Math.hypot(Math.abs(u) - ESQUINA, Math.abs(v) - ESQUINA);
-	}
-
-	private static boolean enBarbacana(int u, int v) {
-		return Math.abs(u) <= BARBACANA && v >= FRENTE && v <= -(MURO - 1);
-	}
-
-	private void columna(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int u, int v) {
-		// bajo el homenaje van las catacumbas: el cimiento empieza debajo de ellas
-		int abajo = anillo(u, v) <= HOMENAJE ? -CRIPTA - 1 : 0;
-		if (planta(u, v)) {
-			// cimiento: hacia abajo hasta tocar suelo firme, para que no cuelgue en las cuestas
-			pos.set(x, y0 + abajo - 1, z);
-			for (int i = 0; i < CIMIENTO; i++) {
-				BlockState s = level.getBlockState(pos);
-				if (!s.isAir() && !s.canBeReplaced()) {
-					break;
-				}
-				level.setBlock(pos, base(), 2);
-				pos.move(0, -1, 0);
-			}
-		}
-		for (int ly = abajo; ly <= ALTO; ly++) {
-			BlockState b = bloque(u, v, ly, x, z);
-			if (b == null) {
-				continue;
-			}
-			pos.set(x, y0 + ly, z);
-			if (b == PATIO) {
-				BlockState s = level.getBlockState(pos);
-				if (s.isAir() || s.canBeReplaced()) {
-					level.setBlock(pos, estilo == AdornoCapital.DESIERTO ? Blocks.SAND.defaultBlockState() : Blocks.GRASS_BLOCK.defaultBlockState(), 2);
-				}
-			} else {
-				level.setBlock(pos.immutable(), b, 2);
-			}
-		}
-	}
-
-	/** El bloque en (u, v, ly); null para no tocar lo que haya. */
-	private BlockState bloque(int u, int v, int ly, int x, int z) {
-		int anillo = anillo(u, v);
-		if (enBarbacana(u, v) || v == FRENTE - 1 && Math.abs(u) <= BARBACANA) {
-			return barbacana(u, v, ly, x, z);
-		}
-		double torre = torre(u, v);
-		if (ly > ALTO_TORRE && torre <= ALERO) {
-			return tejadoTorre(torre, ly);
-		}
-		if (torre <= RADIO_TORRE) {
-			return torre(u, v, ly, torre, anillo, x, z);
-		}
-		if (anillo > FUERA) {
-			return null;
-		}
-		if (anillo >= MURO - 1) {
-			return muralla(u, v, ly, anillo, x, z);
-		}
-		if (anillo <= HOMENAJE || ly > ALTO_HOMENAJE && anillo == HOMENAJE + 1) {
-			return homenaje(u, v, ly, anillo, x, z);
-		}
-		return patio(u, v, ly);
+		barbacana(o);
+		palacio(o);
+		catacumbas(o);
+		homenaje(o);
 	}
 
 	// ---- muralla, torres y barbacana ----
 
-	private BlockState muralla(int u, int v, int ly, int anillo, int x, int z) {
-		boolean lado = Math.abs(u) >= Math.abs(v);
-		int largo = lado ? v : u;
-		Direction adentro = lado ? (u > 0 ? Direction.WEST : Direction.EAST) : (v > 0 ? Direction.NORTH : Direction.SOUTH);
-		if (ly == 0) {
-			return base();
-		}
-		if (anillo <= MURO) {
-			// saeteras (solo un hueco en la cara de fuera) entre contrafuerte y contrafuerte
-			if (anillo == MURO && Math.floorMod(largo, 6) == 3 && (ly == 4 || ly == 5)) {
-				return aire();
-			}
-			return ly <= ALTO_MURO ? muro(x, z, ly) : aire();
-		}
-		// por fuera: zócalo, contrafuertes, la ménsula de los matacanes y el parapeto almenado
-		boolean contrafuerte = Math.floorMod(largo, 6) == 0;
-		if (ly == 1) {
-			return contrafuerte ? zocalo() : peldano(zocaloEscalon(), adentro, false);
-		}
-		if (ly < ALTO_MURO - 1) {
-			return contrafuerte ? muro(x, z, ly) : aire();
-		}
-		if (ly == ALTO_MURO - 1) {
-			return contrafuerte ? muro(x, z, ly) : peldano(piedraEscalon(), adentro, true);
-		}
-		if (ly <= ALTO_MURO + 1) {
-			return muro(x, z, ly);
-		}
-		return ly == ALTO_MURO + 2 && almena(x, z) ? muro(x, z, ly) : aire();
-	}
-
-	private BlockState torre(int u, int v, int ly, double torre, int anillo, int x, int z) {
-		boolean pared = torre > RADIO_TORRE - 1;
-		if (ly == 0) {
-			return base();
-		}
-		if (pared) {
-			// por donde llega el adarve de la muralla se entra en la torre
-			if ((ly == ALTO_MURO + 1 || ly == ALTO_MURO + 2) && anillo >= MURO - 1 && anillo <= MURO
-					&& Math.min(Math.abs(u), Math.abs(v)) < ESQUINA - 2) {
-				return aire();
-			}
-			// saeteras hacia fuera: abajo solo el hueco (la torre es maciza), arriba se asoman a la sala
-			int au = Math.abs(u) - ESQUINA;
-			int av = Math.abs(v) - ESQUINA;
-			boolean saetera = au == 0 && av >= 3 || av == 0 && au >= 3;
-			if (saetera && (ly == 5 || ly == ALTO_TORRE - 3 || ly == ALTO_TORRE - 2)) {
-				return aire();
-			}
-			return ly == ALTO_TORRE ? moldura() : muro(x, z, ly);
-		}
-		// maciza hasta el adarve (sin huecos oscuros abajo), una sala a esa altura y su techo
-		if (ly < ALTO_MURO) {
-			return muro(x, z, ly);
-		}
-		if (ly == ALTO_MURO || ly == ALTO_TORRE) {
-			return madera();
-		}
-		return ly == ALTO_MURO + 1 && torre < 0.8 ? Blocks.LANTERN.defaultBlockState() : aire();
-	}
-
-	/** Tejado cónico (cúpula en el desierto) con aguja y estandarte. */
-	private BlockState tejadoTorre(double torre, int ly) {
-		int k = ly - ALTO_TORRE - 1;
-		double r;
-		int punta;
-		if (estilo == AdornoCapital.DESIERTO) {
-			double radio = ALERO - 1;
-			r = k <= radio ? Math.sqrt(radio * radio - k * k) : -1;
-			punta = (int) radio + 1;
-		} else {
-			r = ALERO - k * 0.8;
-			punta = (int) (ALERO / 0.8) + 1;
-		}
-		if (r >= 0 && torre <= r) {
-			return tejado();
-		}
-		return torre < 0.5 ? aguja(k - punta) : aire();
-	}
-
-	private BlockState barbacana(int u, int v, int ly, int x, int z) {
-		int au = Math.abs(u);
-		if (v < FRENTE) {
-			// lo que vuela por delante: ménsula, matacán almenado y dos estandartes del reino
-			if (ly == ALTO_PUERTA - 2) {
-				return peldano(piedraEscalon(), Direction.SOUTH, true);
-			}
-			if (ly == ALTO_PUERTA - 1) {
-				return muro(x, z, ly);
-			}
-			if (ly == ALTO_PUERTA) {
-				return almena(x, z) ? muro(x, z, ly) : aire();
-			}
-			if (ly == ALTO_PUERTA - 5 && au == 3) {
-				return estandarte(Direction.NORTH);
-			}
-			return null;
-		}
-		boolean paso = au <= 1;
-		if (ly == 0) {
-			return paso ? camino() : base();
-		}
-		if (paso && ly <= 4) {
-			// el arco y el rastrillo a medio bajar
-			if (ly == 4 && au == 1) {
-				return peldano(piedraEscalon(), u > 0 ? Direction.EAST : Direction.WEST, true);
-			}
-			if (v == FRENTE + 1 && (ly == 3 || ly == 4)) {
-				return Blocks.IRON_BARS.defaultBlockState();
-			}
-			return aire();
-		}
-		boolean borde = au == BARBACANA || v == FRENTE || v == -(MURO - 1);
-		boolean esquina = au == BARBACANA && (v == FRENTE || v == -(MURO - 1));
-		if (ly < ALTO_PUERTA - 1) {
-			if (v == FRENTE && au == 2 && (ly == 7 || ly == 8)) {
-				return aire();
-			}
-			return borde && ly == 5 ? moldura() : muro(x, z, ly);
-		}
-		if (ly == ALTO_PUERTA - 1) {
-			return muro(x, z, ly);
-		}
-		if (esquina) {
-			// torrecillas en las cuatro esquinas, con un farol encima
-			return ly <= ALTO_PUERTA + 1 ? muro(x, z, ly) : ly == ALTO_PUERTA + 2 ? Blocks.LANTERN.defaultBlockState() : aire();
-		}
-		return ly == ALTO_PUERTA && borde && almena(x, z) ? muro(x, z, ly) : aire();
-	}
-
-	// ---- la torre del homenaje ----
-
-	private BlockState homenaje(int u, int v, int ly, int anillo, int x, int z) {
-		if (ly > ALTO_HOMENAJE) {
-			return tejadoHomenaje(u, v, ly, anillo, x, z);
-		}
-		if (ly < 0) {
-			return cripta(u, v, ly, anillo, x, z);
-		}
-		if (anillo == HOMENAJE) {
-			if (ly == 0) {
-				return base();
-			}
-			if (u == 0 && v == -HOMENAJE && (ly == 1 || ly == 2)) {
-				return puerta(ly == 1);
-			}
-			if (ventana(u, v, ly)) {
-				return Blocks.GLASS_PANE.defaultBlockState();
-			}
-			// sillares en las esquinas y una moldura en cada piso
-			if (Math.abs(u) == HOMENAJE && Math.abs(v) == HOMENAJE || ly == PISOS[0] || ly == PISOS[1] || ly == ALTO_HOMENAJE) {
-				return moldura();
-			}
-			return muro(x, z, ly);
-		}
-		// la escalera de mano, en el rincón del fondo, de las catacumbas al segundo piso
-		if (u == HOMENAJE - 1 && v == HOMENAJE - 1 && ly <= PISOS[1]) {
-			return escalera(Direction.NORTH);
-		}
-		if (ly == 0) {
-			return losa();
-		}
-		if (ly == PISOS[0] || ly == PISOS[1] || ly == ALTO_HOMENAJE) {
-			return madera();
-		}
-		if (ly < PISOS[0]) {
-			return salonDelTrono(u, v, ly);
-		}
-		if (ly < PISOS[1]) {
-			return comedor(u, v, ly - PISOS[0]);
-		}
-		return dormitorios(u, v, ly - PISOS[1]);
-	}
-
-	/** Ventanas a los lados de cada piso; abajo, ninguna en la pared del trono. */
-	private static boolean ventana(int u, int v, int ly) {
-		int largo = Math.abs(u) == HOMENAJE ? v : u;
-		if (Math.abs(largo) != 3 || Math.abs(u) == HOMENAJE && Math.abs(v) == HOMENAJE) {
-			return false;
-		}
-		if (ly == 2 || ly == 3) {
-			return v != HOMENAJE;
-		}
-		return ly == PISOS[0] + 2 || ly == PISOS[0] + 3 || ly == PISOS[1] + 2 || ly == PISOS[1] + 3;
-	}
-
-	/** Planta baja: alfombra hasta el estrado con el trono, mesa del consejo a un lado y biblioteca al otro. */
-	private BlockState salonDelTrono(int u, int v, int ly) {
-		int au = Math.abs(u);
-		if (v >= 3 && au <= 3) {
-			if (ly == 1) {
-				return moldura();
-			}
-			if (ly == 2) {
-				if (u == 0 && v == 4) {
-					return peldano(maderaEscalon(), Direction.SOUTH, false);
+	private void muralla(Obra o) {
+		Paleta p = o.p;
+		for (int u = -MURO - 1; u <= MURO + 1; u++) {
+			for (int v = -MURO - 1; v <= MURO + 1; v++) {
+				int anillo = Math.max(Math.abs(u), Math.abs(v));
+				if (anillo < MURO - 1) {
+					continue;
 				}
-				return u == 0 && v == 5 ? Blocks.GOLD_BLOCK.defaultBlockState() : tinte("carpet", Blocks.RED_CARPET);
-			}
-			if (ly == 3 && u == 0 && v == 5) {
-				return Blocks.GOLD_BLOCK.defaultBlockState();
-			}
-			if (ly == 4 && au == 2 && v == 5) {
-				return estandarte(Direction.NORTH);
-			}
-			return aire();
-		}
-		boolean consejo = v >= -3 && v <= 1;
-		if (ly == 1) {
-			if (au <= 1 && v <= 2) {
-				return Blocks.RED_CARPET.defaultBlockState();
-			}
-			if (u == -4 && consejo) {
-				return valla();
-			}
-			if (u == -5 && consejo) {
-				return peldano(maderaEscalon(), Direction.WEST, false);
-			}
-			if (u == -3 && consejo) {
-				return peldano(maderaEscalon(), Direction.EAST, false);
-			}
-			if (u == -4 && v == -4) {
-				return Blocks.CARTOGRAPHY_TABLE.defaultBlockState();
-			}
-		}
-		if (ly == 2 && u == -4 && consejo) {
-			return tinte("carpet", Blocks.RED_CARPET);
-		}
-		if ((ly == 1 || ly == 2) && u == HOMENAJE - 1 && v >= -4 && v <= 1) {
-			return Blocks.BOOKSHELF.defaultBlockState();
-		}
-		if (ly == PISOS[0] - 1 && au == 3 && (v == -3 || v == 1)) {
-			return farolColgado();
-		}
-		return aire();
-	}
-
-	/** Primer piso: comedor con la mesa larga delante y la cocina detrás de un tabique. */
-	private BlockState comedor(int u, int v, int h) {
-		int au = Math.abs(u);
-		if (v == 1) {
-			return u == 0 && h <= 2 ? aire() : madera();
-		}
-		if (v < 1) {
-			boolean mesa = v >= -4 && v <= -1;
-			if (h == 1) {
-				if (u == 0 && mesa) {
-					return valla();
-				}
-				if (au == 1 && mesa) {
-					return peldano(maderaEscalon(), u > 0 ? Direction.EAST : Direction.WEST, false);
-				}
-				if (u == 0 && v == -5) {
-					return peldano(maderaEscalon(), Direction.NORTH, false);
-				}
-				if (u == -5 && v >= -4 && v <= -2) {
-					return Blocks.BARREL.defaultBlockState();
+				int largo = Math.abs(u) >= Math.abs(v) ? v : u;
+				o.pon(u, 0, v, p.zocalo);
+				if (anillo <= MURO) {
+					o.sillares(u, 1, v, u, ALTO_MURO, v, false);
+					// saeteras en la cara de fuera, entre contrafuerte y contrafuerte
+					if (anillo == MURO && Math.floorMod(largo, 6) == 3) {
+						o.pon(u, 5, v, Blocks.AIR);
+						o.pon(u, 6, v, Blocks.AIR);
+					}
+					if (anillo == MURO && Math.floorMod(u + v, 2) == 0) {
+						o.pon(u, ALTO_MURO + 1, v, p.piedra(o, u, ALTO_MURO + 1, v));
+					}
+					if (anillo == MURO - 1) {
+						o.pon(u, ALTO_MURO, v, p.moldura);
+					}
+				} else if (Math.floorMod(largo, 6) == 0) {
+					o.sillares(u, 1, v, u, ALTO_MURO - 1, v, false);
+				} else {
+					o.pon(u, 1, v, p.zocalo);
 				}
 			}
-			if (h == 2 && u == 0 && mesa) {
-				return Blocks.WHITE_CARPET.defaultBlockState();
-			}
-			return h == 4 && au == 3 && v == -3 ? farolColgado() : aire();
 		}
-		if (h == 1) {
-			if (v == HOMENAJE - 1) {
-				switch (u) {
-					case -4:
-						return mirando(Blocks.SMOKER, Direction.NORTH);
-					case -3:
-						return mirando(Blocks.FURNACE, Direction.NORTH);
-					case -2:
-						return Blocks.WATER_CAULDRON.defaultBlockState().setValue(BlockStateProperties.LEVEL_CAULDRON, 3);
-					case -1, 2:
-						return Blocks.BARREL.defaultBlockState();
-					case 1:
-						return Blocks.CRAFTING_TABLE.defaultBlockState();
-					default:
-						break;
+		// escalera al adarve, pegada a la muralla de delante por dentro
+		o.escalera(BARBACANA + 2, 1, -(MURO - 2), Direction.EAST, ALTO_MURO, p.piedraEscalon, p.zocalo);
+	}
+
+	/** Torre cuadrada de esquina: maciza hasta el adarve, sala encima, piso de madera en voladizo y chapitel. */
+	private void torre(Obra o, int su, int sv) {
+		Paleta p = o.p;
+		int cu = su * MURO;
+		int cv = sv * MURO;
+		o.sillares(cu - TORRE, 1, cv - TORRE, cu + TORRE, 12, cv + TORRE, false);
+		o.caja(cu - TORRE + 1, ALTO_MURO, cv - TORRE + 1, cu + TORRE - 1, ALTO_MURO, cv + TORRE - 1, p.tablas);
+		o.aire(cu - TORRE + 1, ALTO_MURO + 1, cv - TORRE + 1, cu + TORRE - 1, 11, cv + TORRE - 1);
+		o.caja(cu - TORRE + 1, 12, cv - TORRE + 1, cu + TORRE - 1, 12, cv + TORRE - 1, p.tablas);
+		o.pon(cu, 11, cv, Obra.farolColgado());
+		o.paredes(cu - TORRE, 12, cv - TORRE, cu + TORRE, 12, cv + TORRE, p.moldura);
+		// por donde llega el adarve de cada muralla se entra en la torre
+		for (int a = MURO - 1; a <= MURO; a++) {
+			o.aire(cu - su * TORRE, ALTO_MURO + 1, sv * a, cu - su * TORRE, ALTO_MURO + 2, sv * a);
+			o.aire(su * a, ALTO_MURO + 1, cv - sv * TORRE, su * a, ALTO_MURO + 2, cv - sv * TORRE);
+		}
+		o.pon(cu + su * TORRE, 10, cv, Blocks.GLASS_PANE);
+		o.pon(cu, 10, cv + sv * TORRE, Blocks.GLASS_PANE);
+		if (p.desierto) {
+			o.paredes(cu - TORRE, 13, cv - TORRE, cu + TORRE, 13, cv + TORRE, p.moldura);
+			for (int d = -TORRE; d <= TORRE; d += 2) {
+				o.pon(cu + d, 14, cv - TORRE, p.moldura);
+				o.pon(cu + d, 14, cv + TORRE, p.moldura);
+				o.pon(cu - TORRE, 14, cv + d, p.moldura);
+				o.pon(cu + TORRE, 14, cv + d, p.moldura);
+			}
+			o.chapitel(cu, cv, 13, TORRE - 1);
+			return;
+		}
+		// el piso de madera, un bloque más ancho, sobre ménsulas
+		int h = TORRE + 1;
+		for (int du = -h; du <= h; du++) {
+			for (int dv = -h; dv <= h; dv++) {
+				if (Math.max(Math.abs(du), Math.abs(dv)) != h) {
+					continue;
+				}
+				o.pon(cu + du, 12, cv + dv, p.tablas);
+				if (Math.abs(du) != Math.abs(dv)) {
+					Direction adentro = Math.abs(du) == h ? (du > 0 ? Direction.WEST : Direction.EAST) : (dv > 0 ? Direction.NORTH : Direction.SOUTH);
+					o.pon(cu + du, 11, cv + dv, Obra.escalon(p.maderaEscalon, adentro, true));
+				}
+				boolean poste = Math.abs(du) == Math.abs(dv) || du == 0 || dv == 0;
+				for (int y = 13; y <= 15; y++) {
+					boolean ventana = y == 14 && (Math.abs(du) == 2 || Math.abs(dv) == 2) && !poste;
+					o.pon(cu + du, y, cv + dv, poste ? Obra.tronco(p.tronco, Direction.Axis.Y) : ventana ? Blocks.GLASS_PANE.defaultBlockState() : p.enlucido);
 				}
 			}
-			if (u == -5 && v >= 2 && v <= 4) {
-				return v == 3 ? Blocks.BARREL.defaultBlockState() : Blocks.HAY_BLOCK.defaultBlockState();
-			}
 		}
-		return h == 4 && u == 0 && v == 3 ? farolColgado() : aire();
+		o.aire(cu - TORRE, 13, cv - TORRE, cu + TORRE, 15, cv + TORRE);
+		o.caja(cu - h, 16, cv - h, cu + h, 16, cv + h, p.tablas);
+		o.chapitel(cu, cv, 16, h + 1);
 	}
 
-	/** Segundo piso: la alcoba del señor (cama doble del color del reino) y la de la corte, con un tabique. */
-	private BlockState dormitorios(int u, int v, int h) {
-		if (u == 0) {
-			return v == -4 && h <= 2 ? aire() : madera();
+	/** La barbacana: paso abovedado con rastrillo, sala encima para la guardia y tejado con hastial y rosetón. */
+	private void barbacana(Obra o) {
+		Paleta p = o.p;
+		int dentro = -(MURO - 3);
+		o.sillares(-BARBACANA, 1, FRENTE, BARBACANA, 13, dentro, false);
+		o.paredes(-BARBACANA, ALTO_MURO, FRENTE, BARBACANA, ALTO_MURO, dentro, p.moldura);
+		o.caja(-BARBACANA + 1, ALTO_MURO, FRENTE + 1, BARBACANA - 1, ALTO_MURO, dentro - 1, p.tablas);
+		o.aire(-BARBACANA + 1, ALTO_MURO + 1, FRENTE + 1, BARBACANA - 1, 12, dentro - 1);
+		// el paso: tres de ancho, con arco y el rastrillo a medio bajar
+		o.aire(-1, 1, FRENTE, 1, 4, dentro);
+		for (int v = FRENTE; v <= dentro; v++) {
+			o.pon(-1, 4, v, Obra.escalon(p.piedraEscalon, Direction.WEST, true));
+			o.pon(1, 4, v, Obra.escalon(p.piedraEscalon, Direction.EAST, true));
+			o.pon(-1, 0, v, p.adoquin(o, -1, v));
+			o.pon(0, 0, v, p.adoquin(o, 0, v));
+			o.pon(1, 0, v, p.adoquin(o, 1, v));
 		}
-		if (h == 1) {
-			boolean cabecera = v == HOMENAJE - 2;
-			if ((u == -2 || u == -3) && (cabecera || v == HOMENAJE - 3)) {
-				return cama(tinteBloque("bed", Blocks.RED_BED), cabecera);
+		o.caja(-1, 3, FRENTE + 1, 1, 3, FRENTE + 1, Blocks.IRON_BARS);
+		o.pon(0, 4, FRENTE + 1, Blocks.IRON_BARS);
+		// del adarve se pasa a la sala de la guardia
+		for (int a = MURO - 1; a <= MURO; a++) {
+			o.aire(-BARBACANA, ALTO_MURO + 1, -a, -BARBACANA, ALTO_MURO + 2, -a);
+			o.aire(BARBACANA, ALTO_MURO + 1, -a, BARBACANA, ALTO_MURO + 2, -a);
+		}
+		o.pon(0, 12, FRENTE + 3, Obra.farolColgado());
+		o.pon(-BARBACANA + 1, ALTO_MURO + 1, FRENTE + 1, Blocks.BARREL);
+		o.pon(-BARBACANA + 1, ALTO_MURO + 1, FRENTE + 2, Obra.mira(Blocks.CHEST, Direction.EAST));
+		o.pon(BARBACANA - 1, ALTO_MURO + 1, FRENTE + 1, Blocks.FLETCHING_TABLE);
+		o.mesa(-1, FRENTE + 3, 1, FRENTE + 3, ALTO_MURO + 1, true);
+		// ventanas y estandartes de la fachada; pilares con farol a los lados de la entrada
+		for (int s = -1; s <= 1; s += 2) {
+			o.pon(2 * s, 10, FRENTE, Blocks.GLASS_PANE);
+			o.pon(2 * s, 11, FRENTE, Blocks.GLASS_PANE);
+			o.estandarte(4 * s, 11, FRENTE - 1, Direction.NORTH);
+			o.pon(3 * s, 1, FRENTE - 1, p.muroBajo);
+			o.pon(3 * s, 2, FRENTE - 1, p.muroBajo);
+			o.pon(3 * s, 3, FRENTE - 1, Blocks.LANTERN);
+		}
+		if (p.desierto) {
+			for (int u = -BARBACANA; u <= BARBACANA; u++) {
+				for (int v = FRENTE; v <= dentro; v++) {
+					boolean borde = Math.abs(u) == BARBACANA || v == FRENTE || v == dentro;
+					if (borde && Math.floorMod(u + v, 2) == 0) {
+						o.pon(u, 14, v, p.moldura);
+					}
+				}
 			}
-			if ((u == 2 || u == 4) && (cabecera || v == HOMENAJE - 3)) {
-				return cama(Blocks.WHITE_BED, cabecera);
-			}
-			if ((u == -1 || u == 3) && v == HOMENAJE - 1) {
-				return mirando(Blocks.CHEST, Direction.NORTH);
-			}
-			if (u >= -4 && u <= -1 && v >= -2 && v <= 1) {
-				return tinte("carpet", Blocks.RED_CARPET);
-			}
+			o.cupula(0, (FRENTE + dentro) / 2, 14, 2);
+			return;
 		}
-		return h == 4 && Math.abs(u) == 3 && v == 0 ? farolColgado() : aire();
-	}
-
-	/** Las catacumbas: tumbas, calaveras en nichos y faroles de almas. */
-	private BlockState cripta(int u, int v, int ly, int anillo, int x, int z) {
-		if (ly == -CRIPTA - 1) {
-			return base();
+		o.dosAguas(-BARBACANA - 1, FRENTE - 1, BARBACANA + 1, dentro + 1, 14, true, p.piedra(o, 0, 14, FRENTE));
+		// rosetón en el hastial de delante
+		int[][] roseton = {{0, 15}, {-1, 16}, {0, 16}, {1, 16}, {0, 17}};
+		for (int[] r : roseton) {
+			o.pon(r[0], r[1], FRENTE, Blocks.GLASS_PANE);
 		}
-		if (u == HOMENAJE - 1 && v == HOMENAJE - 1) {
-			return escalera(Direction.NORTH);
-		}
-		if (anillo == HOMENAJE) {
-			return muro(x, z, ly);
-		}
-		if (anillo == HOMENAJE - 1) {
-			// se sale de la escalera por un lado
-			if (u == HOMENAJE - 2 && v == HOMENAJE - 1 && ly <= -CRIPTA + 1) {
-				return aire();
-			}
-			boolean lado = Math.abs(u) >= Math.abs(v);
-			int largo = lado ? v : u;
-			if (ly == -CRIPTA + 1 && Math.floorMod(largo, 2) == 0 && Math.abs(largo) <= 3) {
-				Direction adentro = lado ? (u > 0 ? Direction.WEST : Direction.EAST) : (v > 0 ? Direction.NORTH : Direction.SOUTH);
-				return mirando(Blocks.SKELETON_WALL_SKULL, adentro);
-			}
-			return muro(x, z, ly);
-		}
-		if (Math.abs(u) == 3 && (Math.abs(v) == 2 || Math.abs(v) == 3)) {
-			return ly == -CRIPTA ? moldura() : ly == -CRIPTA + 1 ? piedraLosa() : aire();
-		}
-		if (u == 0 && v == 0) {
-			return ly == -CRIPTA ? moldura() : ly == -CRIPTA + 1 ? Blocks.SOUL_LANTERN.defaultBlockState() : aire();
-		}
-		if (ly == -1) {
-			if (Math.abs(u) == 3 && v == 0) {
-				return Blocks.SOUL_LANTERN.defaultBlockState().setValue(BlockStateProperties.HANGING, true);
-			}
-			if (Math.abs(u) == 4 && Math.abs(v) == 4 && !(u == 4 && v == 4)) {
-				return Blocks.COBWEB.defaultBlockState();
-			}
-		}
-		return aire();
-	}
-
-	/** Tejado a cuatro aguas (cúpula con pretil en el desierto) con aguja y estandarte. */
-	private BlockState tejadoHomenaje(int u, int v, int ly, int anillo, int x, int z) {
-		int k = ly - ALTO_HOMENAJE - 1;
-		boolean centro = u == 0 && v == 0;
-		if (estilo == AdornoCapital.DESIERTO) {
-			if (anillo > HOMENAJE) {
-				return aire();
-			}
-			if (anillo == HOMENAJE) {
-				return k == 0 || k == 1 && almena(x, z) ? muro(x, z, ly) : aire();
-			}
-			double radio = HOMENAJE - 1.5;
-			if (k <= radio && Math.hypot(u, v) <= Math.sqrt(radio * radio - k * k)) {
-				return tejado();
-			}
-			return centro ? aguja(k - (int) radio - 1) : aire();
-		}
-		int borde = HOMENAJE + 1 - k;
-		if (borde < 0) {
-			return centro ? aguja(-borde - 1) : aire();
-		}
-		if (anillo != borde) {
-			return aire();
-		}
-		if (borde == 0 || Math.abs(u) == Math.abs(v)) {
-			return tejado();
-		}
-		Direction alto = Math.abs(u) == borde ? (u > 0 ? Direction.WEST : Direction.EAST) : (v > 0 ? Direction.NORTH : Direction.SOUTH);
-		return peldano(tejadoEscalon(), alto, false);
-	}
-
-	/** Lo que hay encima de la punta de un tejado, i bloques más arriba: dos de valla y el estandarte. */
-	private BlockState aguja(int i) {
-		if (i == 0 || i == 1) {
-			return valla();
-		}
-		if (i == 2 && color >= 0) {
-			return tinteBloque("banner", Blocks.RED_BANNER).defaultBlockState().setValue(BlockStateProperties.ROTATION_16, rot * 4);
-		}
-		return aire();
 	}
 
 	// ---- el patio ----
 
-	private BlockState patio(int u, int v, int ly) {
-		int au = Math.abs(u);
-		if (ly == 0) {
-			if (au <= 1 && v < 0) {
-				return camino();
+	private void patio(Obra o) {
+		Paleta p = o.p;
+		int ua = -(MURO - 2), ub = MURO - 2, va = -(MURO - 2), vb = -1;
+		for (int u = ua; u <= ub; u++) {
+			for (int v = va; v <= vb; v++) {
+				o.pon(u, 0, v, p.adoquin(o, u, v));
 			}
-			return u == POZO_U && v == POZO_V ? Blocks.WATER.defaultBlockState() : PATIO;
 		}
-		// escaleras de mano al adarve, a los lados de la barbacana
-		if (au == BARBACANA + 1 && v == -(MURO - 2) && ly <= ALTO_MURO) {
-			return escalera(Direction.SOUTH);
-		}
-		if (au == HOMENAJE - 1 && v == -(HOMENAJE + 1) && ly == PISOS[1] + 3) {
-			return estandarte(Direction.NORTH);
-		}
-		if (au == 2 && v == -(MURO - 5) && ly == 1) {
-			return Blocks.LANTERN.defaultBlockState();
-		}
-		BlockState b = pozo(u, v, ly);
-		if (b == null) {
-			b = cobertizo(u, v, ly);
-		}
-		return b != null ? b : aire();
-	}
-
-	private static final int POZO_U = -10;
-	private static final int POZO_V = -8;
-
-	private BlockState pozo(int u, int v, int ly) {
-		int du = u - POZO_U;
-		int dv = v - POZO_V;
-		if (Math.abs(du) > 1 || Math.abs(dv) > 1) {
-			return null;
-		}
-		boolean esquina = Math.abs(du) == 1 && Math.abs(dv) == 1;
-		return switch (ly) {
-			case 1 -> du == 0 && dv == 0 ? aire() : zocalo();
-			case 2, 3 -> esquina ? valla() : aire();
-			case 4 -> maderaLosa();
-			default -> aire();
-		};
-	}
-
-	/** El establo (oeste) y la herrería (este), dos cobertizos de madera pegados a la muralla. */
-	private BlockState cobertizo(int u, int v, int ly) {
-		int au = Math.abs(u);
-		if (au < 9 || au > MURO - 2 || v < 1 || v > 7) {
-			return null;
-		}
-		if (ly == 4) {
-			return maderaLosa();
-		}
-		if (ly == 5 && au == 9 && (v == 1 || v == 7)) {
-			return Blocks.LANTERN.defaultBlockState();
-		}
-		if (ly > 4) {
-			return aire();
-		}
-		if (au == 9 && (v == 1 || v == 4 || v == 7)) {
-			return valla();
-		}
-		if (ly != 1) {
-			return aire();
-		}
-		if (u < 0) {
-			if (au == MURO - 2 && v % 2 == 0) {
-				return Blocks.HAY_BLOCK.defaultBlockState();
+		fuente(o, 0, -9);
+		if (p.desierto) {
+			// alrededor de la fuente, un mosaico de azulejos
+			Block[] azulejos = {Blocks.BLUE_GLAZED_TERRACOTTA, Blocks.ORANGE_GLAZED_TERRACOTTA, Blocks.CYAN_GLAZED_TERRACOTTA};
+			for (int du = -7; du <= 7; du++) {
+				for (int dv = -7; dv <= 7; dv++) {
+					if (!octogono(du, dv, 5)) {
+						Direction d = Direction.from2DDataValue(Math.floorMod(du + dv, 4));
+						o.pon(du, 0, -9 + dv, Obra.mira(azulejos[Math.floorMod(Math.abs(du) + Math.abs(dv), 3)], d));
+					}
+				}
 			}
-			return (v == 3 || v == 5) && au >= 10 ? valla() : aire();
 		}
-		if (au != MURO - 2) {
-			return aire();
+		// parterres a los lados de la fuente, con un arbolito en los de delante
+		for (int s = -1; s <= 1; s += 2) {
+			for (int u = 6; u <= 9; u++) {
+				for (int v = -15; v <= -12; v++) {
+					o.parterre(s * u, 1, v);
+				}
+				for (int v = -6; v <= -3; v++) {
+					o.parterre(s * u, 1, v);
+				}
+			}
+			o.arbol(s * 7, 1, -13, 4);
+			o.farola(3 * s, 1, -15, s > 0 ? Direction.WEST : Direction.EAST);
+			o.farola(3 * s, 1, -3, s > 0 ? Direction.WEST : Direction.EAST);
 		}
-		return switch (v) {
-			case 2 -> Blocks.ANVIL.defaultBlockState();
-			case 3 -> Blocks.SMITHING_TABLE.defaultBlockState();
-			case 4 -> mirando(Blocks.BLAST_FURNACE, Direction.WEST);
-			case 5 -> mirando(Blocks.GRINDSTONE, Direction.WEST).setValue(BlockStateProperties.ATTACH_FACE, AttachFace.FLOOR);
-			case 6 -> Blocks.BARREL.defaultBlockState();
-			case 7 -> Blocks.LAVA_CAULDRON.defaultBlockState();
-			default -> aire();
-		};
+		o.arbol(-14, 1, -13, 5);
+		establo(o);
+		pozo(o, -12, -4);
 	}
 
-	// ---- bloques orientados ----
+	private static boolean octogono(int du, int dv, int r) {
+		return Math.max(Math.abs(du), Math.abs(dv)) <= r && Math.abs(du) + Math.abs(dv) <= r + r / 2;
+	}
 
-	/** Del lado local (NORTH = hacia la puerta) al del mundo, con el giro del castillo. */
-	private Direction mundo(Direction local) {
-		Direction d = local;
-		for (int i = 0; i < rot; i++) {
-			d = d.getClockWise();
+	/** Fuente: pilón octogonal con escalones alrededor y un caño en medio que rebosa. */
+	private void fuente(Obra o, int cu, int cv) {
+		Paleta p = o.p;
+		for (int du = -5; du <= 5; du++) {
+			for (int dv = -5; dv <= 5; dv++) {
+				int u = cu + du;
+				int v = cv + dv;
+				if (octogono(du, dv, 3)) {
+					o.pon(u, 0, v, p.losa);
+					o.pon(u, 1, v, Blocks.WATER);
+				} else if (octogono(du, dv, 4)) {
+					o.pon(u, 0, v, p.zocalo);
+					o.pon(u, 1, v, p.moldura);
+				} else if (octogono(du, dv, 5)) {
+					Direction adentro = Math.abs(du) >= Math.abs(dv) ? (du > 0 ? Direction.WEST : Direction.EAST)
+							: (dv > 0 ? Direction.NORTH : Direction.SOUTH);
+					o.pon(u, 1, v, Obra.escalon(p.piedraEscalon, adentro, false));
+				}
+			}
 		}
-		return d;
-	}
-
-	private BlockState mirando(Block b, Direction local) {
-		return b.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, mundo(local));
-	}
-
-	/** Un peldaño con el lado alto hacia alto (en local); arriba, del revés (ménsulas y arcos). */
-	private BlockState peldano(Block b, Direction alto, boolean arriba) {
-		return mirando(b, alto).setValue(BlockStateProperties.HALF, arriba ? Half.TOP : Half.BOTTOM);
-	}
-
-	/** Una escalera de mano que mira hacia lado (en local), es decir, pegada a la pared del lado contrario. */
-	private BlockState escalera(Direction lado) {
-		return mirando(Blocks.LADDER, lado);
-	}
-
-	private BlockState puerta(boolean abajo) {
-		return mirando(maderaPuerta(), Direction.NORTH).setValue(BlockStateProperties.DOUBLE_BLOCK_HALF,
-				abajo ? DoubleBlockHalf.LOWER : DoubleBlockHalf.UPPER);
-	}
-
-	/** Media cama: la cabecera hacia el fondo (v positiva). */
-	private BlockState cama(Block b, boolean cabecera) {
-		return mirando(b, Direction.SOUTH).setValue(BlockStateProperties.BED_PART, cabecera ? BedPart.HEAD : BedPart.FOOT);
-	}
-
-	/** Estandarte del reino colgado de la pared, mirando hacia lado (en local); sin color, nada. */
-	private BlockState estandarte(Direction lado) {
-		return color >= 0 ? mirando(tinteBloque("wall_banner", Blocks.RED_WALL_BANNER), lado) : aire();
-	}
-
-	private static BlockState farolColgado() {
-		return Blocks.LANTERN.defaultBlockState().setValue(BlockStateProperties.HANGING, true);
-	}
-
-	private static boolean almena(int x, int z) {
-		return Math.floorMod(x + z, 2) == 0;
-	}
-
-	/** El bloque del color del reino de ese tipo (wool, wall_banner…), o otro si no se sabe el color. */
-	private Block tinteBloque(String tipo, Block sinColor) {
-		if (color < 0) {
-			return sinColor;
+		o.pon(cu, 1, cv, p.moldura);
+		o.pon(cu, 2, cv, p.muroBajo);
+		o.pon(cu, 3, cv, p.moldura);
+		for (Direction d : Direction.Plane.HORIZONTAL) {
+			o.pon(cu + d.getStepX(), 3, cv + d.getStepZ(), Obra.escalon(p.piedraEscalon, d.getOpposite(), true));
 		}
-		return BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace(DyeColor.byId(color).getName() + "_" + tipo));
+		o.pon(cu, 4, cv, Blocks.WATER);
 	}
 
-	private BlockState tinte(String tipo, Block sinColor) {
-		return tinteBloque(tipo, sinColor).defaultBlockState();
+	/** El establo, pegado a la muralla del este: tres cuadras con heno y bebedero, bajo un tejado a dos aguas. */
+	private void establo(Obra o) {
+		Paleta p = o.p;
+		int u0 = 11, u1 = MURO - 2, v0 = -13, v1 = -3;
+		for (int u = u0 + 1; u <= u1; u++) {
+			for (int v = v0; v <= v1; v++) {
+				o.pon(u, 0, v, o.azar(u, 0, v, 3) == 0 ? Blocks.HAY_BLOCK.defaultBlockState() : Blocks.COARSE_DIRT.defaultBlockState());
+			}
+		}
+		for (int v : new int[] {v0, -8, v1}) {
+			o.caja(u0, 1, v, u0, 3, v, Obra.tronco(p.tronco, Direction.Axis.Y));
+		}
+		o.viga(u0, v0, u0, v1, 4);
+		o.viga(u0, v0, u1, v0, 4);
+		o.viga(u0, v1, u1, v1, 4);
+		o.dosAguas(u0 - 1, v0 - 1, u1, v1 + 1, 5, true, p.tablas);
+		// las cuadras: separadores de valla, heno al fondo y un bebedero
+		for (int v : new int[] {-10, -6}) {
+			o.caja(u0 + 2, 1, v, u1, 1, v, p.valla);
+		}
+		for (int v : new int[] {-12, -8, -4}) {
+			o.pon(u1, 1, v, Blocks.HAY_BLOCK);
+			o.pon(u1, 1, v + 1, Blocks.WATER_CAULDRON.defaultBlockState().setValue(BlockStateProperties.LEVEL_CAULDRON, 3));
+			o.pon(u0, 3, v, Obra.farolColgado());
+		}
+		o.pon(u0 - 1, 1, v0, Blocks.HAY_BLOCK);
+		o.pon(u0 - 1, 2, v0, Blocks.HAY_BLOCK);
+		o.pon(u0 - 2, 1, v0, Blocks.BARREL);
+		o.pon(u0 - 1, 1, v1, Blocks.COMPOSTER);
 	}
 
-	// ---- materiales según la cultura ----
-
-	/** Piedra del muro, con alguna variación (siempre la misma en cada sitio). */
-	private BlockState muro(int x, int z, int y) {
-		int h = Math.floorMod(Geo.hash(x, z, y0 + y), 9);
-		return (switch (estilo) {
-			case AdornoCapital.DESIERTO -> h == 0 ? Blocks.SANDSTONE : h == 1 ? Blocks.SMOOTH_SANDSTONE : Blocks.CUT_SANDSTONE;
-			case AdornoCapital.SABANA -> h < 2 ? Blocks.PACKED_MUD : Blocks.MUD_BRICKS;
-			case AdornoCapital.TAIGA -> h == 0 ? Blocks.MOSSY_COBBLESTONE : h == 1 ? Blocks.COBBLESTONE : h == 2 ? Blocks.MOSSY_STONE_BRICKS
-					: Blocks.STONE_BRICKS;
-			case AdornoCapital.NIEVE -> h == 0 ? Blocks.CRACKED_STONE_BRICKS : h == 1 ? Blocks.POLISHED_ANDESITE : Blocks.STONE_BRICKS;
-			default -> h == 0 ? Blocks.MOSSY_STONE_BRICKS : h == 1 ? Blocks.CRACKED_STONE_BRICKS : Blocks.STONE_BRICKS;
-		}).defaultBlockState();
+	/** Pozo de piedra con su tejadillo de madera sobre dos postes y un farol colgando. */
+	private void pozo(Obra o, int cu, int cv) {
+		Paleta p = o.p;
+		for (int du = -1; du <= 1; du++) {
+			for (int dv = -1; dv <= 1; dv++) {
+				if (du == 0 && dv == 0) {
+					o.pon(cu, 0, cv, Blocks.WATER);
+					o.pon(cu, -1, cv, Blocks.WATER);
+					o.pon(cu, -2, cv, Blocks.WATER);
+					o.pon(cu, -3, cv, p.zocalo);
+				} else {
+					o.caja(cu + du, -3, cv + dv, cu + du, 0, cv + dv, p.zocalo);
+					o.pon(cu + du, 1, cv + dv, p.piedra(o, cu + du, 1, cv + dv));
+				}
+			}
+		}
+		for (int s = -1; s <= 1; s += 2) {
+			o.pon(cu + s, 2, cv, p.valla);
+			o.pon(cu + s, 3, cv, p.valla);
+		}
+		for (int du = -2; du <= 2; du++) {
+			o.pon(cu + du, 4, cv - 1, Obra.escalon(p.maderaEscalon, Direction.SOUTH, false));
+			o.pon(cu + du, 4, cv + 1, Obra.escalon(p.maderaEscalon, Direction.NORTH, false));
+			o.pon(cu + du, 4, cv, Obra.tronco(p.tronco, Direction.Axis.X));
+			o.pon(cu + du, 5, cv, Obra.losa(p.maderaLosa, false));
+		}
+		o.pon(cu, 3, cv, Obra.farolColgado());
 	}
 
-	/** Molduras, sillares de las esquinas, el estrado y las tumbas. */
-	private BlockState moldura() {
-		return (switch (estilo) {
-			case AdornoCapital.DESIERTO -> Blocks.CHISELED_SANDSTONE;
-			case AdornoCapital.SABANA -> Blocks.TERRACOTTA;
-			case AdornoCapital.TAIGA -> Blocks.POLISHED_DEEPSLATE;
-			case AdornoCapital.NIEVE -> Blocks.POLISHED_DIORITE;
-			default -> Blocks.POLISHED_ANDESITE;
-		}).defaultBlockState();
+	// ---- el palacio ----
+
+	private void palacio(Obra o) {
+		Paleta p = o.p;
+		int a = PALACIO;
+		// planta baja de piedra
+		o.sillares(-a, 1, 0, a, PISOS[1] - 1, FONDO, true);
+		o.caja(-a, 0, 0, a, 0, FONDO, p.zocalo);
+		o.caja(-a + 1, 0, 1, a - 1, 0, FONDO - 1, p.losa);
+		o.aire(-a + 1, 1, 1, a - 1, PISOS[1] - 1, FONDO - 1);
+		// los pisos de arriba, en voladizo por delante
+		for (int f = 1; f < PISOS.length; f++) {
+			o.caja(-a + 1, PISOS[f], 0, a - 1, PISOS[f], FONDO - 1, p.tablas);
+		}
+		if (p.desierto) {
+			o.sillares(-a, PISOS[1], 0, a, PISOS[3], FONDO, true);
+			o.aire(-a + 1, PISOS[1] + 1, 1, a - 1, PISOS[2] - 1, FONDO - 1);
+			o.aire(-a + 1, PISOS[2] + 1, 1, a - 1, PISOS[3] - 1, FONDO - 1);
+			o.paredes(-a, PISOS[1], 0, a, PISOS[1], FONDO, p.moldura);
+			o.paredes(-a, PISOS[3], 0, a, PISOS[3], FONDO, p.moldura);
+			ventanasArco(o, 0);
+		} else {
+			entramado(o, -a, -1, a, FONDO);
+			for (int u = -a; u <= a; u++) {
+				o.pon(u, PISOS[1] - 1, -1, Obra.escalon(p.maderaEscalon, Direction.SOUTH, true));
+				o.pon(u, PISOS[1], 0, p.tablas);
+			}
+		}
+		// la fachada de abajo: entrada en arco, ventanas, estandartes y faroles bajo el voladizo
+		o.aire(-1, 1, 0, 1, 3, 0);
+		o.pon(-1, 3, 0, Obra.escalon(p.piedraEscalon, Direction.WEST, true));
+		o.pon(1, 3, 0, Obra.escalon(p.piedraEscalon, Direction.EAST, true));
+		o.pon(0, 4, 0, p.moldura);
+		for (int s = -1; s <= 1; s += 2) {
+			for (int u : new int[] {4, 7, 10}) {
+				ventana(o, s * u, 2, 0);
+			}
+			for (int v : new int[] {3, 6, 11, 14}) {
+				ventana(o, s * a, 2, v);
+			}
+			for (int u : new int[] {6, 9}) {
+				ventana(o, s * u, 2, FONDO);
+			}
+			o.estandarte(2 * s, 4, -1, Direction.NORTH);
+			o.pon(6 * s, 4, -1, Obra.farolColgado());
+			o.pon(10 * s, 4, -1, Obra.farolColgado());
+		}
+		salonDelTrono(o);
+		cocina(o);
+		comedor(o);
+		primerPiso(o);
+		segundoPiso(o);
+		tejado(o);
 	}
 
-	private BlockState zocalo() {
-		return (switch (estilo) {
-			case AdornoCapital.DESIERTO -> Blocks.SMOOTH_SANDSTONE;
-			case AdornoCapital.SABANA -> Blocks.PACKED_MUD;
-			default -> Blocks.COBBLESTONE;
-		}).defaultBlockState();
+	private static void ventana(Obra o, int u, int ly, int v) {
+		o.pon(u, ly, v, Blocks.GLASS_PANE);
+		o.pon(u, ly + 1, v, Blocks.GLASS_PANE);
 	}
 
-	private Block zocaloEscalon() {
-		return switch (estilo) {
-			case AdornoCapital.DESIERTO -> Blocks.SMOOTH_SANDSTONE_STAIRS;
-			case AdornoCapital.SABANA -> Blocks.MUD_BRICK_STAIRS;
-			default -> Blocks.COBBLESTONE_STAIRS;
-		};
+	/** Los pisos de arriba de entramado: postes cada tres, vigas en cada piso, enlucido y ventanas en cada vano. */
+	private void entramado(Obra o, int ua, int va, int ub, int vb) {
+		Paleta p = o.p;
+		for (int u = ua; u <= ub; u++) {
+			for (int v = va; v <= vb; v++) {
+				boolean bordeU = u == ua || u == ub;
+				boolean bordeV = v == va || v == vb;
+				if (!bordeU && !bordeV) {
+					continue;
+				}
+				int largo = bordeV ? u - ua : v - va;
+				boolean poste = bordeU && bordeV || largo % 3 == 0;
+				Direction.Axis eje = bordeV ? Direction.Axis.X : Direction.Axis.Z;
+				for (int y = PISOS[1]; y <= PISOS[3]; y++) {
+					BlockState b;
+					if (poste) {
+						b = Obra.tronco(p.tronco, Direction.Axis.Y);
+					} else if (y == PISOS[1] || y == PISOS[2] || y == PISOS[3]) {
+						b = Obra.tronco(p.tronco, eje);
+					} else if (y == PISOS[1] + 2 || y == PISOS[1] + 3 || y == PISOS[2] + 2 || y == PISOS[2] + 3) {
+						b = Blocks.GLASS_PANE.defaultBlockState();
+					} else {
+						b = p.enlucido;
+					}
+					o.pon(u, y, v, b);
+				}
+			}
+		}
 	}
 
-	private Block piedraEscalon() {
-		return switch (estilo) {
-			case AdornoCapital.DESIERTO -> Blocks.SANDSTONE_STAIRS;
-			case AdornoCapital.SABANA -> Blocks.MUD_BRICK_STAIRS;
-			default -> Blocks.STONE_BRICK_STAIRS;
-		};
+	/** En el desierto, ventanas de arco en los pisos de arriba. */
+	private void ventanasArco(Obra o, int v0) {
+		for (int u = -PALACIO + 2; u <= PALACIO - 2; u += 3) {
+			for (int f = 1; f <= 2; f++) {
+				ventana(o, u, PISOS[f] + 2, v0);
+				ventana(o, u, PISOS[f] + 2, FONDO);
+			}
+		}
+		for (int v = 3; v <= FONDO - 3; v += 3) {
+			for (int f = 1; f <= 2; f++) {
+				ventana(o, -PALACIO, PISOS[f] + 2, v);
+				ventana(o, PALACIO, PISOS[f] + 2, v);
+			}
+		}
 	}
 
-	private BlockState piedraLosa() {
-		return (switch (estilo) {
-			case AdornoCapital.DESIERTO -> Blocks.SANDSTONE_SLAB;
-			case AdornoCapital.SABANA -> Blocks.MUD_BRICK_SLAB;
-			default -> Blocks.STONE_BRICK_SLAB;
-		}).defaultBlockState();
+	/** Planta baja, delante: el salón del trono, con estrado, columnas, vigas, lámparas y dos chimeneas. */
+	private void salonDelTrono(Obra o) {
+		Paleta p = o.p;
+		// tabique con las alas de detrás (cocina y comedor), con una puerta a cada una
+		for (int s = -1; s <= 1; s += 2) {
+			o.sillares(s * 4, 1, 9, s * (PALACIO - 1), PISOS[1] - 1, 9, false);
+			o.aire(s * 7, 1, 9, s * 7, 2, 9);
+		}
+		for (int v : new int[] {2, 5, 8}) {
+			o.viga(-PALACIO + 1, v, PALACIO - 1, v, 5);
+		}
+		for (int s = -1; s <= 1; s += 2) {
+			o.pilar(s * 5, 3, 1, 4);
+			o.pilar(s * 5, 7, 1, 4);
+			o.pon(s * 3, 4, 2, Obra.farolColgado());
+			o.pon(s * 3, 4, 5, Obra.farolColgado());
+			o.pon(s * 9, 4, 5, Obra.farolColgado());
+			o.chimenea(s * (PALACIO - 1), 1, 5, s > 0 ? Direction.WEST : Direction.EAST, PISOS[1]);
+		}
+		// alfombra hasta el estrado
+		o.caja(-1, 1, 1, 1, 1, 6, Blocks.RED_CARPET);
+		// el estrado con el trono, el respaldo dorado y los estandartes del reino detrás
+		o.caja(-3, 1, 7, 3, 1, 9, p.moldura);
+		o.caja(-3, 2, 7, 3, 2, 9, o.tinte("carpet", Blocks.RED_CARPET));
+		o.silla(0, 2, 8, Direction.SOUTH);
+		o.pon(0, 2, 9, Blocks.GOLD_BLOCK);
+		o.pon(0, 3, 9, Blocks.GOLD_BLOCK);
+		for (int s = -1; s <= 1; s += 2) {
+			o.pon(s, 2, 8, Obra.escalon(p.maderaEscalon, s > 0 ? Direction.EAST : Direction.WEST, false));
+			o.estandarte(2 * s, 4, 9, Direction.NORTH);
+			o.pon(3 * s, 2, 9, Blocks.LANTERN);
+		}
 	}
 
-	private BlockState tejado() {
-		return (switch (estilo) {
-			case AdornoCapital.DESIERTO -> Blocks.SMOOTH_SANDSTONE;
-			case AdornoCapital.SABANA -> Blocks.ACACIA_PLANKS;
-			case AdornoCapital.TAIGA -> Blocks.SPRUCE_PLANKS;
-			default -> Blocks.DEEPSLATE_TILES;
-		}).defaultBlockState();
+	/** Ala oeste de abajo: la cocina, con su hogar, la escalera a las catacumbas, mesa de trabajo y despensa. */
+	private void cocina(Obra o) {
+		Paleta p = o.p;
+		int u0 = -PALACIO + 1;
+		o.chimenea(-8, 1, FONDO - 1, Direction.NORTH, PISOS[1]);
+		o.pon(-6, 1, FONDO - 1, Obra.mira(Blocks.SMOKER, Direction.NORTH));
+		o.pon(-5, 1, FONDO - 1, Obra.mira(Blocks.FURNACE, Direction.NORTH));
+		o.pon(-4, 1, FONDO - 1, Blocks.BARREL);
+		o.pon(-4, 1, FONDO - 3, Blocks.WATER_CAULDRON.defaultBlockState().setValue(BlockStateProperties.LEVEL_CAULDRON, 3));
+		o.pon(-4, 1, 10, Blocks.HAY_BLOCK);
+		o.pon(-5, 1, 10, Blocks.BARREL);
+		o.pon(-5, 2, 10, Blocks.PUMPKIN);
+		o.mesa(-8, 12, -6, 12, 1, false);
+		o.pon(-7, 5, 12, Obra.farolColgado());
+		// la bajada a las catacumbas, con barandilla
+		o.escalera(u0, -5, FONDO - 1, Direction.NORTH, 6, p.piedraEscalon, p.zocalo);
+		for (int v = 11; v <= FONDO - 1; v++) {
+			o.pon(u0 + 1, 1, v, p.valla);
+		}
 	}
 
-	private Block tejadoEscalon() {
-		return switch (estilo) {
-			case AdornoCapital.DESIERTO -> Blocks.SMOOTH_SANDSTONE_STAIRS;
-			case AdornoCapital.SABANA -> Blocks.ACACIA_STAIRS;
-			case AdornoCapital.TAIGA -> Blocks.SPRUCE_STAIRS;
-			default -> Blocks.DEEPSLATE_TILE_STAIRS;
-		};
+	/** Ala este de abajo: el comedor, con la mesa larga, chimenea, aparador y lámpara. */
+	private void comedor(Obra o) {
+		o.mesa(6, 12, 10, 13, 1, true);
+		o.chimenea(PALACIO - 1, 1, 12, Direction.WEST, PISOS[1]);
+		o.pon(8, 5, 12, Obra.farolColgado());
+		o.pon(8, 5, 13, Obra.farolColgado());
+		o.pon(5, 1, FONDO - 1, Blocks.BARREL);
+		o.pon(6, 1, FONDO - 1, Blocks.BARREL);
+		o.pon(5, 2, FONDO - 1, Blocks.FLOWER_POT);
+		o.pon(6, 2, FONDO - 1, Obra.velas(3));
+		o.pon(PALACIO - 1, 1, 10, Blocks.CHISELED_BOOKSHELF);
+		o.pon(PALACIO - 1, 1, 15, Blocks.BOOKSHELF);
 	}
 
-	private BlockState base() {
-		return zocalo();
+	/** Primer piso: la sala del consejo delante (mesa larga, biblioteca, mapas) y dos alcobas en las alas. */
+	private void primerPiso(Obra o) {
+		Paleta p = o.p;
+		int y = PISOS[1] + 1;
+		tabique(o, PISOS[1]);
+		o.caja(-4, y, 2, 4, y, 6, o.tinte("carpet", Blocks.RED_CARPET));
+		o.mesa(-3, 4, 3, 4, y, true);
+		o.silla(-4, y, 4, Direction.WEST);
+		o.silla(4, y, 4, Direction.EAST);
+		for (int v = 1; v <= 7; v++) {
+			Block estante = v % 3 == 0 ? Blocks.CHISELED_BOOKSHELF : Blocks.BOOKSHELF;
+			o.caja(-PALACIO + 1, y, v, -PALACIO + 1, y + 2, v, estante);
+		}
+		o.pon(-PALACIO + 2, y, 4, Obra.mira(Blocks.LECTERN, Direction.EAST));
+		o.pon(PALACIO - 1, y, 2, Blocks.CARTOGRAPHY_TABLE);
+		o.pon(PALACIO - 1, y, 3, Blocks.BARREL);
+		o.pon(PALACIO - 1, y + 1, 3, Blocks.FLOWER_POT);
+		for (int u : new int[] {-7, 0, 7}) {
+			o.pon(u, PISOS[2] - 1, 4, Obra.farolColgado());
+		}
+		// alcoba de la corte (oeste): dos camas, cofre y armario
+		o.cama(-PALACIO + 1, y, 11, Direction.WEST, Blocks.WHITE_BED);
+		o.cama(-PALACIO + 1, y, 13, Direction.WEST, Blocks.WHITE_BED);
+		o.pon(-PALACIO + 1, y, 12, Blocks.BARREL);
+		o.pon(-PALACIO + 1, y + 1, 12, Obra.velas(2));
+		o.pon(-PALACIO + 1, y, FONDO - 1, Obra.mira(Blocks.CHEST, Direction.EAST));
+		o.caja(-6, y, FONDO - 1, -5, y + 1, FONDO - 1, Blocks.BARREL);
+		o.caja(-9, y, 11, -8, y, 14, Blocks.BROWN_CARPET);
+		o.pon(-8, PISOS[2] - 1, 12, Obra.farolColgado());
+		// alcoba de invitados (este): cama del color del reino, escritorio y estantería
+		o.cama(PALACIO - 1, y, 12, Direction.EAST, o.tinte("bed", Blocks.RED_BED));
+		o.pon(PALACIO - 1, y, 11, Blocks.BARREL);
+		o.pon(PALACIO - 1, y + 1, 11, Blocks.LANTERN);
+		o.mesa(7, FONDO - 1, 8, FONDO - 1, y, false);
+		o.silla(7, y, FONDO - 2, Direction.NORTH);
+		o.caja(4, y, FONDO - 1, 5, y + 1, FONDO - 1, Blocks.BOOKSHELF);
+		o.pon(8, PISOS[2] - 1, 12, Obra.farolColgado());
 	}
 
-	/** El suelo del salón del trono. */
-	private BlockState losa() {
-		return (estilo == AdornoCapital.DESIERTO || estilo == AdornoCapital.SABANA ? Blocks.SMOOTH_SANDSTONE : Blocks.SMOOTH_STONE)
-				.defaultBlockState();
+	/** Segundo piso: la cámara del señor delante (cama con dosel, chimenea), el tesoro y la capilla en las alas. */
+	private void segundoPiso(Obra o) {
+		Paleta p = o.p;
+		int y = PISOS[2] + 1;
+		tabique(o, PISOS[2]);
+		// cama con dosel del color del reino
+		o.cama(-PALACIO + 1, y, 3, Direction.WEST, o.tinte("bed", Blocks.RED_BED));
+		o.cama(-PALACIO + 1, y, 4, Direction.WEST, o.tinte("bed", Blocks.RED_BED));
+		for (int u : new int[] {-PALACIO + 1, -PALACIO + 3}) {
+			for (int v : new int[] {2, 5}) {
+				o.caja(u, y, v, u, y + 2, v, p.valla);
+			}
+		}
+		o.caja(-PALACIO + 1, y + 3, 2, -PALACIO + 3, y + 3, 5, o.tinte("wool", Blocks.RED_WOOL));
+		o.caja(-8, y, 2, -6, y, 5, o.tinte("carpet", Blocks.RED_CARPET));
+		o.pon(-PALACIO + 1, y, 1, Obra.mira(Blocks.CHEST, Direction.EAST));
+		o.pon(-PALACIO + 1, y, 6, Blocks.BARREL);
+		o.pon(-PALACIO + 1, y + 1, 6, Obra.velas(3));
+		o.chimenea(PALACIO - 1, y, 4, Direction.WEST, PISOS[3]);
+		o.silla(PALACIO - 3, y, 3, Direction.WEST);
+		o.silla(PALACIO - 3, y, 5, Direction.WEST);
+		o.mesa(4, 7, 6, 7, y, false);
+		o.silla(5, y, 6, Direction.NORTH);
+		o.pon(0, PISOS[3] - 1, 4, Obra.farolColgado());
+		o.pon(-6, PISOS[3] - 1, 4, Obra.farolColgado());
+		// el tesoro (oeste): cofres, oro y vasijas
+		for (int v = 10; v <= FONDO - 1; v += 2) {
+			o.pon(-PALACIO + 1, y, v, Obra.mira(Blocks.CHEST, Direction.EAST));
+		}
+		o.caja(-6, y, FONDO - 1, -5, y, FONDO - 1, Blocks.GOLD_BLOCK);
+		o.pon(-6, y + 1, FONDO - 1, Blocks.GOLD_BLOCK);
+		o.pon(-4, y, FONDO - 1, Obra.mira(Blocks.DECORATED_POT, Direction.NORTH));
+		o.pon(-8, y, 10, Obra.mira(Blocks.DECORATED_POT, Direction.SOUTH));
+		o.pon(-8, PISOS[3] - 1, 13, Obra.farolColgado());
+		// la capilla (este): altar con velas, atril y bancos mirando al altar
+		o.caja(PALACIO - 1, y, 12, PALACIO - 1, y, 13, p.moldura);
+		o.pon(PALACIO - 1, y + 1, 12, Obra.velas(4));
+		o.pon(PALACIO - 1, y + 1, 13, Obra.velas(3));
+		o.estandarte(PALACIO - 1, y + 2, 11, Direction.WEST);
+		o.pon(PALACIO - 2, y, 12, Obra.mira(Blocks.LECTERN, Direction.WEST));
+		for (int u : new int[] {6, 8}) {
+			for (int v = 11; v <= 14; v++) {
+				o.silla(u, y, v, Direction.WEST);
+			}
+		}
+		o.pon(8, PISOS[3] - 1, 12, Obra.farolColgado());
 	}
 
-	private BlockState camino() {
-		return (estilo == AdornoCapital.DESIERTO ? Blocks.SMOOTH_SANDSTONE : Blocks.DIRT_PATH).defaultBlockState();
+	/** El tabique entre la parte de delante y las alas en un piso, con una puerta a cada ala. */
+	private void tabique(Obra o, int suelo) {
+		Paleta p = o.p;
+		for (int s = -1; s <= 1; s += 2) {
+			o.caja(s * 4, suelo + 1, 9, s * (PALACIO - 1), suelo + 4, 9, p.tablas);
+			o.aire(s * 7, suelo + 1, 9, s * 7, suelo + 2, 9);
+		}
 	}
 
-	private boolean conifera() {
-		return estilo == AdornoCapital.TAIGA || estilo == AdornoCapital.NIEVE;
+	/** El tejado del palacio: a dos aguas con buhardillas delante (en el desierto, azotea almenada). */
+	private void tejado(Obra o) {
+		Paleta p = o.p;
+		if (p.desierto) {
+			for (int u = -PALACIO; u <= PALACIO; u++) {
+				for (int v = 0; v <= FONDO; v++) {
+					if ((Math.abs(u) == PALACIO || v == 0 || v == FONDO) && Math.floorMod(u + v, 2) == 0) {
+						o.pon(u, PISOS[3] + 1, v, p.moldura);
+					}
+				}
+			}
+			for (int s = -1; s <= 1; s += 2) {
+				o.cupula(s * 7, 6, PISOS[3] + 1, 2);
+			}
+			return;
+		}
+		o.dosAguas(-PALACIO - 1, -2, PALACIO + 1, FONDO + 1, PISOS[3], false, p.enlucido);
+		for (int s = -1; s <= 1; s += 2) {
+			int du = 7 * s;
+			o.aire(du - 2, PISOS[3], -1, du + 2, PISOS[3] + 7, 4);
+			for (int u = du - 2; u <= du + 2; u++) {
+				for (int y = PISOS[3]; y <= PISOS[3] + 2; y++) {
+					boolean poste = Math.abs(u - du) == 2;
+					boolean ventana = y == PISOS[3] + 1 && !poste;
+					o.pon(u, y, -1, poste ? Obra.tronco(p.tronco, Direction.Axis.Y) : ventana ? Blocks.GLASS_PANE.defaultBlockState() : p.enlucido);
+				}
+			}
+			for (int v = 0; v <= 4; v++) {
+				o.caja(du - 2, PISOS[3], v, du - 2, PISOS[3] + 3, v, p.enlucido);
+				o.caja(du + 2, PISOS[3], v, du + 2, PISOS[3] + 3, v, p.enlucido);
+			}
+			o.dosAguas(du - 3, -2, du + 3, 5, PISOS[3] + 3, true, p.enlucido);
+		}
+		// la chimenea de fuera de las dos chimeneas del salón, con humo
+		for (int s = -1; s <= 1; s += 2) {
+			o.sillares(s * (PALACIO + 1), PISOS[1], 5, s * (PALACIO + 1), PISOS[3] + 9, 5, false);
+			o.pon(s * (PALACIO + 1), PISOS[3] + 10, 5, Blocks.CAMPFIRE);
+		}
 	}
 
-	private boolean acacia() {
-		return estilo == AdornoCapital.SABANA || estilo == AdornoCapital.DESIERTO;
+	// ---- catacumbas ----
+
+	private void catacumbas(Obra o) {
+		Paleta p = o.p;
+		int a = PALACIO;
+		o.sillares(-a, -6, 0, a, -1, FONDO, true);
+		o.caja(-a + 1, -6, 1, a - 1, -6, FONDO - 1, p.zocalo);
+		for (int u = -a + 1; u <= a - 1; u++) {
+			for (int v = 1; v <= FONDO - 1; v++) {
+				for (int y = -5; y <= -1; y++) {
+					if (o.en(u, y, v) == null) {
+						o.pon(u, y, v, Blocks.AIR);
+					}
+				}
+			}
+		}
+		for (int u : new int[] {-8, -4, 4, 8}) {
+			for (int v : new int[] {4, 8, 12}) {
+				o.sillares(u, -5, v, u, -1, v, false);
+			}
+		}
+		// sarcófagos, con velas encima
+		for (int s = -1; s <= 1; s += 2) {
+			for (int v : new int[] {2, 6, 10}) {
+				o.caja(s * 6, -5, v, s * 6, -5, v + 1, p.moldura);
+				o.caja(s * 6, -4, v, s * 6, -4, v + 1, Obra.losa(p.piedraLosa, false));
+			}
+			o.pon(s * 6, -3, 6, Obra.velas(1 + (s > 0 ? 2 : 0)));
+		}
+		// calaveras en nichos a lo largo de las paredes
+		for (int v = 2; v <= FONDO - 2; v += 2) {
+			o.pon(a - 1, -4, v, Obra.mira(Blocks.SKELETON_WALL_SKULL, Direction.WEST));
+			if (v < 10) {
+				o.pon(-a + 1, -4, v, Obra.mira(Blocks.SKELETON_WALL_SKULL, Direction.EAST));
+			}
+		}
+		for (int u = -a + 3; u <= a - 3; u += 3) {
+			o.pon(u, -4, 1, Obra.mira(Blocks.SKELETON_WALL_SKULL, Direction.SOUTH));
+		}
+		// el altar del fondo y la luz de almas
+		o.pon(0, -5, FONDO - 1, p.moldura);
+		o.pon(0, -4, FONDO - 1, Obra.velas(4));
+		o.estandarte(0, -2, FONDO - 1, Direction.NORTH);
+		for (int v : new int[] {3, 7, 11}) {
+			o.pon(0, -1, v, Blocks.SOUL_LANTERN.defaultBlockState().setValue(BlockStateProperties.HANGING, true));
+		}
+		o.pon(a - 1, -1, 1, Blocks.COBWEB);
+		o.pon(-a + 1, -1, 1, Blocks.COBWEB);
+		o.pon(a - 1, -1, FONDO - 1, Blocks.COBWEB);
+		o.pon(-6, -5, 14, Obra.mira(Blocks.DECORATED_POT, Direction.NORTH));
 	}
 
-	private BlockState madera() {
-		return (conifera() ? Blocks.SPRUCE_PLANKS : acacia() ? Blocks.ACACIA_PLANKS : Blocks.DARK_OAK_PLANKS).defaultBlockState();
+	// ---- la torre del homenaje ----
+
+	/** Las 16 casillas de la escalera de caracol, en el sentido de las agujas del reloj desde delante a la izquierda. */
+	private static final int[][] CARACOL = {{-2, 11}, {-1, 11}, {0, 11}, {1, 11}, {2, 11}, {2, 12}, {2, 13}, {2, 14}, {2, 15},
+			{1, 15}, {0, 15}, {-1, 15}, {-2, 15}, {-2, 14}, {-2, 13}, {-2, 12}};
+	/** Desfase de la escalera: así los rellanos de cada piso caen donde hay salida al palacio. */
+	private static final int DESFASE = 8;
+
+	private void homenaje(Obra o) {
+		Paleta p = o.p;
+		int t = TORRE;
+		int arriba = 31;
+		o.sillares(-t, 1, HV - t, t, arriba, HV + t, true);
+		o.aire(-t + 1, 1, HV - t + 1, t - 1, BALCON - 1, HV + t - 1);
+		o.sillares(-1, 1, HV - 1, 1, BALCON - 1, HV + 1, false);
+		// la escalera de caracol, con zanca maciza en la primera vuelta
+		for (int s = 1; s <= BALCON; s++) {
+			int[] c = CARACOL[(s - 1 + DESFASE) % 16];
+			int[] sig = CARACOL[(s + DESFASE) % 16];
+			Direction sube = Direction.fromDelta(Integer.signum(sig[0] - c[0]), 0, Integer.signum(sig[1] - c[1]));
+			boolean rellano = s == PISOS[1] || s == PISOS[2] || s == BALCON;
+			o.pon(c[0], s, c[1], rellano ? p.tablas : Obra.escalon(p.piedraEscalon, sube == null ? Direction.NORTH : sube, false));
+			if (s > 1 && s <= 16) {
+				o.sillares(c[0], 1, c[1], c[0], s - 1, c[1], false);
+			}
+			if (rellano) {
+				salida(o, c, s);
+			}
+		}
+		salida(o, CARACOL[(DESFASE - 1) % 16], 0);
+		// ventanas a lo largo de la escalera
+		for (int y = 4; y <= 22; y += 6) {
+			o.pon(t, y, HV, Blocks.GLASS_PANE);
+			o.pon(-t, y, HV, Blocks.GLASS_PANE);
+			o.pon(0, y, HV + t, Blocks.GLASS_PANE);
+		}
+		// la sala de arriba, con su suelo (sin tapar los últimos peldaños)
+		for (int i = 0; i < CARACOL.length; i++) {
+			// el último peldaño de esta casilla: si llega a menos de dos del suelo, ahí se deja el hueco
+			int ultimo = 0;
+			for (int s = 1; s < BALCON; s++) {
+				if ((s - 1 + DESFASE) % 16 == i) {
+					ultimo = s;
+				}
+			}
+			if (ultimo < BALCON - 2) {
+				o.pon(CARACOL[i][0], BALCON, CARACOL[i][1], p.tablas);
+			}
+		}
+		o.caja(-1, BALCON, HV - 1, 1, BALCON, HV + 1, p.tablas);
+		o.aire(-t + 1, BALCON + 1, HV - t + 1, t - 1, arriba, HV + t - 1);
+		o.pon(0, arriba, HV, Obra.farolColgado());
+		o.pon(1, BALCON + 1, HV + 1, Blocks.BARREL);
+		o.pon(-1, BALCON + 1, HV + 2, Obra.mira(Blocks.CHEST, Direction.NORTH));
+		// el balcón alrededor, sobre ménsulas y con barandilla
+		int b = t + 1;
+		for (int du = -b; du <= b; du++) {
+			for (int dv = -b; dv <= b; dv++) {
+				if (Math.max(Math.abs(du), Math.abs(dv)) != b) {
+					continue;
+				}
+				o.pon(du, BALCON, HV + dv, p.moldura);
+				o.pon(du, BALCON + 1, HV + dv, p.valla);
+				if (Math.abs(du) != Math.abs(dv)) {
+					Direction adentro = Math.abs(du) == b ? (du > 0 ? Direction.WEST : Direction.EAST) : (dv > 0 ? Direction.NORTH : Direction.SOUTH);
+					o.pon(du, BALCON - 1, HV + dv, Obra.escalon(p.piedraEscalon, adentro, true));
+				}
+			}
+		}
+		for (int d = -1; d <= 1; d += 2) {
+			ventana(o, 2 * d, BALCON + 2, HV - t);
+			ventana(o, t, BALCON + 2, HV + 2 * d);
+			ventana(o, -t, BALCON + 2, HV + 2 * d);
+			ventana(o, 2 * d, BALCON + 2, HV + t);
+			o.estandarte(2 * d, arriba - 1, HV - t - 1, Direction.NORTH);
+		}
+		// cornisa y chapitel
+		o.paredes(-b, arriba + 1, HV - b, b, arriba + 1, HV + b, p.moldura);
+		o.caja(-t, arriba + 1, HV - t, t, arriba + 1, HV + t, p.tablas);
+		o.chapitel(0, HV, arriba + 2, b);
+		// torrecillas en las esquinas de delante del palacio
+		for (int s = -1; s <= 1; s += 2) {
+			int cu = s * PALACIO;
+			o.sillares(cu - 1, 1, -2, cu + 1, 20, 0, false);
+			o.pon(cu + s, 8, -1, Blocks.GLASS_PANE);
+			o.pon(cu, 13, -2, Blocks.GLASS_PANE);
+			o.caja(cu - 2, 21, -3, cu + 2, 21, 1, p.moldura);
+			o.chapitel(cu, -1, 22, 2);
+		}
 	}
 
-	private Block maderaEscalon() {
-		return conifera() ? Blocks.SPRUCE_STAIRS : acacia() ? Blocks.ACACIA_STAIRS : Blocks.DARK_OAK_STAIRS;
-	}
-
-	private BlockState maderaLosa() {
-		return (conifera() ? Blocks.SPRUCE_SLAB : acacia() ? Blocks.ACACIA_SLAB : Blocks.DARK_OAK_SLAB).defaultBlockState();
-	}
-
-	private BlockState valla() {
-		return (conifera() ? Blocks.SPRUCE_FENCE : acacia() ? Blocks.ACACIA_FENCE : Blocks.DARK_OAK_FENCE).defaultBlockState();
-	}
-
-	private Block maderaPuerta() {
-		return conifera() ? Blocks.SPRUCE_DOOR : acacia() ? Blocks.ACACIA_DOOR : Blocks.DARK_OAK_DOOR;
-	}
-
-	private static BlockState aire() {
-		return Blocks.AIR.defaultBlockState();
+	/** Puerta desde el rellano de la escalera (casilla c, a la altura s) hacia fuera de la torre. */
+	private void salida(Obra o, int[] c, int s) {
+		int u = Math.abs(c[0]) == 2 ? c[0] + Integer.signum(c[0]) : c[0];
+		int v = Math.abs(c[0]) == 2 ? c[1] : c[1] == HV - 2 ? HV - TORRE : HV + TORRE;
+		o.aire(u, s + 1, v, u, s + 2, v);
 	}
 }
