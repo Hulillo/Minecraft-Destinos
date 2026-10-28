@@ -13,8 +13,8 @@ import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
 /**
  * Una casa noble de la capital, mirando a la plaza mayor: planta baja de piedra con el salón (chimenea, sillones,
  * estantería) y la cocina, y encima un piso de entramado en voladizo con dos dormitorios, unidos por una escalera de
- * verdad. Tejado a dos aguas con el hastial hacia la plaza y chimenea con humo (en el desierto, todo de arenisca y
- * con azotea almenada).
+ * verdad, y bajo el tejado un desván forrado de madera al que se sube por una escala. Tejado a dos aguas con el
+ * hastial hacia la plaza y chimenea con humo (en el desierto, todo de arenisca y con azotea almenada).
  */
 public final class CasaNoble extends PiezaObra {
 	public static final StructurePieceType TIPO = (StructurePieceType.ContextlessType) CasaNoble::new;
@@ -28,8 +28,8 @@ public final class CasaNoble extends PiezaObra {
 	private static final int TEJADO = 10;
 	private static final int ALTO = 17;
 
-	CasaNoble(int cx, int cz, int y0, int rot, int estilo, int color) {
-		super(TIPO, cx, cz, y0, rot, estilo, color, FONDO, ALTO);
+	CasaNoble(int cx, int cz, int y0, int rot, int estilo, int madera, int color) {
+		super(TIPO, cx, cz, y0, rot, estilo, madera, color, FONDO, ALTO);
 	}
 
 	private CasaNoble(CompoundTag t) {
@@ -87,6 +87,9 @@ public final class CasaNoble extends PiezaObra {
 		cocina(o);
 		dormitorios(o);
 		tejado(o);
+		if (!p.desierto) {
+			desvan(o);
+		}
 	}
 
 	private static void ventana(Obra o, int u, int ly, int v) {
@@ -190,6 +193,27 @@ public final class CasaNoble extends PiezaObra {
 		o.pon(-2, TEJADO - 1, 2, Obra.farolColgado());
 	}
 
+	/** El desván: se sube por una escala desde el cuarto de detrás; trastos, la cama del criado y faroles en la viga. */
+	private void desvan(Obra o) {
+		int y = TEJADO + 1;
+		BlockState escala = Obra.mira(Blocks.LADDER, Direction.NORTH);
+		o.caja(2, PISO + 1, LARGO - 1, 2, TEJADO, LARGO - 1, escala);
+		o.pon(-2, y, -5, Blocks.BARREL);
+		o.pon(-2, y + 1, -5, Blocks.BARREL);
+		o.pon(-1, y, -5, Blocks.BARREL);
+		o.pon(1, y, -5, Obra.mira(Blocks.CHEST, Direction.SOUTH));
+		o.pon(2, y, -4, Blocks.HAY_BLOCK);
+		o.pon(-2, y, -2, Obra.mira(Blocks.DECORATED_POT, Direction.EAST));
+		o.cama(0, y, 3, Direction.SOUTH, Blocks.WHITE_BED);
+		o.pon(-1, y, 3, Blocks.BARREL);
+		o.pon(-1, y + 1, 3, Obra.velas(1));
+		o.caja(-1, y, -1, 1, y, 1, Blocks.BROWN_CARPET);
+		o.pon(0, TEJADO + 4, -3, Obra.farolColgado());
+		o.pon(0, TEJADO + 4, 2, Obra.farolColgado());
+		o.pon(-1, TEJADO + 3, -6, Blocks.COBWEB);
+		o.pon(1, TEJADO + 3, 5, Blocks.COBWEB);
+	}
+
 	/** Tejado a dos aguas con el hastial hacia la plaza y la chimenea por fuera (en el desierto, azotea). */
 	private void tejado(Obra o) {
 		Paleta p = o.p;
@@ -205,9 +229,8 @@ public final class CasaNoble extends PiezaObra {
 				}
 			}
 		} else {
+			o.caja(-a + 1, TEJADO, -l, a - 1, TEJADO, l - 1, p.tablas);
 			o.dosAguas(-a - 1, -l - 2, a + 1, l + 1, TEJADO, true, p.enlucido);
-			o.pon(0, TEJADO + 2, -l - 1, Blocks.GLASS_PANE);
-			o.pon(0, TEJADO + 3, -l - 1, Blocks.GLASS_PANE);
 		}
 		o.sillares(-a - 1, 0, -3, -a - 1, TEJADO + 3, -3, false);
 		o.pon(-a - 1, TEJADO + 4, -3, Blocks.CAMPFIRE);

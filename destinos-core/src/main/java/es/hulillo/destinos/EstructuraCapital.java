@@ -54,7 +54,8 @@ public final class EstructuraCapital extends Structure {
 	/** Largo de cada tramo de calle entre el centro y un barrio. */
 	private static final int TRAMO = 16;
 	/** A qué distancias de la plaza (en un eje) se prueba el castillo de las capitales ricas, de más cerca a más lejos. */
-	private static final int[] DISTANCIAS_CASTILLO = {46, 58};
+	private static final int[] DISTANCIAS_CASTILLO = {AdornoCapital.PLAZA + CastilloCapital.MEDIO + 4,
+			AdornoCapital.PLAZA + CastilloCapital.MEDIO + 16};
 	/** Agua seguida que puede cruzar una calle (con tablones); más, y esa calle no se hace. */
 	private static final int MAX_AGUA_CALLE = 8;
 
@@ -157,12 +158,13 @@ public final class EstructuraCapital extends Structure {
 			tinte = AdornoCapital.tinte(Geo.colorReino(reino.kx(), reino.kz(), mapa.sal()));
 		}
 		int color = tinte;
+		int madera = Paleta.madera(estilo, bioma.getRegisteredName(), Geo.hash(principal.position().getX(), principal.position().getZ(), 5813));
 		// y las capitales ricas, su castillo dentro de la muralla
-		Optional<CastilloCapital> castillo = nivel == 2 ? castillo(ctx, agua, principal, estilo, color) : Optional.empty();
+		Optional<CastilloCapital> castillo = nivel == 2 ? castillo(ctx, agua, principal, estilo, madera, color) : Optional.empty();
 		int techo = ctx.heightAccessor().getMinY() + ctx.heightAccessor().getHeight() - 1;
 		// el barrio noble: casas nobles mirando a la plaza mayor, más cuanto más rica es la capital
 		List<StructurePiece> grandes = new ArrayList<>(castillo.stream().toList());
-		List<CasaNoble> nobles = nobles(ctx, agua, principal, nivel == 2 ? 4 : nivel == 1 ? 2 : 0, estilo, color, grandes);
+		List<CasaNoble> nobles = nobles(ctx, agua, principal, nivel == 2 ? 4 : nivel == 1 ? 2 : 0, estilo, madera, color, grandes);
 		grandes.addAll(nobles);
 		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
 			List<StructurePiece> puestas = new ArrayList<>();
@@ -220,7 +222,7 @@ public final class EstructuraCapital extends Structure {
 	 * Dónde va el castillo: a un lado de la plaza (norte, este, sur u oeste, primero cerca), sin tocar la plaza ni el
 	 * agua, y donde quite menos casas del centro. Con la puerta hacia la plaza.
 	 */
-	private static Optional<CastilloCapital> castillo(Structure.GenerationContext ctx, Agua agua, Montado principal, int estilo, int color) {
+	private static Optional<CastilloCapital> castillo(Structure.GenerationContext ctx, Agua agua, Montado principal, int estilo, int madera, int color) {
 		int px = principal.position().getX();
 		int pz = principal.position().getZ();
 		CastilloCapital mejor = null;
@@ -229,7 +231,7 @@ public final class EstructuraCapital extends Structure {
 			for (int[] d : CRUZ) {
 				int x = px + d[0] * distancia;
 				int z = pz + d[1] * distancia;
-				CastilloCapital c = new CastilloCapital(x, z, suelo(ctx, x, z), CastilloCapital.giroHacia(-d[0], -d[1]), estilo, color);
+				CastilloCapital c = new CastilloCapital(x, z, suelo(ctx, x, z), CastilloCapital.giroHacia(-d[0], -d[1]), estilo, madera, color);
 				if (agua.toca(c) || enPlanta(c, principal.piezas().get(0))) {
 					continue;
 				}
@@ -276,7 +278,7 @@ public final class EstructuraCapital extends Structure {
 	 * ocho direcciones, sin tocar el agua, la plaza ni otras piezas grandes (el castillo, otras casas nobles), y
 	 * primero donde quitan menos casas del pueblo.
 	 */
-	private static List<CasaNoble> nobles(Structure.GenerationContext ctx, Agua agua, Montado principal, int n, int estilo, int color,
+	private static List<CasaNoble> nobles(Structure.GenerationContext ctx, Agua agua, Montado principal, int n, int estilo, int madera, int color,
 			List<StructurePiece> grandes) {
 		List<CasaNoble> elegidas = new ArrayList<>();
 		if (n == 0) {
@@ -291,7 +293,7 @@ public final class EstructuraCapital extends Structure {
 			double largo = Math.hypot(d[0], d[1]);
 			int x = px + (int) Math.round(d[0] / largo * distancia);
 			int z = pz + (int) Math.round(d[1] / largo * distancia);
-			CasaNoble c = new CasaNoble(x, z, suelo(ctx, x, z), CastilloCapital.giroHacia(-d[0], -d[1]), estilo, color);
+			CasaNoble c = new CasaNoble(x, z, suelo(ctx, x, z), CastilloCapital.giroHacia(-d[0], -d[1]), estilo, madera, color);
 			if (agua.toca(c) || enPlanta(c, principal.piezas().get(0)) || grandes.stream().anyMatch(g -> enPlanta(g, c))) {
 				continue;
 			}

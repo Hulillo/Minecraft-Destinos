@@ -20,6 +20,7 @@ import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.block.state.properties.Half;
 import net.minecraft.world.level.block.state.properties.SlabType;
+import net.minecraft.world.level.block.state.properties.StairsShape;
 import net.minecraft.world.level.block.state.properties.WallSide;
 
 /**
@@ -65,8 +66,8 @@ final class Obra {
 		}
 	}
 
-	Obra(int estilo, int color, int alto, int semilla) {
-		this.p = Paleta.de(estilo);
+	Obra(int estilo, int madera, int color, int alto, int semilla) {
+		this.p = Paleta.de(estilo, madera);
 		this.color = color;
 		this.alto = alto;
 		this.semilla = semilla;
@@ -185,7 +186,16 @@ final class Obra {
 	}
 
 	static BlockState tronco(Block b, Direction.Axis eje) {
-		return b.defaultBlockState().setValue(BlockStateProperties.AXIS, eje);
+		BlockState s = b.defaultBlockState();
+		return s.hasProperty(BlockStateProperties.AXIS) ? s.setValue(BlockStateProperties.AXIS, eje) : s;
+	}
+
+	/** Peldaño de esquina (forma de fuera) con el cuarto alto hacia la diagonal (hu, hv): las aristas de los chapiteles. */
+	static BlockState esquina(Block b, int hu, int hv) {
+		Direction mira = hv > 0 ? Direction.SOUTH : Direction.NORTH;
+		Direction lado = hu > 0 ? Direction.EAST : Direction.WEST;
+		StairsShape forma = mira.getCounterClockWise() == lado ? StairsShape.OUTER_LEFT : StairsShape.OUTER_RIGHT;
+		return escalon(b, mira, false).setValue(BlockStateProperties.STAIRS_SHAPE, forma);
 	}
 
 	/** Trampilla: cerrada arriba (tablero) o abierta pegada al lado contrario de mira (brazos, contraventanas). */
@@ -247,36 +257,73 @@ final class Obra {
 	}
 
 	/**
-	 * Tejado a dos aguas sobre el rectángulo [u1, u2] × [v1, v2] (ya con el alero), arrancando en ly. a lo largo de v
-	 * (cumbrera paralela a v) o de u. Los hastiales se cierran con hastial (o se dejan si es null).
+	 * Tejado a dos aguas sobre el rectángulo [u1, u2] × [v1, v2] (ya con el alero), arrancando en ly; a lo largo de v
+	 * (cumbrera paralela a v) o de u. Doble capa: por fuera peldaños del tejado y por dentro peldaños del revés de
+	 * madera, así el desván queda forrado y sin escalones a la vista. Lleva ménsulas bajo el alero, bordes en los
+	 * hastiales y cumbrera del remate, y viga de cumbrera por dentro. Los hastiales se cierran con hastial (con
+	 * entramado y ventanas si es el enlucido), o se dejan si es null.
 	 */
 	void dosAguas(int u1, int v1, int u2, int v2, int ly, boolean aLoLargoDeV, BlockState hastial) {
 		int ua = Math.min(u1, u2), ub = Math.max(u1, u2), va = Math.min(v1, v2), vb = Math.max(v1, v2);
 		int ancho = aLoLargoDeV ? ub - ua : vb - va;
+		int largo = aLoLargoDeV ? vb - va : ub - ua;
+		boolean entramado = hastial != null && hastial.equals(p.enlucido) && !p.desierto;
 		for (int d = 0; 2 * d <= ancho; d++) {
 			int y = ly + d;
+			boolean unaFila = 2 * d == ancho;
 			boolean cumbre = 2 * d >= ancho - 1;
-			for (int k = 0; k <= (aLoLargoDeV ? vb - va : ub - ua); k++) {
-				for (int lado = 0; lado < 2; lado++) {
+			for (int k = 0; k <= largo; k++) {
+				boolean borde = k == 0 || k == largo;
+				for (int lado = 0; lado < (unaFila ? 1 : 2); lado++) {
 					int a = lado == 0 ? d : ancho - d;
 					int u = aLoLargoDeV ? ua + a : ua + k;
 					int v = aLoLargoDeV ? va + k : va + a;
 					Direction alto = aLoLargoDeV ? (lado == 0 ? Direction.EAST : Direction.WEST)
 							: (lado == 0 ? Direction.SOUTH : Direction.NORTH);
-					pon(u, y, v, cumbre ? p.tejadoLleno : escalon(p.tejadoEscalon, alto, false));
+					if (unaFila) {
+						Direction.Axis eje = aLoLargoDeV ? Direction.Axis.Z : Direction.Axis.X;
+						pon(u, y, v, borde ? tronco(p.remateTronco, eje) : p.tejadoLleno);
+						if (!borde && d > 0 && vacio(u, y - 1, v)) {
+							pon(u, y - 1, v, tronco(p.troncoPelado, eje));
+						}
+					} else {
+						pon(u, y, v, escalon(borde ? p.remateEscalon : p.tejadoEscalon, alto, false));
+						// la capa de dentro (en los bordes, el canto del alero), solo donde no hay nada
+						if (d > 0 && vacio(u, y - 1, v)) {
+							pon(u, y - 1, v, escalon(borde ? p.remateEscalon : p.maderaEscalon, alto.getOpposite(), true));
+						}
+					}
+					// la cumbrera por encima
+					if (cumbre) {
+						pon(u, y + 1, v, losa(p.remateLosa, false));
+					}
+					// ménsulas bajo el alero, una sí y otra no
+					if (d == 0 && !borde && k % 2 == 1 && vacio(u, y - 1, v)) {
+						pon(u, y - 1, v, escalon(p.remateEscalon, alto, true));
+					}
 				}
 				// los hastiales: el triángulo de los dos extremos, por dentro del alero
-				if (hastial != null && (k == 1 || k == (aLoLargoDeV ? vb - va : ub - ua) - 1)) {
+				if (hastial != null && (k == 1 || k == largo - 1)) {
 					for (int a = d + 1; a < ancho - d; a++) {
 						int u = aLoLargoDeV ? ua + a : ua + k;
 						int v = aLoLargoDeV ? va + k : va + a;
-						pon(u, y, v, hastial);
+						BlockState b = hastial;
+						if (entramado) {
+							if (ancho % 2 == 0 && 2 * a == ancho) {
+								b = tronco(p.tronco, Direction.Axis.Y);
+							} else if (d == 0) {
+								b = tronco(p.tronco, aLoLargoDeV ? Direction.Axis.X : Direction.Axis.Z);
+							} else if (d == 2 && ancho >= 10 && Math.abs(2 * a - ancho) == 4) {
+								b = Blocks.GLASS_PANE.defaultBlockState();
+							}
+						}
+						pon(u, y, v, b);
 					}
 				}
 			}
 			// bajo los peldaños, el desván vacío (sin tapar lo que ya hubiera debajo de la primera fila)
 			if (d > 0) {
-				for (int k = 2; k < (aLoLargoDeV ? vb - va : ub - ua) - 1; k++) {
+				for (int k = 2; k < largo - 1; k++) {
 					for (int a = d; a <= ancho - d; a++) {
 						int u = aLoLargoDeV ? ua + a : ua + k;
 						int v = aLoLargoDeV ? va + k : va + a;
@@ -290,36 +337,76 @@ final class Obra {
 	}
 
 	/**
-	 * Chapitel: tejado de pirámide empinado, de medio lado h, centrado en (cu, cv) y arrancando en ly; cada anillo
-	 * lleva peldaños y encima una fila llena, y en la punta la aguja con el estandarte. En el desierto, cúpula.
+	 * Chapitel: tejado de pirámide de radio h en el alero, centrado en (cu, cv) y arrancando en ly. Abajo se abre en
+	 * campana (dos anillos de peldaños) y luego sube empinado; las aristas van del remate, con troncos y peldaños de
+	 * esquina, lleva ménsulas bajo el alero, lucernas en las cuatro caras y en la punta la aguja con el estandarte.
+	 * En el desierto, cúpula.
 	 */
 	void chapitel(int cu, int cv, int ly, int h) {
 		if (p.desierto) {
 			cupula(cu, cv, ly, h);
 			return;
 		}
-		int y = ly;
-		for (int r = h; r >= 1; r--) {
-			anillo(cu, cv, y, r, true);
-			anillo(cu, cv, y + 1, r, false);
+		anillo(cu, cv, ly, h, true);
+		for (int du = -h + 1; du < h; du += 2) {
+			if (vacio(cu + du, ly - 1, cv - h)) {
+				pon(cu + du, ly - 1, cv - h, escalon(p.remateEscalon, Direction.SOUTH, true));
+			}
+			if (vacio(cu + du, ly - 1, cv + h)) {
+				pon(cu + du, ly - 1, cv + h, escalon(p.remateEscalon, Direction.NORTH, true));
+			}
+			if (vacio(cu - h, ly - 1, cv + du)) {
+				pon(cu - h, ly - 1, cv + du, escalon(p.remateEscalon, Direction.EAST, true));
+			}
+			if (vacio(cu + h, ly - 1, cv + du)) {
+				pon(cu + h, ly - 1, cv + du, escalon(p.remateEscalon, Direction.WEST, true));
+			}
+		}
+		int y = ly + 1;
+		if (h > 1) {
+			anillo(cu, cv, y++, h - 1, true);
+		}
+		for (int r = h - 2; r >= 1; r--) {
+			anillo(cu, cv, y, r, false);
+			// lucernas en el primer anillo empinado
+			if (r == h - 2 && r >= 2) {
+				pon(cu, y, cv - r, Blocks.GLASS_PANE);
+				pon(cu, y, cv + r, Blocks.GLASS_PANE);
+				pon(cu - r, y, cv, Blocks.GLASS_PANE);
+				pon(cu + r, y, cv, Blocks.GLASS_PANE);
+			}
+			anillo(cu, cv, y + 1, r, true);
 			y += 2;
 		}
-		pon(cu, y, cv, p.tejadoLleno);
+		pon(cu, y, cv, tronco(p.remateTronco, Direction.Axis.Y));
 		aguja(cu, y + 1, cv);
 	}
 
+	/** Un anillo del chapitel: de peldaños hacia dentro, o lleno; las esquinas siempre del remate. */
 	private void anillo(int cu, int cv, int y, int r, boolean peldanos) {
 		for (int u = -r; u <= r; u++) {
 			for (int v = -r; v <= r; v++) {
 				if (Math.max(Math.abs(u), Math.abs(v)) != r) {
 					continue;
 				}
-				BlockState b = p.tejadoLleno;
-				if (peldanos && Math.abs(u) != Math.abs(v)) {
+				BlockState b;
+				if (Math.abs(u) == Math.abs(v)) {
+					b = peldanos ? esquina(p.remateEscalon, -Integer.signum(u), -Integer.signum(v)) : tronco(p.remateTronco, Direction.Axis.Y);
+				} else if (peldanos) {
 					Direction alto = Math.abs(u) == r ? (u > 0 ? Direction.WEST : Direction.EAST) : (v > 0 ? Direction.NORTH : Direction.SOUTH);
 					b = escalon(p.tejadoEscalon, alto, false);
+				} else {
+					b = p.tejadoLleno;
 				}
 				pon(cu + u, y, cv + v, b);
+			}
+		}
+		// por dentro, hueco
+		for (int u = -r + 1; u <= r - 1; u++) {
+			for (int v = -r + 1; v <= r - 1; v++) {
+				if (en(cu + u, y, cv + v) == null) {
+					pon(cu + u, y, cv + v, Blocks.AIR);
+				}
 			}
 		}
 	}

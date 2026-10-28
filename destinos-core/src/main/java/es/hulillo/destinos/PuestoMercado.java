@@ -17,7 +17,7 @@ final class PuestoMercado {
 	}
 
 	static Obra construye(int tipo, int estilo, int color, int semilla) {
-		Obra o = new Obra(estilo, color, ALTO, semilla);
+		Obra o = new Obra(estilo, -1, color, ALTO, semilla);
 		switch (Math.floorMod(tipo, TIPOS)) {
 			case 0 -> toldo(o);
 			case 1 -> verduras(o);

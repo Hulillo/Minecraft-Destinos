@@ -31,17 +31,20 @@ abstract class PiezaObra extends StructurePiece {
 	protected final int y0;
 	protected final int rot;
 	protected final int estilo;
+	/** La madera de la capital (Paleta.madera), o -1 en las guardadas antes: la de la cultura. */
+	protected final int madera;
 	/** Color del reino (id de DyeColor), o -1 si no se sabe. */
 	protected final int color;
 	private Obra obra;
 
-	PiezaObra(StructurePieceType tipo, int cx, int cz, int y0, int rot, int estilo, int color, int medio, int alto) {
+	PiezaObra(StructurePieceType tipo, int cx, int cz, int y0, int rot, int estilo, int madera, int color, int medio, int alto) {
 		super(tipo, 0, new BoundingBox(cx - medio, y0, cz - medio, cx + medio, y0 + alto, cz + medio));
 		this.cx = cx;
 		this.cz = cz;
 		this.y0 = y0;
 		this.rot = rot;
 		this.estilo = estilo;
+		this.madera = madera;
 		this.color = color;
 	}
 
@@ -53,6 +56,7 @@ abstract class PiezaObra extends StructurePiece {
 		rot = t.getIntOr("rot", 0);
 		// los castillos guardados antes de los estilos solo sabían si eran del desierto
 		estilo = t.getIntOr("estilo", t.getIntOr("desierto", 0) != 0 ? AdornoCapital.DESIERTO : AdornoCapital.TEMPLADO);
+		madera = t.getIntOr("madera", -1);
 		color = t.getIntOr("color", -1);
 	}
 
@@ -63,6 +67,7 @@ abstract class PiezaObra extends StructurePiece {
 		t.putInt("y0", y0);
 		t.putInt("rot", rot);
 		t.putInt("estilo", estilo);
+		t.putInt("madera", madera);
 		t.putInt("color", color);
 	}
 
@@ -76,7 +81,7 @@ abstract class PiezaObra extends StructurePiece {
 
 	private synchronized Obra obra() {
 		if (obra == null) {
-			Obra o = new Obra(estilo, color, alto(), Geo.hash(cx, cz, 7919));
+			Obra o = new Obra(estilo, madera, color, alto(), Geo.hash(cx, cz, 7919));
 			construye(o);
 			o.conecta();
 			obra = o;
