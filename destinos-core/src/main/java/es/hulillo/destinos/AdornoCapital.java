@@ -15,6 +15,7 @@ import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.WallBannerBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkGenerator;
@@ -377,37 +378,66 @@ public final class AdornoCapital extends StructurePiece {
 				level.getBlockState(pos.set(x + 1, y + 4, z)));
 	}
 
-	/** Puesto de mercado de 3×2 con toldo a rayas del color del reino, si cabe en plaza libre y llana. */
+	/**
+	 * Un puesto de mercado (de toldo, de verduras, de flores o un carro; ver PuestoMercado) con el mostrador hacia el
+	 * centro de la plaza, si cabe en plaza libre y llana. Se arrima un poco para caber entero en este chunk: así lo
+	 * pone uno solo y nunca queda a medias.
+	 */
 	private void puesto(WorldGenLevel level, BoundingBox caja, BlockPos.MutableBlockPos pos, int x, int z, int h) {
-		if (!dentro(caja, x - 1, z - 1, x + 1, z)) {
+		if (!dentro(caja, x, z, x, z)) {
 			return;
 		}
+		x = Math.clamp(x, caja.minX() + 2, caja.maxX() - 2);
+		z = Math.clamp(z, caja.minZ() + 2, caja.maxZ() - 2);
+		int hx = px - x;
+		int hz = pz - z;
+		int rot = Math.abs(hx) >= Math.abs(hz) ? (hx > 0 ? 1 : 3) : (hz > 0 ? 2 : 0);
+		Rotation giro = switch (rot) {
+			case 1 -> Rotation.CLOCKWISE_90;
+			case 2 -> Rotation.CLOCKWISE_180;
+			case 3 -> Rotation.COUNTERCLOCKWISE_90;
+			default -> Rotation.NONE;
+		};
+		Obra o = PuestoMercado.construye(h, estilo, color, h);
 		int y = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
-		for (int ox = -1; ox <= 1; ox++) {
-			for (int oz = -1; oz <= 0; oz++) {
-				int sy = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x + ox, z + oz) - 1;
-				if (sy != y || !empedrado(level.getBlockState(pos.set(x + ox, y, z + oz))) || !libre(level, pos, x + ox, y + 1, z + oz, 4)) {
-					return;
+		for (int fase = 0; fase < 2; fase++) {
+			for (int u = -2; u <= 2; u++) {
+				for (int v = -2; v <= 1; v++) {
+					Obra.Columna c = o.columna(u, v);
+					if (c == null) {
+						continue;
+					}
+					// de lo local al mundo
+					int wx = x + switch (rot) {
+						case 1 -> -v;
+						case 2 -> -u;
+						case 3 -> v;
+						default -> u;
+					};
+					int wz = z + switch (rot) {
+						case 1 -> u;
+						case 2 -> -v;
+						case 3 -> -u;
+						default -> v;
+					};
+					if (fase == 0) {
+						int sy = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, wx, wz) - 1;
+						if (sy != y || !empedrado(level.getBlockState(pos.set(wx, y, wz)))
+								|| !libre(level, pos, wx, y + 1, wz, PuestoMercado.ALTO - 1)) {
+							return;
+						}
+						continue;
+					}
+					for (int ly = 1; ly < PuestoMercado.ALTO; ly++) {
+						BlockState b = c.get(ly);
+						if (b != null) {
+							level.setBlock(new BlockPos(wx, y + ly, wz), b.rotate(giro), 2);
+						}
+					}
 				}
 			}
 		}
-		BlockState poste = (estilo == SABANA ? Blocks.ACACIA_FENCE : estilo == TAIGA || estilo == NIEVE ? Blocks.SPRUCE_FENCE
-				: estilo == DESIERTO ? Blocks.BIRCH_FENCE : Blocks.OAK_FENCE).defaultBlockState();
-		Block raya = color >= 0 ? bloque("wool") : Blocks.RED_WOOL;
-		for (int ox = -1; ox <= 1; ox++) {
-			for (int oz = -1; oz <= 0; oz++) {
-				if (ox != 0) {
-					level.setBlock(pos.set(x + ox, y + 1, z + oz), poste, 2);
-					level.setBlock(pos.set(x + ox, y + 2, z + oz), poste, 2);
-				}
-				level.setBlock(pos.set(x + ox, y + 3, z + oz), (ox == 0 ? Blocks.WHITE_WOOL : raya).defaultBlockState(), 2);
-			}
-		}
-		// el mostrador: un barril y algo de lo que se vende
-		Block[] mercancia = {Blocks.HAY_BLOCK, Blocks.MELON, Blocks.PUMPKIN, Blocks.COMPOSTER, Blocks.SMOKER, Blocks.FLETCHING_TABLE};
-		level.setBlock(new BlockPos(x, y + 1, z), Blocks.BARREL.defaultBlockState(), 2);
-		DestinosCore.LOG.info("Destinos Core: puesto de mercado en {}, {}, {}", x, y, z);
-		level.setBlock(pos.set(x, y + 1, z - 1), mercancia[Math.floorMod(h, mercancia.length)].defaultBlockState(), 2);
+		DestinosCore.LOG.info("Destinos Core: puesto de mercado en {}, {}, {} (tipo {})", x, y, z, Math.floorMod(h, PuestoMercado.TIPOS));
 	}
 
 	/** El bloque del color del reino de ese tipo (wool, wall_banner…). */
