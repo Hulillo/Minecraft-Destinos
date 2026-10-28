@@ -51,13 +51,11 @@ public final class EstructuraCapital extends Structure {
 	/** De las farolas sueltas del pueblo se deja una de cada tantas. */
 	private static final int FAROLAS = 4;
 	private static final int K_FAROLAS = 6619;
-	/** Largo de cada tramo de calle entre el centro y un barrio. */
+	/** Largo de cada tramo de las avenidas del plano. */
 	private static final int TRAMO = 16;
 	/** A qué distancias de la plaza (en un eje) se prueba el castillo de las capitales ricas, de más cerca a más lejos. */
 	private static final int[] DISTANCIAS_CASTILLO = {AdornoCapital.PLAZA + CastilloCapital.MEDIO + 4,
 			AdornoCapital.PLAZA + CastilloCapital.MEDIO + 16};
-	/** Agua seguida que puede cruzar una calle (con tablones); más, y esa calle no se hace. */
-	private static final int MAX_AGUA_CALLE = 8;
 
 	/** Capitales ya preparadas, por chunk (las últimas; hay pocas y se piden varias veces seguidas). */
 	private static final Map<Long, Optional<Structure.GenerationStub>> PREPARADAS = new LinkedHashMap<>(16, 0.75F, true) {
@@ -134,13 +132,8 @@ public final class EstructuraCapital extends Structure {
 				}
 			}
 		}
-		// calles del centro a cada barrio, para que no queden como pueblos sueltos
-		// (solo por tierra: una calle que tendría que cruzar un lago o un brazo de mar no se hace)
-		List<List<CalleCapital>> calles = new ArrayList<>();
-		for (Montado b : barrios) {
-			calles.add(calles(ctx, agua, principal.position().getX(), principal.position().getZ(), b.position().getX(),
-					b.position().getZ()));
-		}
+		// el plano de calles: la cruz de avenidas y la ronda; de los pueblos solo se queda lo que da a ellas
+		PlanoCapital plano = new PlanoCapital(principal.position().getX(), principal.position().getZ());
 		// la muralla, según lo rico que es el reino (con /place, sin capital en el mapa: normal)
 		MapaTerreno.Capital esta = ColocacionCapital.capitalEn(ctx.chunkPos().x, ctx.chunkPos().z);
 		int nivel = esta != null ? esta.nivel() : 1;
@@ -169,6 +162,7 @@ public final class EstructuraCapital extends Structure {
 		mercado.ifPresent(grandes::add);
 		List<CasaNoble> nobles = nobles(ctx, agua, principal, nivel == 2 ? 4 : nivel == 1 ? 2 : 0, estilo, madera, color, grandes);
 		grandes.addAll(nobles);
+		List<CalleCapital> calles = callesDelPlano(ctx, agua, principal.position().getX(), principal.position().getZ(), grandes);
 		return Optional.of(new Structure.GenerationStub(principal.position(), piezas -> {
 			List<StructurePiece> puestas = new ArrayList<>();
 			for (StructurePiece c : grandes) {
@@ -181,28 +175,27 @@ public final class EstructuraCapital extends Structure {
 				// la plaza siempre; el resto, si no está metido en el mar (calles y casas flotando) ni en el castillo, y
 				// sin casas en la plaza mayor (las calles sí: se enlosan)
 				if (i == 0 || !agua.tapa(pieza) && grandes.stream().noneMatch(c -> enPlanta(c, pieza))
-						&& !(casa(pieza) && cerca(pieza, principal.position(), AdornoCapital.PLAZA)) && !farolaDeSobra(pieza)) {
+						&& !(casa(pieza) && cerca(pieza, principal.position(), AdornoCapital.PLAZA)) && !farolaDeSobra(pieza)
+						&& (casa(pieza) ? plano.casa(pieza.getBoundingBox()) : plano.calle(pieza.getBoundingBox()))) {
 					puestas.add(pieza);
 					piezas.addPiece(pieza);
 				}
 			}
-			int enCalles = 0;
-			for (int i = 0; i < barrios.size(); i++) {
-				int antes = puestas.size();
-				for (StructurePiece pieza : barrios.get(i).piezas()) {
-					// una pieza de barrio que choca con algo ya puesto o cae en el agua se queda fuera
-					if (!agua.tapa(pieza) && puestas.stream().noneMatch(otra -> otra.getBoundingBox().intersects(pieza.getBoundingBox()))
+			for (Montado b : barrios) {
+				for (StructurePiece pieza : b.piezas()) {
+					// una pieza de barrio que choca con algo ya puesto, cae en el agua o no da a ninguna calle del
+					// plano se queda fuera (de los barrios solo quedan casas: sus calles no son del centro)
+					if (!agua.tapa(pieza) && casa(pieza) && plano.casa(pieza.getBoundingBox())
+							&& puestas.stream().noneMatch(otra -> otra.getBoundingBox().intersects(pieza.getBoundingBox()))
 							&& grandes.stream().noneMatch(c -> enPlanta(c, pieza)) && !farolaDeSobra(pieza)) {
 						puestas.add(pieza);
 						piezas.addPiece(pieza);
 					}
 				}
-				// la calle, solo hasta barrios que de verdad tienen casas
-				if (puestas.size() - antes >= 3) {
-					calles.get(i).forEach(piezas::addPiece);
-					enCalles += calles.get(i).size();
-				}
 			}
+			// las calles del plano, antes que la muralla: así la muralla les abre las puertas
+			calles.forEach(piezas::addPiece);
+			int enCalles = calles.size();
 			// la muralla al final, para que vea las calles y casas ya puestas y les deje hueco. Ningún trozo que toque
 			// el agua: cada pieza allana el terreno bajo su caja, y sobre el mar eso levantaba un anillo de tierra
 			List<StructurePiece> enMuralla = muralla.stream().filter(pieza -> !agua.toca(pieza)).toList();
@@ -329,6 +322,10 @@ public final class EstructuraCapital extends Structure {
 		List<CasaNoble> sitios = new ArrayList<>();
 		List<Long> quitan = new ArrayList<>();
 		for (int[] d : OCHO) {
+			// en las diagonales: los cuatro lados de la plaza son para las avenidas
+			if (d[0] == 0 || d[1] == 0) {
+				continue;
+			}
 			double largo = Math.hypot(d[0], d[1]);
 			int x = px + (int) Math.round(d[0] / largo * distancia);
 			int z = pz + (int) Math.round(d[1] / largo * distancia);
@@ -552,25 +549,36 @@ public final class EstructuraCapital extends Structure {
 	}
 
 	/** Tramos de calle de (x0, z0) a (x1, z1), cada uno a la altura del suelo en su mitad. */
-	private static List<CalleCapital> calles(Structure.GenerationContext ctx, Agua agua, int x0, int z0, int x1, int z1) {
+	/**
+	 * Las calles del plano (ver PlanoCapital): las cuatro avenidas, de la plaza hasta pasada la muralla, y la ronda
+	 * por dentro del muro, en tramos. Sin los tramos que caen sobre el agua o dentro de una pieza grande (el castillo,
+	 * el mercado, las casas nobles): la avenida sigue al otro lado.
+	 */
+	private static List<CalleCapital> callesDelPlano(Structure.GenerationContext ctx, Agua agua, int cx, int cz, List<StructurePiece> grandes) {
 		List<CalleCapital> calles = new ArrayList<>();
-		int largo = Math.max(Math.abs(x1 - x0), Math.abs(z1 - z0));
-		int seguidos = 0;
-		for (int d = 0; d <= largo; d += 4) {
-			seguidos = agua.en(x0 + (x1 - x0) * d / Math.max(1, largo), z0 + (z1 - z0) * d / Math.max(1, largo)) ? seguidos + 1 : 0;
-			if (seguidos > MAX_AGUA_CALLE / 4) {
-				return calles;
+		for (int[] d : CRUZ) {
+			for (int r = AdornoCapital.PLAZA - 1; r < PlanoCapital.FIN_AVENIDA; r += TRAMO) {
+				int r2 = Math.min(r + TRAMO, PlanoCapital.FIN_AVENIDA);
+				tramo(ctx, agua, grandes, calles, cx + d[0] * r, cz + d[1] * r, cx + d[0] * r2, cz + d[1] * r2);
 			}
 		}
-		int tramos = Math.max(1, (largo + TRAMO - 1) / TRAMO);
-		for (int i = 0; i < tramos; i++) {
-			int ax = x0 + (x1 - x0) * i / tramos;
-			int az = z0 + (z1 - z0) * i / tramos;
-			int bx = x0 + (x1 - x0) * (i + 1) / tramos;
-			int bz = z0 + (z1 - z0) * (i + 1) / tramos;
-			calles.add(new CalleCapital(ax, az, bx, bz, suelo(ctx, (ax + bx) / 2, (az + bz) / 2)));
+		int n = (int) Math.round(2 * Math.PI * PlanoCapital.RONDA / 10);
+		for (int k = 0; k < n; k++) {
+			double a0 = 2 * Math.PI * k / n;
+			double a1 = 2 * Math.PI * (k + 1) / n;
+			tramo(ctx, agua, grandes, calles, cx + (int) Math.round(Math.cos(a0) * PlanoCapital.RONDA),
+					cz + (int) Math.round(Math.sin(a0) * PlanoCapital.RONDA), cx + (int) Math.round(Math.cos(a1) * PlanoCapital.RONDA),
+					cz + (int) Math.round(Math.sin(a1) * PlanoCapital.RONDA));
 		}
 		return calles;
+	}
+
+	private static void tramo(Structure.GenerationContext ctx, Agua agua, List<StructurePiece> grandes, List<CalleCapital> calles, int ax, int az,
+			int bx, int bz) {
+		CalleCapital c = new CalleCapital(ax, az, bx, bz, suelo(ctx, (ax + bx) / 2, (az + bz) / 2));
+		if (!agua.tapa(c) && grandes.stream().noneMatch(g -> enPlanta(g, c))) {
+			calles.add(c);
+		}
 	}
 
 	/** Dónde hay agua en vez de tierra (ver mojado), mirado por casillas de 16 bloques. */

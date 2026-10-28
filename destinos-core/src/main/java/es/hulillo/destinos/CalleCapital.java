@@ -6,6 +6,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.RandomSource;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.WorldGenLevel;
@@ -92,7 +93,8 @@ public final class CalleCapital extends StructurePiece {
 			nuevo = Blocks.DIRT_PATH.defaultBlockState();
 		} else if (s.is(Blocks.SAND) || s.is(Blocks.RED_SAND)) {
 			nuevo = Blocks.SMOOTH_SANDSTONE.defaultBlockState();
-		} else if (s.is(Blocks.GRAVEL) || s.is(Blocks.STONE) || s.is(Blocks.MUD)) {
+		} else if (s.is(Blocks.GRAVEL) || s.is(Blocks.MUD) || s.is(BlockTags.BASE_STONE_OVERWORLD) || s.is(BlockTags.TERRACOTTA)
+				|| s.is(Blocks.SANDSTONE) || s.is(Blocks.RED_SANDSTONE) || s.is(Blocks.CALCITE)) {
 			nuevo = Blocks.COBBLESTONE.defaultBlockState();
 		}
 		// el resto (casas, caminos ya puestos, hielo…) se deja como está
