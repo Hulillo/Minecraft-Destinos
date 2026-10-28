@@ -18,6 +18,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.level.block.state.properties.DoorHingeSide;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.block.state.properties.Half;
@@ -233,6 +234,15 @@ final class Obra {
 		BlockState b = mira(p.puerta, mira);
 		pon(u, ly, v, b.setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.LOWER));
 		pon(u, ly + 1, v, b.setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER));
+	}
+
+	/** Puerta doble: una en (u, ly, v) y la otra al lado, hacia lado, con las bisagras en los extremos. */
+	void puertaDoble(int u, int ly, int v, Direction lado, Direction mira) {
+		puerta(u, ly, v, mira);
+		BlockState b = mira(p.puerta, mira).setValue(BlockStateProperties.DOOR_HINGE, DoorHingeSide.RIGHT);
+		int u2 = u + lado.getStepX(), v2 = v + lado.getStepZ();
+		pon(u2, ly, v2, b.setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.LOWER));
+		pon(u2, ly + 1, v2, b.setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER));
 	}
 
 	/** Una cama con la cabecera en (u, ly, v) y los pies hacia el lado contrario de cabecera. */
@@ -471,7 +481,12 @@ final class Obra {
 	 */
 	void escaleraU(int u0, int v0, Direction fondo, Direction lado, int banda, int cerca, int lejos, int[] pisos, Block peldano,
 			BlockState relleno) {
-		int tramo = 3;
+		escaleraU(u0, v0, fondo, lado, banda, cerca, lejos, 3, pisos, peldano, relleno);
+	}
+
+	/** Igual, con tramos de tramo peldaños (cada piso puede subir hasta 2·tramo). */
+	void escaleraU(int u0, int v0, Direction fondo, Direction lado, int banda, int cerca, int lejos, int tramo, int[] pisos,
+			Block peldano, BlockState relleno) {
 		int fin = cerca + tramo + lejos;
 		int top = pisos[pisos.length - 1];
 		for (int n = 0; n + 1 < pisos.length; n++) {
@@ -494,18 +509,19 @@ final class Obra {
 						int y = f + 1 + k;
 						caja(u, f + 1, v, u, y - 1, v, relleno);
 						pon(u, y, v, escalon(peldano, fondo, false));
-						caja(u, y + 1, v, u, y + 2, v, Blocks.AIR);
+						// tres de hueco encima, sin abrir el suelo de arriba
+						caja(u, y + 1, v, u, Math.min(y + 3, f + h - 1), v, Blocks.AIR);
 					} else if (k >= tramo || primera || m >= hb) {
 						// el descansillo
 						caja(u, f + 1, v, u, f + ha, v, relleno);
-						caja(u, f + ha + 1, v, u, f + ha + 2, v, Blocks.AIR);
+						caja(u, f + ha + 1, v, u, Math.min(f + ha + 3, f + h - 1), v, Blocks.AIR);
 					} else {
 						int y = f + ha + 1 + m;
 						// debajo, relleno hasta dejar paso sobre el tramo de abajo (o hasta el suelo en el primer piso)
-						int abajo = n == 0 ? f + 1 : Math.max(f + 1, y - h + 3);
+						int abajo = n == 0 ? f + 1 : Math.max(f + 1, y - h + 4);
 						caja(u, abajo, v, u, y - 1, v, relleno);
 						pon(u, y, v, escalon(peldano, fondo.getOpposite(), false));
-						caja(u, y + 1, v, u, y + 2, v, Blocks.AIR);
+						caja(u, y + 1, v, u, y + 3, v, Blocks.AIR);
 					}
 				}
 			}
@@ -561,6 +577,13 @@ final class Obra {
 		dosAguas(au, av, bu, bv, ly + 2, mira.getAxis() == Direction.Axis.Z, p.desierto ? p.tablas : p.enlucido);
 	}
 
+	/** La placa de presión de la madera de la cultura (el tablero de las mesas). */
+	BlockState placa() {
+		Block b = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace(
+				BuiltInRegistries.BLOCK.getKey(p.valla.getBlock()).getPath().replace("_fence", "_pressure_plate")));
+		return (b == Blocks.AIR ? Blocks.OAK_PRESSURE_PLATE : b).defaultBlockState();
+	}
+
 	/** La cancela de la valla de madera de la cultura (en el desierto, de roble), mirando hacia mira. */
 	BlockState portillo(Direction mira) {
 		Block b = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace(
@@ -610,20 +633,12 @@ final class Obra {
 		pon(u, ly, v, escalon(p.maderaEscalon, respaldo, false));
 	}
 
-	/** Mesa de tablero (losa arriba) de (u1, v1) a (u2, v2), con sillas alrededor si sillas. */
+	/** Mesa de (u1, v1) a (u2, v2), con patas de valla y tablero de placa de madera (o mantel, si es larga y con sillas). */
 	void mesa(int u1, int v1, int u2, int v2, int ly, boolean sillas) {
 		int ua = Math.min(u1, u2), ub = Math.max(u1, u2), va = Math.min(v1, v2), vb = Math.max(v1, v2);
-		caja(ua, ly, va, ub, ly, vb, losa(p.maderaLosa, true));
-		for (int u = ua; u <= ub; u++) {
-			for (int v = va; v <= vb; v++) {
-				int h = azar(u, ly, v, 6);
-				if (h == 0) {
-					pon(u, ly + 1, v, velas(1 + azar(u, ly + 1, v, 3)));
-				} else if (h == 1) {
-					pon(u, ly + 1, v, Blocks.FLOWER_POT);
-				}
-			}
-		}
+		boolean mantel = sillas && Math.max(ub - ua, vb - va) >= 3;
+		caja(ua, ly, va, ub, ly, vb, p.valla);
+		caja(ua, ly + 1, va, ub, ly + 1, vb, mantel ? Blocks.WHITE_CARPET.defaultBlockState() : placa());
 		if (!sillas) {
 			return;
 		}
