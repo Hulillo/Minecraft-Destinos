@@ -111,7 +111,7 @@ final class PuestoMercado {
 		Block[] macetas = p.desierto
 				? new Block[] {Blocks.POTTED_CACTUS, Blocks.POTTED_DEAD_BUSH, Blocks.POTTED_ORANGE_TULIP, Blocks.POTTED_RED_TULIP}
 				: new Block[] {Blocks.POTTED_POPPY, Blocks.POTTED_DANDELION, Blocks.POTTED_BLUE_ORCHID, Blocks.POTTED_ALLIUM,
-						Blocks.POTTED_PINK_TULIP, Blocks.POTTED_CORNFLOWER, Blocks.POTTED_FLOWERING_AZALEA_BUSH};
+						Blocks.POTTED_PINK_TULIP, Blocks.POTTED_CORNFLOWER, Blocks.POTTED_FLOWERING_AZALEA};
 		for (int u = -1; u <= 1; u++) {
 			o.pon(u, 1, -1, Obra.losa(p.maderaLosa, true));
 			o.pon(u, 2, -1, macetas[o.azar(u, 2, -1, macetas.length)]);
