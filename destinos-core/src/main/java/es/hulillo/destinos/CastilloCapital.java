@@ -748,9 +748,10 @@ public final class CastilloCapital extends PiezaObra {
 		for (int s = 1; s <= BALCON; s++) {
 			int[] c = CARACOL[(s - 1 + DESFASE) % 16];
 			int[] sig = CARACOL[(s + DESFASE) % 16];
-			Direction sube = Direction.fromDelta(Integer.signum(sig[0] - c[0]), 0, Integer.signum(sig[1] - c[1]));
+			int du = Integer.signum(sig[0] - c[0]);
+			Direction sube = du > 0 ? Direction.EAST : du < 0 ? Direction.WEST : sig[1] > c[1] ? Direction.SOUTH : Direction.NORTH;
 			boolean rellano = s == PISOS[1] || s == PISOS[2] || s == BALCON;
-			o.pon(c[0], s, c[1], rellano ? p.tablas : Obra.escalon(p.piedraEscalon, sube == null ? Direction.NORTH : sube, false));
+			o.pon(c[0], s, c[1], rellano ? p.tablas : Obra.escalon(p.piedraEscalon, sube, false));
 			if (s > 1 && s <= 16) {
 				o.sillares(c[0], 1, c[1], c[0], s - 1, c[1], false);
 			}
