@@ -205,8 +205,8 @@ abstract class PiezaObra extends StructurePiece {
 		ResourceKey<LootTable> tabla = null;
 		if (b.is(Blocks.CHEST)) {
 			tabla = COFRES.get(h % COFRES.size());
-		} else if (b.is(Blocks.BARREL) && h % 3 == 0) {
-			tabla = BARRILES.get(h / 3 % BARRILES.size());
+		} else if (b.is(Blocks.BARREL)) {
+			tabla = BARRILES.get(h % BARRILES.size());
 		}
 		if (tabla != null) {
 			RandomizableContainer.setBlockEntityLootTable(level, azar, pos, tabla);

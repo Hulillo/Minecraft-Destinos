@@ -19,14 +19,14 @@ import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
 public final class CasaNoble extends PiezaObra {
 	public static final StructurePieceType TIPO = (StructurePieceType.ContextlessType) CasaNoble::new;
 	/** Medio lado de la caja (la casa con el alero, el voladizo y la chimenea). */
-	static final int FONDO = 8;
+	static final int FONDO = 9;
 	/** Media anchura (u) y medio fondo (v) de la planta baja. */
-	private static final int ANCHO = 5;
-	private static final int LARGO = 6;
+	private static final int ANCHO = 6;
+	private static final int LARGO = 7;
 	/** Suelo del piso de arriba y arranque del tejado. */
-	private static final int PISO = 5;
-	private static final int TEJADO = 10;
-	private static final int ALTO = 17;
+	private static final int PISO = 6;
+	private static final int TEJADO = 11;
+	private static final int ALTO = 20;
 
 	CasaNoble(int cx, int cz, int y0, int rot, int estilo, int madera, int color) {
 		super(TIPO, cx, cz, y0, rot, estilo, madera, color, FONDO, ALTO);
@@ -137,10 +137,14 @@ public final class CasaNoble extends PiezaObra {
 		o.caja(ANCHO - 1, 1, -5, ANCHO - 1, 2, -3, Blocks.BOOKSHELF);
 		o.pon(ANCHO - 1, 3, -4, Blocks.LANTERN);
 		o.pon(0, PISO - 1, -3, Obra.farolColgado());
-		// tabique con la cocina, con paso en medio; la escalera sube pegada a la pared del este
+		// tabique con la cocina, con un arco ancho en medio; la escalera sube pegada a la pared del este, cerrada del
+		// lado de la cocina por un tabique entero (sin rendijas entre peldaños y techo)
 		o.caja(-ANCHO + 1, 1, 1, ANCHO - 2, PISO - 1, 1, p.tablas);
-		o.aire(0, 1, 1, 0, 2, 1);
+		o.aire(-1, 1, 1, 1, 3, 1);
+		o.pon(-1, 3, 1, Obra.escalon(p.maderaEscalon, Direction.EAST, true));
+		o.pon(1, 3, 1, Obra.escalon(p.maderaEscalon, Direction.WEST, true));
 		o.escalera(ANCHO - 1, 1, -1, Direction.SOUTH, PISO, p.maderaEscalon, p.tablas);
+		o.caja(ANCHO - 2, 1, 2, ANCHO - 2, PISO - 1, PISO - 2, p.tablas);
 	}
 
 	/** Planta baja, detrás: la cocina, con fogones, caldero, despensa y mesa. */
@@ -187,7 +191,7 @@ public final class CasaNoble extends PiezaObra {
 		o.pon(-2, y, 5, Blocks.BARREL);
 		o.pon(-2, y + 1, 5, Obra.velas(3));
 		o.pon(-4, y, 5, Obra.mira(Blocks.CHEST, Direction.EAST));
-		for (int v = 0; v <= 2; v++) {
+		for (int v = 1; v <= PISO - 3; v++) {
 			o.pon(ANCHO - 2, y, v, p.valla);
 		}
 		o.pon(-2, TEJADO - 1, 2, Obra.farolColgado());

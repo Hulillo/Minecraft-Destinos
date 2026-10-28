@@ -598,6 +598,14 @@ final class Obra {
 	 * tejadillo a dos aguas con su hastial de entramado.
 	 */
 	void buhardilla(int u, int v, Direction mira, int ly, int medio) {
+		buhardilla(u, v, mira, ly, medio, 3);
+	}
+
+	/**
+	 * Igual, con el tejadillo metido fondo bloques hacia dentro: en un tejado grande, hasta que la cumbrera se hunde
+	 * en el faldón de detrás y no queda la punta al aire (sin hastial de atrás: queda dentro del tejado).
+	 */
+	void buhardilla(int u, int v, Direction mira, int ly, int medio, int fondo) {
 		Direction dentro = mira.getOpposite();
 		Direction lado = mira.getClockWise();
 		Direction.Axis ejeLado = lado.getAxis();
@@ -628,10 +636,32 @@ final class Obra {
 		}
 		int au = u + mira.getStepX() + lado.getStepX() * -r;
 		int av = v + mira.getStepZ() + lado.getStepZ() * -r;
-		int bu = u + dentro.getStepX() * 3 + lado.getStepX() * r;
-		int bv = v + dentro.getStepZ() * 3 + lado.getStepZ() * r;
-		// los dos hastiales empiezan en ly + 2: el de dentro deja libre el paso de abajo
-		dosAguas(au, av, bu, bv, ly + 2, mira.getAxis() == Direction.Axis.Z, p.desierto ? p.tablas : p.enlucido);
+		int bu = u + dentro.getStepX() * fondo + lado.getStepX() * r;
+		int bv = v + dentro.getStepZ() * fondo + lado.getStepZ() * r;
+		// los dos hastiales empiezan en ly + 2: el de dentro deja libre el paso de abajo. Si el tejadillo va hondo,
+		// solo el de delante (el de detrás quedaría metido en el tejado grande)
+		BlockState hastial = p.desierto ? p.tablas : p.enlucido;
+		boolean aLoLargoDeV = mira.getAxis() == Direction.Axis.Z;
+		if (fondo <= 3) {
+			dosAguas(au, av, bu, bv, ly + 2, aLoLargoDeV, hastial);
+		} else {
+			// el hastial de delante es el de u o v más bajas solo si la buhardilla mira hacia ahí
+			boolean delanteBajo = mira.getStepX() + mira.getStepZ() < 0;
+			if (delanteBajo) {
+				dosAguas(au, av, bu, bv, ly + 2, aLoLargoDeV, hastial, false);
+			} else {
+				dosAguas(au, av, bu, bv, ly + 2, aLoLargoDeV, null);
+				// el hastial de delante a mano: el triángulo bajo el tejadillo, por dentro del alero
+				int ancho = 2 * r;
+				for (int d = 0; 2 * d < ancho; d++) {
+					for (int a = d + 1; a < ancho - d; a++) {
+						int hu = u + lado.getStepX() * (a - r);
+						int hv = v + lado.getStepZ() * (a - r);
+						pon(hu, ly + 2 + d, hv, hastial);
+					}
+				}
+			}
+		}
 	}
 
 	/** La placa de presión de la madera de la cultura (el tablero de las mesas). */

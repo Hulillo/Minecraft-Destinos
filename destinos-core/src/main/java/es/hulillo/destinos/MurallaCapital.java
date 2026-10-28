@@ -27,9 +27,16 @@ import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
  */
 public final class MurallaCapital extends StructurePiece {
 	public static final StructurePieceType TIPO = (StructurePieceType.ContextlessType) MurallaCapital::new;
-	/** Radio interior del anillo: rodea el centro de la capital (sus calles llegan a 80 bloques). */
-	static final int RADIO = 88;
+	/**
+	 * Radio interior del anillo según el nivel: rodea el centro de la capital, más ancho cuanto más rica (la rica
+	 * necesita sitio para el castillo, el mercado y las casas nobles).
+	 */
+	private static final int[] RADIOS = {76, 88, 108};
 	static final int ARCOS = 64;
+
+	static int radio(int nivel) {
+		return RADIOS[Math.clamp(nivel, 0, RADIOS.length - 1)];
+	}
 	static final int TORRES = 8;
 	private static final int RADIO_TORRE = 3;
 	private static final int[] ALTO = {4, 5, 7};
@@ -75,8 +82,8 @@ public final class MurallaCapital extends StructurePiece {
 			for (int i = 0; i < TORRES; i++) {
 				int a = 225 + i * 3600 / TORRES;
 				double r = Math.toRadians(a / 10.0);
-				int tx = cx + (int) Math.round(Math.cos(r) * (RADIO + grueso / 2.0));
-				int tz = cz + (int) Math.round(Math.sin(r) * (RADIO + grueso / 2.0));
+				int tx = cx + (int) Math.round(Math.cos(r) * (radio(nivel) + grueso / 2.0));
+				int tz = cz + (int) Math.round(Math.sin(r) * (radio(nivel) + grueso / 2.0));
 				int y = alturaEn.applyAsInt(tx, tz);
 				piezas.add(new MurallaCapital(cx, cz, nivel, a, -1, new BoundingBox(tx - RADIO_TORRE - 1, y, tz - RADIO_TORRE - 1,
 						tx + RADIO_TORRE + 1, y + 1, tz + RADIO_TORRE + 1)));
@@ -88,7 +95,7 @@ public final class MurallaCapital extends StructurePiece {
 			int minX = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
 			for (int k = 0; k <= 4; k++) {
 				double a = Math.toRadians((a0 + (a1 - a0) * k / 4.0) / 10.0);
-				for (int r : new int[] {RADIO - 1, RADIO + grueso + 1}) {
+				for (int r : new int[] {radio(nivel) - 1, radio(nivel) + grueso + 1}) {
 					int x = cx + (int) Math.floor(Math.cos(a) * r);
 					int z = cz + (int) Math.floor(Math.sin(a) * r);
 					minX = Math.min(minX, x);
@@ -136,7 +143,7 @@ public final class MurallaCapital extends StructurePiece {
 					almena = d > RADIO_TORRE - 0.5 && (x + z) % 2 == 0;
 				} else {
 					double d = Math.hypot(x - cx, z - cz);
-					if (d < RADIO || d >= RADIO + grueso) {
+					if (d < radio(nivel) || d >= radio(nivel) + grueso) {
 						continue;
 					}
 					int a = (int) Math.floor(Math.toDegrees(Math.atan2(z - cz, x - cx)) * 10);
@@ -146,7 +153,7 @@ public final class MurallaCapital extends StructurePiece {
 					}
 					alto = ALTO[nivel];
 					// empalizada en punta (un tronco sí y otro no, más alto); almenas en el borde de fuera
-					almena = nivel == 0 ? (x + z) % 2 == 0 : d >= RADIO + grueso - 1 && (x + z) % 2 == 0;
+					almena = nivel == 0 ? (x + z) % 2 == 0 : d >= radio(nivel) + grueso - 1 && (x + z) % 2 == 0;
 				}
 				columna(level, pos, x, z, alto + (almena ? 1 : 0));
 			}

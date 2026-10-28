@@ -223,9 +223,15 @@ public final class CastilloCapital extends PiezaObra {
 		for (Direction d : Direction.Plane.HORIZONTAL) {
 			o.buhardilla(cu + d.getStepX() * (t + 1), cv + d.getStepZ() * (t + 1), d, ly + 1, t >= 6 ? 2 : 1);
 		}
+		// la salida de la escala: hueco para la cabeza encima y a los lados que dan hacia dentro (el forro y la falda del
+		// chapitel la tapaban en las esquinas)
+		int su = Integer.signum(eu - cu), sv = Integer.signum(ev - cv);
+		o.aire(eu, ly + 1, ev, eu, ly + 2, ev);
+		o.aire(eu - su, ly + 1, ev, eu - su, ly + 2, ev);
+		o.aire(eu, ly + 1, ev - sv, eu, ly + 2, ev - sv);
+		o.aire(eu - su, ly + 1, ev - sv, eu - su, ly + 2, ev - sv);
 		// el puesto: cofre de flechas, barriles, una diana sobre heno y un farol, en las esquinas que no son la escala
 		int c = t - 2;
-		int su = Integer.signum(eu - cu), sv = Integer.signum(ev - cv);
 		int[][] esquinas = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
 		int n = 0;
 		for (int[] e : esquinas) {
@@ -1034,8 +1040,8 @@ public final class CastilloCapital extends PiezaObra {
 		o.pon(s * 23, y, -10, Blocks.COBWEB);
 		tejado(o, s * (ALA - 1), va - 1, s * DENTRO, vb, 12, true, p.enlucido, false);
 		if (!p.desierto) {
-			o.buhardilla(s * ALA, -8, patio, 13, 1);
-			o.buhardilla(s * ALA, -1, patio, 13, 1);
+			o.buhardilla(s * ALA, -8, patio, 13, 1, 6);
+			o.buhardilla(s * ALA, -1, patio, 13, 1, 6);
 		}
 	}
 
@@ -1726,9 +1732,9 @@ public final class CastilloCapital extends PiezaObra {
 			}
 		}
 		for (int s = -1; s <= 1; s += 2) {
-			o.buhardilla(s * 5, FONDO, Direction.SOUTH, 19, 1);
-			o.buhardilla(s * 19, FONDO, Direction.SOUTH, 19, 1);
-			o.buhardilla(s * 20, FACHADA, Direction.NORTH, 19, 1);
+			o.buhardilla(s * 5, FONDO, Direction.SOUTH, 19, 1, 6);
+			o.buhardilla(s * 19, FONDO, Direction.SOUTH, 19, 1, 6);
+			o.buhardilla(s * 20, FACHADA, Direction.NORTH, 19, 1, 6);
 		}
 	}
 
