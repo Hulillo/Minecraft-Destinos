@@ -193,15 +193,46 @@ public final class EstructuraCapital extends Structure {
 		for (CasaNoble n : nobles) {
 			calle(trazado, principales, px, pz, puerta(n.getBoundingBox(), n.cx, n.cz, px, pz));
 		}
+		// y las rondas: un anillo (dos en las grandes) que va de una calle a otra siguiendo el terreno, para que la ciudad
+		// tenga manzanas y no sea solo una estrella de calles que salen de la plaza
+		List<List<int[]>> rondas = new ArrayList<>();
+		List<Integer> radios = new ArrayList<>(List.of((AdornoCapital.PLAZA + radio) / 2));
+		if (nivel >= 1) {
+			radios.add(radio - RONDA_MURO - 10);
+		}
+		for (int r : radios) {
+			int n = Math.max(6, (int) Math.round(2 * Math.PI * r / 30));
+			double giro = Math.floorMod(Geo.hash(cx, cz, r), 360) * Math.PI / 180;
+			List<int[]> puntos = new ArrayList<>();
+			for (int k = 0; k < n; k++) {
+				double a = giro + 2 * Math.PI * k / n;
+				int x = cx + (int) Math.round(Math.cos(a) * r);
+				int z = cz + (int) Math.round(Math.sin(a) * r);
+				boolean libre = !terreno.agua(x, z) && obras.stream().noneMatch(o -> x >= o.minX() - 3 && x <= o.maxX() + 3 && z >= o.minZ() - 3 && z <= o.maxZ() + 3);
+				puntos.add(libre ? new int[] {x, z} : null);
+			}
+			for (int k = 0; k < n; k++) {
+				int[] a = puntos.get(k);
+				int[] b = puntos.get((k + 1) % n);
+				if (a != null && b != null) {
+					List<int[]> c = trazado.calle(a[0], a[1], b[0], b[1]);
+					if (c.size() >= 2) {
+						rondas.add(c);
+					}
+				}
+			}
+		}
+		List<List<int[]>> todas = new ArrayList<>(principales);
+		todas.addAll(rondas);
 		List<CalleCapital> calles = new ArrayList<>();
-		for (List<int[]> c : principales) {
+		for (List<int[]> c : todas) {
 			for (int k = 0; k + 1 < c.size(); k++) {
 				int[] a = c.get(k);
 				int[] b = c.get(k + 1);
 				calles.add(new CalleCapital(a[0], a[1], b[0], b[1], terreno.alto((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), true));
 			}
 		}
-		Set<Long> enCalle = TrazadoCapital.ocupa(principales, 2);
+		Set<Long> enCalle = TrazadoCapital.ocupa(todas, 2);
 
 		// 5. las casas, a los dos lados de las calles con la puerta a la calle
 		List<StructurePiece> casas = new ArrayList<>();
@@ -254,9 +285,9 @@ public final class EstructuraCapital extends Structure {
 			}
 			return true;
 		};
-		for (List<int[]> c : principales) {
+		for (List<int[]> c : todas) {
 			for (int lado = -1; lado <= 1; lado += 2) {
-				aLoLargo(plantillas, terreno, catalogo, c, lado, cabe, casas, puertasCasas);
+				aLoLargo(plantillas, terreno, catalogo, c, lado, cx, cz, radio - RONDA_MURO, cabe, casas, puertasCasas);
 			}
 		}
 
@@ -303,11 +334,11 @@ public final class EstructuraCapital extends Structure {
 			// y lo último, el adorno, que ya ve todo lo demás puesto
 			BoundingBox.encapsulatingBoxes(cajas).ifPresent(caja -> piezas.addPiece(
 					new AdornoCapital(px, alturaPlaza, pz, estilo, color, caja, techo, mercado.isEmpty())));
-			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} calles, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
+			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} calles y {} tramos de ronda, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
 					px, alturaPlaza, pz, nivel,
 					(castillo.isPresent() ? ", con castillo" : "") + (mercado.isPresent() ? ", con mercado" : "")
 							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles"),
-					principales.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
+					principales.size(), rondas.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
 					motivos[5], motivos[6], ColocacionCapital.quien());
 		}));
 	}
@@ -527,7 +558,7 @@ public final class EstructuraCapital extends Structure {
 	 * prueba una casa; si cabe, se salta lo que ocupa y si no, un poco.
 	 */
 	private static void aLoLargo(StructureTemplateManager plantillas, TerrenoCapital terreno, CatalogoCapital catalogo, List<int[]> calle, int lado,
-			Predicate<BoundingBox> cabe, List<StructurePiece> casas, List<int[]> puertas) {
+			int cx, int cz, int limite, Predicate<BoundingBox> cabe, List<StructurePiece> casas, List<int[]> puertas) {
 		// la calle por bloques, para medir y tener la dirección en cada punto
 		List<double[]> p = new ArrayList<>();
 		List<Double> acum = new ArrayList<>();
@@ -559,6 +590,11 @@ public final class EstructuraCapital extends Structure {
 			Direction mira = Math.abs(nx) >= Math.abs(nz) ? (nx > 0 ? Direction.WEST : Direction.EAST) : (nz > 0 ? Direction.NORTH : Direction.SOUTH);
 			int fx = (int) Math.round(x + nx * ACERA);
 			int fz = (int) Math.round(z + nz * ACERA);
+			// pasada la muralla (las calles que van a las puertas siguen un poco) ya no hay casas
+			if (Math.hypot(fx - cx, fz - cz) > limite) {
+				t += 3;
+				continue;
+			}
 			int lx = mira.getAxis() == Direction.Axis.X ? 0 : 1;
 			int lz = 1 - lx;
 			int hueco = ponCasa(plantillas, terreno, catalogo, fx, fz, lx, lz, mira, cabe, casas, puertas);
