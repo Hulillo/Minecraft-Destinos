@@ -206,12 +206,12 @@ public final class EstructuraCapital extends Structure {
 		grandes.forEach(g -> obras.add(g.getBoundingBox()));
 		TrazadoCapital trazado = new TrazadoCapital(terreno, cx, cz, radio + 16, obras, px, pz, rPlaza);
 		List<List<int[]>> principales = new ArrayList<>();
-		castillo.ifPresent(c -> calle(trazado, principales, px, pz, rPlaza * Integer.signum(ladoMercado), puerta(c.getBoundingBox(), c.cx, c.cz, px, pz)));
+		castillo.ifPresent(c -> calle(trazado, principales, obras, px, pz, rPlaza * Integer.signum(ladoMercado), puerta(c.getBoundingBox(), c.cx, c.cz, px, pz)));
 		for (int[] p : puertas(terreno, cx, cz, radio, nivel)) {
-			calle(trazado, principales, px, pz, rPlaza * Integer.signum(ladoMercado), p);
+			calle(trazado, principales, obras, px, pz, rPlaza * Integer.signum(ladoMercado), p);
 		}
 		for (CasaNoble n : nobles) {
-			calle(trazado, principales, px, pz, rPlaza * Integer.signum(ladoMercado), puerta(n.getBoundingBox(), n.cx, n.cz, px, pz));
+			calle(trazado, principales, obras, px, pz, rPlaza * Integer.signum(ladoMercado), puerta(n.getBoundingBox(), n.cx, n.cz, px, pz));
 		}
 		// y las rondas: un anillo (dos en las grandes) que va de una calle a otra siguiendo el terreno, para que la ciudad
 		// tenga manzanas y no sea solo una estrella de calles que salen de la plaza
@@ -244,40 +244,11 @@ public final class EstructuraCapital extends Structure {
 		}
 		List<List<int[]>> todas = new ArrayList<>(principales);
 		todas.addAll(rondas);
-		// y los callejones: de cada calle, cada tanto, uno de través hacia un lado y otro (manzanas por dentro)
-		List<List<int[]>> callejones = new ArrayList<>();
-		long dentroMuro = (long) (radio - RONDA_MURO - 8) * (radio - RONDA_MURO - 8);
-		for (List<int[]> c : todas) {
-			int lado = Math.floorMod(Geo.hash(c.get(0)[0], c.get(0)[1], K_PUERTAS), 2) * 2 - 1;
-			for (int k = CALLEJON / 6; k + 1 < c.size(); k += CALLEJON / 6) {
-				int[] a = c.get(k);
-				int[] b = c.get(k + 1);
-				double largo = Math.max(1, Math.hypot(b[0] - a[0], b[1] - a[1]));
-				int x = a[0] + (int) Math.round(-(b[1] - a[1]) / largo * lado * LARGO_CALLEJON);
-				int z = a[1] + (int) Math.round((b[0] - a[0]) / largo * lado * LARGO_CALLEJON);
-				lado = -lado;
-				long dx = x - cx;
-				long dz = z - cz;
-				long qx = x - px;
-				long qz = z - pz;
-				if (dx * dx + dz * dz > dentroMuro || qx * qx + qz * qz < (long) (rPlaza + 8) * (rPlaza + 8)
-						|| terreno.agua(x, z)
-						|| obras.stream().anyMatch(o -> x >= o.minX() - 3 && x <= o.maxX() + 3 && z >= o.minZ() - 3 && z <= o.maxZ() + 3)) {
-					continue;
-				}
-				List<int[]> callejon = trazado.calle(a[0], a[1], x, z);
-				if (callejon.size() >= 2) {
-					callejones.add(callejon);
-				}
-			}
-		}
-		todas.addAll(callejones);
 		// cada calle con su ancho (las principales, 5; las rondas, 4; los callejones, 3) y su altura suavizada
 		List<CalleCapital> calles = new ArrayList<>();
 		tramos(terreno, principales, ANCHO_PRINCIPAL, px, pz, calles);
 		Set<Long> enCalle = TrazadoCapital.ocupa(principales, (int) Math.ceil(ANCHO_PRINCIPAL));
 		enCalle.addAll(TrazadoCapital.ocupa(rondas, (int) Math.ceil(ANCHO_RONDA)));
-		enCalle.addAll(TrazadoCapital.ocupa(callejones, (int) Math.ceil(ANCHO_CALLEJON) + 1));
 
 		// 5. las casas, a los dos lados de las calles con la puerta a la calle
 		List<StructurePiece> casas = new ArrayList<>();
@@ -330,9 +301,44 @@ public final class EstructuraCapital extends Structure {
 			}
 			return true;
 		};
-		// antes que las casas, unas placitas de barrio a modo de parque junto a las calles, repartidas por la ciudad
+		// antes que los callejones y las casas, unas placitas de barrio a modo de parque junto a las calles, repartidas
+		// por la ciudad (los callejones luego las rodean)
 		List<PlazuelaCapital> plazuelas = plazuelas(terreno, todas, enCalle, cabe, 1 + 2 * nivel, px, pz, rPlaza, estilo, madera, color);
 		casas.addAll(plazuelas);
+		for (PlazuelaCapital q : plazuelas) {
+			obras.add(q.getBoundingBox());
+			trazado.veta(q.getBoundingBox());
+		}
+
+		// y los callejones: de cada calle, cada tanto, uno de través hacia un lado y otro (manzanas por dentro)
+		List<List<int[]>> callejones = new ArrayList<>();
+		long dentroMuro = (long) (radio - RONDA_MURO - 8) * (radio - RONDA_MURO - 8);
+		for (List<int[]> c : todas) {
+			int lado = Math.floorMod(Geo.hash(c.get(0)[0], c.get(0)[1], K_PUERTAS), 2) * 2 - 1;
+			for (int k = CALLEJON / 6; k + 1 < c.size(); k += CALLEJON / 6) {
+				int[] a = c.get(k);
+				int[] b = c.get(k + 1);
+				double largo = Math.max(1, Math.hypot(b[0] - a[0], b[1] - a[1]));
+				int x = a[0] + (int) Math.round(-(b[1] - a[1]) / largo * lado * LARGO_CALLEJON);
+				int z = a[1] + (int) Math.round((b[0] - a[0]) / largo * lado * LARGO_CALLEJON);
+				lado = -lado;
+				long dx = x - cx;
+				long dz = z - cz;
+				long qx = x - px;
+				long qz = z - pz;
+				if (dx * dx + dz * dz > dentroMuro || qx * qx + qz * qz < (long) (rPlaza + 8) * (rPlaza + 8)
+						|| terreno.agua(x, z)
+						|| obras.stream().anyMatch(o -> x >= o.minX() - 3 && x <= o.maxX() + 3 && z >= o.minZ() - 3 && z <= o.maxZ() + 3)) {
+					continue;
+				}
+				List<int[]> callejon = trazado.calle(a[0], a[1], x, z);
+				if (callejon.size() >= 2) {
+					callejones.add(callejon);
+				}
+			}
+		}
+		todas.addAll(callejones);
+		enCalle.addAll(TrazadoCapital.ocupa(callejones, (int) Math.ceil(ANCHO_CALLEJON) + 1));
 
 		for (List<int[]> c : todas) {
 			for (int lado = -1; lado <= 1; lado += 2) {
@@ -551,16 +557,32 @@ public final class EstructuraCapital extends Structure {
 	}
 
 	/** Traza una calle de la plaza a (destino) y la apunta si hay camino. */
-	private static void calle(TrazadoCapital trazado, List<List<int[]>> calles, int px, int pz, int lado, int[] destino) {
-		// si en la plaza está el mercado, la calle sale del lado del mercado que mira hacia donde va
+	private static void calle(TrazadoCapital trazado, List<List<int[]>> calles, List<BoundingBox> obras, int px, int pz, int lado, int[] destino) {
+		// si en la plaza está el mercado, la calle sale del lado del mercado que mira hacia donde va (o del siguiente,
+		// si ese lo tapa otra obra)
 		if (lado > 0) {
 			int dx = destino[0] - px;
 			int dz = destino[1] - pz;
 			int sale = lado + 3;
-			if (Math.abs(dx) >= Math.abs(dz)) {
-				px += Integer.signum(dx) * sale;
-			} else {
-				pz += Integer.signum(dz) * sale;
+			int[][] lados = {{Integer.signum(dx), 0}, {0, Integer.signum(dz)}, {0, -Integer.signum(dz)}, {-Integer.signum(dx), 0}};
+			if (Math.abs(dz) > Math.abs(dx)) {
+				int[] t = lados[0];
+				lados[0] = lados[1];
+				lados[1] = t;
+			}
+			int ox = px;
+			int oz = pz;
+			for (int[] l : lados) {
+				if (l[0] == 0 && l[1] == 0) {
+					continue;
+				}
+				int x = ox + l[0] * sale;
+				int z = oz + l[1] * sale;
+				if (obras.stream().noneMatch(o -> x >= o.minX() - 2 && x <= o.maxX() + 2 && z >= o.minZ() - 2 && z <= o.maxZ() + 2)) {
+					px = x;
+					pz = z;
+					break;
+				}
 			}
 		}
 		List<int[]> c = trazado.calle(px, pz, destino[0], destino[1]);

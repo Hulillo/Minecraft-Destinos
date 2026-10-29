@@ -77,6 +77,19 @@ final class TrazadoCapital {
 		}
 	}
 
+	/** Desde ahora no se pasa por la caja dada (con el mismo margen que las obras). */
+	void veta(BoundingBox b) {
+		for (int i = i(b.minX() - 2); i <= i(b.maxX() + 2); i++) {
+			for (int j = j(b.minZ() - 2); j <= j(b.maxZ() + 2); j++) {
+				int x = x(i);
+				int z = z(j);
+				if (x >= b.minX() - 2 && x <= b.maxX() + 2 && z >= b.minZ() - 2 && z <= b.maxZ() + 2) {
+					prohibido[i * lado + j] = true;
+				}
+			}
+		}
+	}
+
 	private int x(int i) {
 		return x0 + i * PASO;
 	}
