@@ -90,6 +90,8 @@ public final class PueblosCapital {
 
 	/** A cuántos chunks de una capital no puede empezar un pueblo suelto (la capital llega a unos 8 de su centro). */
 	private static final int SIN_PUEBLOS = 14;
+	/** Chunks alrededor de una capital sin otras obras de superficie (la capital mide hasta unos 8 chunks de radio). */
+	private static final int SIN_OBRAS = 12;
 
 	/**
 	 * Si un pueblo suelto (del tag de pueblos o con "village" en el nombre, de cualquier mod) no debe salir aquí por
@@ -104,10 +106,15 @@ public final class PueblosCapital {
 		if (id == null || id.getNamespace().equals(DestinosCore.MOD_ID)) {
 			return false;
 		}
-		if (!estructuras.wrapAsHolder(estructura).is(StructureTags.VILLAGE) && !id.getPath().contains("village")) {
-			return false;
+		if (estructuras.wrapAsHolder(estructura).is(StructureTags.VILLAGE) || id.getPath().contains("village")) {
+			return ColocacionCapital.capitalCerca(ctx.chunkPos().x, ctx.chunkPos().z, SIN_PUEBLOS) != null;
 		}
-		return ColocacionCapital.capitalCerca(ctx.chunkPos().x, ctx.chunkPos().z, SIN_PUEBLOS) != null;
+		// y cualquier otra obra de superficie (mansiones, puestos de saqueadores, torres de los mods…) que caería
+		// dentro de la capital o pegada a ella
+		if (estructura.step() == net.minecraft.world.level.levelgen.GenerationStep.Decoration.SURFACE_STRUCTURES) {
+			return ColocacionCapital.capitalCerca(ctx.chunkPos().x, ctx.chunkPos().z, SIN_OBRAS) != null;
+		}
+		return false;
 	}
 
 	/**

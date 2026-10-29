@@ -77,9 +77,11 @@ public final class AdornoCapital extends StructurePiece {
 	private final int pnivel;
 	private final int psemilla;
 	private final int[] pentradas;
+	/** Si la capital está en las tierras baldías: calles de terracota y adobe. */
+	private final boolean badlands;
 
 	AdornoCapital(int px, int py, int pz, int estilo, int color, BoundingBox capital, int techo, boolean puestos, int mercado, int pnivel,
-			int psemilla, int[] pentradas) {
+			int psemilla, int[] pentradas, boolean badlands) {
 		super(TIPO, 0, new BoundingBox(capital.minX(), techo, capital.minZ(), capital.maxX(), techo, capital.maxZ()));
 		this.px = px;
 		this.pz = pz;
@@ -91,6 +93,7 @@ public final class AdornoCapital extends StructurePiece {
 		this.pnivel = pnivel;
 		this.psemilla = psemilla;
 		this.pentradas = pentradas;
+		this.badlands = badlands;
 	}
 
 	private AdornoCapital(CompoundTag t) {
@@ -105,6 +108,7 @@ public final class AdornoCapital extends StructurePiece {
 		pnivel = t.getIntOr("pnivel", -1);
 		psemilla = t.getIntOr("psemilla", 0);
 		pentradas = t.getIntArray("pentradas").orElse(new int[0]);
+		badlands = t.getBooleanOr("badlands", false);
 	}
 
 	static void registra() {
@@ -163,6 +167,7 @@ public final class AdornoCapital extends StructurePiece {
 		t.putInt("pnivel", pnivel);
 		t.putInt("psemilla", psemilla);
 		t.putIntArray("pentradas", pentradas);
+		t.putBoolean("badlands", badlands);
 	}
 
 	@Override
@@ -185,8 +190,9 @@ public final class AdornoCapital extends StructurePiece {
 			}
 		}
 		// 2. farolas a los lados de las calles
-		for (int cx = Math.floorDiv(x0, LADO); cx <= Math.floorDiv(x1, LADO); cx++) {
-			for (int cz = Math.floorDiv(z0, LADO); cz <= Math.floorDiv(z1, LADO); cz++) {
+		int lado = lado();
+		for (int cx = Math.floorDiv(x0, lado); cx <= Math.floorDiv(x1, lado); cx++) {
+			for (int cz = Math.floorDiv(z0, lado); cz <= Math.floorDiv(z1, lado); cz++) {
 				farola(level, caja, pos, cx, cz);
 			}
 		}
@@ -496,6 +502,10 @@ public final class AdornoCapital extends StructurePiece {
 	/** Losa de la calle en (x, z): una mezcla de piedras según la cultura, siempre la misma en cada sitio. */
 	private BlockState calle(int x, int z) {
 		int h = Math.floorMod(Geo.hash(x, z, K_PIEDRA), 100);
+		if (badlands) {
+			return (h < 35 ? Blocks.TERRACOTTA : h < 60 ? Blocks.ORANGE_TERRACOTTA : h < 80 ? Blocks.PACKED_MUD : h < 92 ? Blocks.SMOOTH_RED_SANDSTONE
+					: Blocks.BROWN_TERRACOTTA).defaultBlockState();
+		}
 		Block b = switch (estilo) {
 			case DESIERTO -> h < 45 ? Blocks.SMOOTH_SANDSTONE : h < 75 ? Blocks.CUT_SANDSTONE : Blocks.SANDSTONE;
 			case SABANA -> h < 40 ? Blocks.PACKED_MUD : h < 75 ? Blocks.MUD_BRICKS : h < 90 ? Blocks.TERRACOTTA : Blocks.COBBLESTONE;
@@ -530,7 +540,8 @@ public final class AdornoCapital extends StructurePiece {
 				|| s.is(Blocks.MOSSY_STONE_BRICKS) || s.is(Blocks.CRACKED_STONE_BRICKS) || s.is(Blocks.ANDESITE)
 				|| s.is(Blocks.POLISHED_ANDESITE) || s.is(Blocks.POLISHED_DIORITE) || s.is(Blocks.SMOOTH_SANDSTONE)
 				|| s.is(Blocks.CUT_SANDSTONE) || s.is(Blocks.SANDSTONE) || s.is(Blocks.CUT_RED_SANDSTONE)
-				|| s.is(Blocks.PACKED_MUD) || s.is(Blocks.MUD_BRICKS) || s.is(Blocks.TERRACOTTA);
+				|| s.is(Blocks.PACKED_MUD) || s.is(Blocks.MUD_BRICKS) || s.is(Blocks.TERRACOTTA) || s.is(Blocks.ORANGE_TERRACOTTA)
+				|| s.is(Blocks.BROWN_TERRACOTTA) || s.is(Blocks.SMOOTH_RED_SANDSTONE);
 	}
 
 	/**
@@ -542,8 +553,10 @@ public final class AdornoCapital extends StructurePiece {
 		int ox = Math.floorMod(h, 8);
 		int oz = Math.floorMod(h >> 4, 8);
 		for (int i = 0; i < 64; i++) {
-			int x = cx * LADO + 4 + (ox + i) % 8;
-			int z = cz * LADO + 4 + (oz + i / 8) % 8;
+			int lado = lado();
+			int m = lado / 4;
+			int x = cx * lado + m + (ox + i) % (lado - 2 * m);
+			int z = cz * lado + m + (oz + i / 8) % (lado - 2 * m);
 			if (!caja.isInside(x, caja.minY(), z) || fuera(x - px, z - pz) <= 0) {
 				continue;
 			}
@@ -720,6 +733,11 @@ public final class AdornoCapital extends StructurePiece {
 			return fuera(dx, dz) <= 0;
 		}
 		return mercado > 0 && Math.abs(dx) <= mercado && Math.abs(dz) <= mercado;
+	}
+
+	/** El lado de las celdas de las farolas: en las tierras frías, de noches largas, más juntas. */
+	private int lado() {
+		return estilo == NIEVE || estilo == TAIGA ? 12 : LADO;
 	}
 
 	private boolean cerca(int x, int z, int r) {

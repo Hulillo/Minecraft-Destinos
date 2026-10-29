@@ -76,6 +76,7 @@ public final class EstructuraCapital extends Structure {
 	/** Lo más que se rebaja o se terraplena para la subida al castillo. */
 	private static final int MAX_RAMPA = 16;
 	private static final int SEPARA_PUERTAS = 30;
+	private static final int SEPARA_MUELLES = 40;
 	private static final int K_PLAZUELA = 6151;
 	private static final int K_PLAZA = 3371;
 	private static final int SEPARA_PLAZUELAS = 48;
@@ -183,6 +184,7 @@ public final class EstructuraCapital extends Structure {
 			tinte = AdornoCapital.tinte(Geo.colorReino(reino.kx(), reino.kz(), mapa.sal()));
 		}
 		int color = tinte;
+		boolean enBadlands = bioma.is(net.minecraft.tags.BiomeTags.IS_BADLANDS);
 		int madera = Paleta.madera(estilo, bioma.getRegisteredName(), Geo.hash(cx, cz, 5813));
 
 		// 1. lo alto: el castillo de las capitales ricas, en el punto más alto donde cabe
@@ -399,7 +401,10 @@ public final class EstructuraCapital extends Structure {
 		MurallaCapital.piezas(cx, cz, nivel, contorno, terreno::alto, muroCastillo, huecos, muralla);
 		// las calles que van a las puertas salen un poco por fuera de la muralla y ahí se acaban
 		calles.removeIf(c -> fueraDe(contorno, cx, cz, c.x0(), c.z0()) && fueraDe(contorno, cx, cz, c.x1(), c.z1()));
-		List<StructurePiece> enMuralla = muralla.stream().filter(m -> !terreno.aguaEsquinas(m.getBoundingBox())).toList();
+		// sin los trozos que caen enteros en el agua (la orilla del mar); donde cruza un río, reja
+		List<StructurePiece> enMuralla = muralla.stream().filter(m -> !terreno.todoAgua(m.getBoundingBox())).toList();
+		// y muelles con barcas en la orilla del río, el lago o el mar, dentro de la muralla
+		List<MuelleCapital> muelles = muelles(terreno, contorno, cx, cz, nivel, enCalle, casas, grandes, mayor);
 
 		int techo = ctx.heightAccessor().getMinY() + ctx.heightAccessor().getHeight() - 1;
 		long ms = (System.nanoTime() - antes) / 1_000_000;
@@ -423,6 +428,7 @@ public final class EstructuraCapital extends Structure {
 				piezas.addPiece(c);
 				cajas.add(c.getBoundingBox());
 			}
+			muelles.forEach(piezas::addPiece);
 			// las puertas antes que la muralla: los arcos se paran en sus torres
 			for (PuertaCapital q : portones) {
 				piezas.addPiece(q);
@@ -434,11 +440,11 @@ public final class EstructuraCapital extends Structure {
 			}
 			// y lo último, el adorno, que ya ve todo lo demás puesto
 			BoundingBox.encapsulatingBoxes(cajas).ifPresent(caja -> piezas.addPiece(
-					new AdornoCapital(px, alturaPlaza, pz, estilo, color, caja, techo, false, 0, mayor.nivel(), mayor.semilla(), mayor.entradas())));
+					new AdornoCapital(px, alturaPlaza, pz, estilo, color, caja, techo, false, 0, mayor.nivel(), mayor.semilla(), mayor.entradas(), enBadlands)));
 			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} calles, {} tramos de ronda y {} callejones, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
 					px, alturaPlaza, pz, nivel,
 					(castillo.isPresent() ? ", con castillo" : "") + (mercado.isPresent() ? ", con mercado" : "")
-							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles") + ", " + plazuelas.size() + " placitas, " + portones.size() + " puertas",
+							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles") + ", " + plazuelas.size() + " placitas, " + portones.size() + " puertas, " + muelles.size() + " muelles",
 					principales.size(), rondas.size(), callejones.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
 					motivos[5], motivos[6], ColocacionCapital.quien());
 		}));
@@ -554,6 +560,42 @@ public final class EstructuraCapital extends Structure {
 				continue;
 			}
 			r.add(q);
+		}
+		return r;
+	}
+
+	/**
+	 * Hasta 1 + nivel muelles: en la rejilla del terreno, dentro de la muralla, puntos de tierra con agua a 4 y a 8
+	 * bloques en algún sentido (una orilla de verdad, no un charco), libres de calles, casas y obras; separados entre sí.
+	 */
+	private static List<MuelleCapital> muelles(TerrenoCapital terreno, int[] contorno, int cx, int cz, int nivel, Set<Long> enCalle,
+			List<StructurePiece> casas, List<StructurePiece> grandes, PlazaMayor plaza) {
+		List<MuelleCapital> r = new ArrayList<>();
+		int paso = TerrenoCapital.PASO;
+		int lejos = MurallaCapital.radio(nivel) + 10;
+		for (int dx = -lejos; dx <= lejos && r.size() < 1 + nivel; dx += paso) {
+			for (int dz = -lejos; dz <= lejos && r.size() < 1 + nivel; dz += paso) {
+				int x = cx + dx;
+				int z = cz + dz;
+				double a = Math.floorMod((int) Math.floor(Math.toDegrees(Math.atan2(dz, dx)) * 10), 3600);
+				if (Math.hypot(dx, dz) > MurallaCapital.radioEn(contorno, a) - 4 || terreno.agua(x, z) || enCalle.contains(Geo.clave(x, z))
+						|| plaza.dentro(x, z, 4)) {
+					continue;
+				}
+				for (Direction d : Direction.Plane.HORIZONTAL) {
+					if (!terreno.agua(x + d.getStepX() * 4, z + d.getStepZ() * 4) || !terreno.agua(x + d.getStepX() * 8, z + d.getStepZ() * 8)) {
+						continue;
+					}
+					MuelleCapital m = new MuelleCapital(x, z, terreno.alto(x + d.getStepX() * 6, z + d.getStepZ() * 6), d);
+					BoundingBox b = m.getBoundingBox();
+					boolean libre = casas.stream().noneMatch(c -> solapa(c.getBoundingBox(), b)) && grandes.stream().noneMatch(g -> solapa(g.getBoundingBox(), b))
+							&& r.stream().noneMatch(o -> Math.hypot(o.getBoundingBox().getCenter().getX() - x, o.getBoundingBox().getCenter().getZ() - z) < SEPARA_MUELLES);
+					if (libre) {
+						r.add(m);
+					}
+					break;
+				}
+			}
 		}
 		return r;
 	}

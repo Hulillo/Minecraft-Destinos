@@ -222,6 +222,12 @@ public final class MurallaCapital extends StructurePiece {
 		return castillo != null && Math.max(Math.abs(x - castillo[0]), Math.abs(z - castillo[1])) <= castillo[2] + margen;
 	}
 
+	/** No cuenta para el allanado: va columna a columna sobre el suelo (y sobre el agua, sin echar tierra en ella). */
+	@Override
+	public boolean isCloseToChunk(ChunkPos chunk, int distancia) {
+		return false;
+	}
+
 	@Override
 	protected void addAdditionalSaveData(StructurePieceSerializationContext ctx, CompoundTag t) {
 		t.putInt("cx", cx);
@@ -382,6 +388,10 @@ public final class MurallaCapital extends StructurePiece {
 			}
 			return;
 		}
+		if (s.is(Blocks.WATER)) {
+			reja(level, pos, alto);
+			return;
+		}
 		if (!SueloNatural.natural(s)) {
 			return;
 		}
@@ -400,6 +410,33 @@ public final class MurallaCapital extends StructurePiece {
 				break;
 			}
 			level.setBlock(pos, bloque, 2);
+		}
+	}
+
+	/**
+	 * Donde la muralla cruza el agua (un río, la orilla de un lago): una reja de hierro desde el fondo hasta dos por
+	 * encima del agua, que deja pasar el agua pero no a la gente, y encima la muralla. En las pobres, la empalizada
+	 * sigue por el agua sobre pilotes.
+	 */
+	private void reja(WorldGenLevel level, BlockPos.MutableBlockPos pos, int alto) {
+		int agua = pos.getY();
+		int x = pos.getX();
+		int z = pos.getZ();
+		BlockState bloque = bloque(false);
+		int fondo = agua;
+		while (fondo > level.getMinY() && level.getBlockState(pos.set(x, fondo - 1, z)).is(Blocks.WATER) && agua - fondo < 24) {
+			fondo--;
+		}
+		BlockState barrote = nivel == 0 ? Blocks.SPRUCE_FENCE.defaultBlockState() : Blocks.IRON_BARS.defaultBlockState();
+		for (int y = fondo; y <= agua + 2; y++) {
+			BlockState b = barrote;
+			if (y <= agua && b.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED)) {
+				b = b.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED, true);
+			}
+			level.setBlock(pos.set(x, y, z), b, 2);
+		}
+		for (int y = agua + 3; y <= agua + Math.max(alto, 4); y++) {
+			level.setBlock(pos.set(x, y, z), bloque, 2);
 		}
 	}
 

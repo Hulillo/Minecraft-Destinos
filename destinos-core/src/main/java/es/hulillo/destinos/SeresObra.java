@@ -33,6 +33,8 @@ final class SeresObra {
 	static final String CERDO = "cerdo";
 	static final String GALLINA = "gallina";
 	static final String VACA = "vaca";
+	/** Una barca amarrada (en los muelles). */
+	static final String BARCA = "barca";
 
 	private SeresObra() {
 	}
@@ -50,6 +52,7 @@ final class SeresObra {
 			case CERDO -> EntityType.PIG;
 			case GALLINA -> EntityType.CHICKEN;
 			case VACA -> EntityType.COW;
+			case BARCA -> EntityType.OAK_BOAT;
 			default -> EntityType.ARMOR_STAND;
 		};
 		Entity e = tipo.create(sl, EntitySpawnReason.STRUCTURE);

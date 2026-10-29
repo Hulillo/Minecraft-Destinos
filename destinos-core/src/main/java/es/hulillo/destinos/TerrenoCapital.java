@@ -83,6 +83,12 @@ final class TerrenoCapital {
 				|| agua(b.minX(), b.maxZ()) || agua(b.maxX(), b.maxZ());
 	}
 
+	/** Si la caja está entera sobre el agua (su centro y sus cuatro esquinas). */
+	boolean todoAgua(BoundingBox b) {
+		return agua(b.getCenter().getX(), b.getCenter().getZ()) && agua(b.minX(), b.minZ()) && agua(b.maxX(), b.minZ())
+				&& agua(b.minX(), b.maxZ()) && agua(b.maxX(), b.maxZ());
+	}
+
 	/** Si algo de la caja (centro, esquinas o puntos de la rejilla de dentro) cae sobre el agua. */
 	boolean agua(BoundingBox b) {
 		if (agua(b.getCenter().getX(), b.getCenter().getZ()) || agua(b.minX(), b.minZ()) || agua(b.maxX(), b.minZ())
