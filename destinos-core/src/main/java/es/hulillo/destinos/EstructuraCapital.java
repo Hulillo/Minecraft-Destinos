@@ -450,7 +450,8 @@ public final class EstructuraCapital extends Structure {
 					|| calles.stream().anyMatch(c -> solapa(c.getBoundingBox(), enPlanta)) || desnivel(ctx, alturas, enPlanta) > MAX_DESNIVEL_CASA) {
 				continue;
 			}
-			int y = suelo(ctx, x, z) + 1 - entrada.getY();
+			// la altura también de la rejilla guardada: cada suelo() nuevo monta el generador de ruido entero (caro)
+			int y = grueso(ctx, alturas, x, z) + 1 - entrada.getY();
 			BlockPos sitio = new BlockPos(ox, y, oz);
 			BoundingBox b = m.elemento().getBoundingBox(plantillas, sitio, giro);
 			PoolElementStructurePiece casa = new PoolElementStructurePiece(plantillas, m.elemento(), sitio, m.elemento().getGroundLevelDelta(),
