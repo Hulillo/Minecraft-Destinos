@@ -210,17 +210,37 @@ public final class PlazaMercado extends PiezaObra {
 				}
 			}
 		}
-		// la columna: basa, fuste, capitel con los estandartes y un farol en lo alto
+		// la columna: basa, fuste, capitel con los estandartes y encima un templete con la campana
 		o.pon(cu, 1, cv, p.moldura);
 		o.caja(cu, 2, cv, cu, 4, cv, p.muroBajo);
-		o.pon(cu, 5, cv, p.moldura);
+		o.caja(cu - 1, 5, cv - 1, cu + 1, 5, cv + 1, p.moldura);
 		for (Direction d : Direction.Plane.HORIZONTAL) {
-			o.estandarte(cu + d.getStepX(), 5, cv + d.getStepZ(), d);
-			o.pon(cu + d.getStepX(), 6, cv + d.getStepZ(), Obra.escalon(p.piedraEscalon, d.getOpposite(), false));
+			o.estandarte(cu + d.getStepX() * 2, 5, cv + d.getStepZ() * 2, d);
 		}
-		o.pon(cu, 6, cv, p.muroBajo);
-		// y en lo alto la campana: donde se reúnen los aldeanos y se toca a rebato
-		o.pon(cu, 7, cv, Blocks.BELL);
+		campanario(o, cu, 6, cv);
+	}
+
+	/**
+	 * Un templete de campana sobre (cu, ly, cv): cuatro postes en las esquinas, un tejadillo de losas con un bloque
+	 * macizo en medio y la campana colgada de él (una campana tiene que colgar de un bloque entero o apoyarse en uno;
+	 * puesta sobre un muro se cae).
+	 */
+	static void campanario(Obra o, int cu, int ly, int cv) {
+		Paleta p = o.p;
+		for (int su = -1; su <= 1; su += 2) {
+			for (int sv = -1; sv <= 1; sv += 2) {
+				o.caja(cu + su, ly, cv + sv, cu + su, ly + 1, cv + sv, p.muroBajo);
+			}
+		}
+		for (int du = -1; du <= 1; du++) {
+			for (int dv = -1; dv <= 1; dv++) {
+				o.pon(cu + du, ly + 2, cv + dv, du == 0 && dv == 0 ? p.moldura : Obra.losa(p.piedraLosa, false));
+			}
+		}
+		o.pon(cu, ly + 3, cv, p.muroBajo);
+		o.pon(cu, ly + 4, cv, Blocks.LANTERN);
+		o.pon(cu, ly + 1, cv, Blocks.BELL.defaultBlockState()
+				.setValue(net.minecraft.world.level.block.BellBlock.ATTACHMENT, net.minecraft.world.level.block.state.properties.BellAttachType.CEILING));
 	}
 
 	/** Un corral de vallas con su cancela hacia frente, un pesebre, un abrevadero y dos animales. */
