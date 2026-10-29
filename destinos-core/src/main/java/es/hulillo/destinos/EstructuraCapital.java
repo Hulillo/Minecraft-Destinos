@@ -67,6 +67,10 @@ public final class EstructuraCapital extends Structure {
 	private static final int ELEVADO = 6;
 	/** Entre la muralla y las casas, la ronda libre. */
 	private static final int RONDA_MURO = 6;
+	/** Lo que queda entre la última casa y la muralla. */
+	private static final int MARGEN_MURO = 5;
+	/** Lo que siguen las calles pasada la muralla. */
+	private static final int SALIDA = 14;
 	/** A qué distancia del eje de la calle va la puerta de las casas: pegada, y si no cabe, más atrás. */
 	private static final int[] ACERA = {3, 5, 8};
 	/** Cada cuántos bloques de calle sale un callejón, y lo largo que es. */
@@ -336,8 +340,17 @@ public final class EstructuraCapital extends Structure {
 				Rotation.NONE, elemPlaza.getBoundingBox(plantillas, sitioPlaza, Rotation.NONE), LiquidSettings.APPLY_WATERLOGGING);
 
 		// 8. la muralla, sin los trozos que tocan el agua (allanarían un anillo de tierra en el mar)
+		// ceñida a lo construido: rodea casas, mercado y casas nobles con un margen; donde está el castillo, su muralla
+		List<BoundingBox> construido = new ArrayList<>();
+		casas.forEach(c -> construido.add(c.getBoundingBox()));
+		mercado.ifPresent(m -> construido.add(m.getBoundingBox()));
+		nobles.forEach(n -> construido.add(n.getBoundingBox()));
+		int[] contorno = MurallaCapital.contorno(cx, cz, construido, MARGEN_MURO, (AdornoCapital.PLAZA + radio) / 2, Math.min(radio + 6, MAX_ALCANCE - 6));
+		List<BoundingBox> fueraMuro = castillo.map(c -> List.of(c.getBoundingBox())).orElse(List.of());
 		List<StructurePiece> muralla = new ArrayList<>();
-		MurallaCapital.piezas(cx, cz, nivel, terreno::alto, muralla);
+		MurallaCapital.piezas(cx, cz, nivel, contorno, terreno::alto, fueraMuro, muralla);
+		// las calles que van a las puertas salen un poco por fuera de la muralla y ahí se acaban
+		calles.removeIf(c -> fueraDe(contorno, cx, cz, c.x0(), c.z0()) && fueraDe(contorno, cx, cz, c.x1(), c.z1()));
 		List<StructurePiece> enMuralla = muralla.stream().filter(m -> !terreno.aguaEsquinas(m.getBoundingBox())).toList();
 
 		int techo = ctx.heightAccessor().getMinY() + ctx.heightAccessor().getHeight() - 1;
@@ -416,6 +429,12 @@ public final class EstructuraCapital extends Structure {
 			y[k] = (int) Math.round(h[k]);
 		}
 		return y;
+	}
+
+	/** Si (x, z) queda bastante por fuera de la muralla del contorno dado. */
+	private static boolean fueraDe(int[] contorno, int cx, int cz, int x, int z) {
+		double a = Math.floorMod((int) Math.floor(Math.toDegrees(Math.atan2(z - cz, x - cx)) * 10), 3600);
+		return Math.hypot(x - cx, z - cz) > MurallaCapital.radioEn(contorno, a) + SALIDA;
 	}
 
 	/** Traza una calle de la plaza a (destino) y la apunta si hay camino. */

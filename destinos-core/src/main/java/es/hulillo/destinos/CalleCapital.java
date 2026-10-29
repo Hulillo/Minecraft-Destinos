@@ -64,6 +64,22 @@ public final class CalleCapital extends StructurePiece {
 		this.puente = puente;
 	}
 
+	int x0() {
+		return x0;
+	}
+
+	int z0() {
+		return z0;
+	}
+
+	int x1() {
+		return x1;
+	}
+
+	int z1() {
+		return z1;
+	}
+
 	private static BoundingBox caja(int x0, int z0, int y0, int x1, int z1, int y1, double radio) {
 		int m = (int) Math.ceil(radio) + 2;
 		return new BoundingBox(Math.min(x0, x1) - m, Math.min(y0, y1) - MAX_CORTE - 1, Math.min(z0, z1) - m, Math.max(x0, x1) + m,
