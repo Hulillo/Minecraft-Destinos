@@ -75,7 +75,7 @@ public final class EstructuraCapital extends Structure {
 	private static final int CERCA_PUERTA = 12;
 	private static final int K_PLAZUELA = 6151;
 	private static final int SEPARA_PLAZUELAS = 48;
-	private static final int MAX_DESNIVEL_PLAZUELA = 4;
+	private static final int MAX_DESNIVEL_PLAZUELA = 6;
 	/** A qué distancia del eje de la calle va la puerta de las casas: pegada, y si no cabe, más atrás. */
 	private static final int[] ACERA = {3, 5, 8};
 	/** Cada cuántos bloques de calle sale un callejón, y lo largo que es. */
@@ -629,14 +629,18 @@ public final class EstructuraCapital extends Structure {
 					if (terreno.agua(x, z) || grandes.stream().anyMatch(g -> solapa(g.getBoundingBox().inflatedBy(6), b))) {
 						continue;
 					}
-					double n = terreno.relieve(x, z, r)[1] * K_DESNIVEL + (terreno.aguaEsquinas(b) ? 20 : 0) + Math.hypot(dx, dz) / 6;
+					// el mercado tiene que caber: con agua en una esquina o mucha cuesta, solo si no queda otra
+					int desnivel = terreno.relieve(x, z, r)[1];
+					double n = desnivel * K_DESNIVEL + (terreno.aguaEsquinas(b) ? 200 : 0) + (desnivel > MAX_DESNIVEL_MERCADO ? 100 : 0)
+							+ Math.hypot(dx, dz) / 6;
 					if (n < nota) {
 						nota = n;
 						mejor = new int[] {x, z};
 					}
 				}
 			}
-			if (mejor != null) {
+			// si lo mejor de cerca no vale para el mercado, se busca más lejos
+			if (mejor != null && (nota < 100 || busca == BUSCA_PLAZA[BUSCA_PLAZA.length - 1])) {
 				return mejor;
 			}
 		}

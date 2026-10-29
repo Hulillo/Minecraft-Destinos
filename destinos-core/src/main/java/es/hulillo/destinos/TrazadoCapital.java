@@ -25,7 +25,7 @@ final class TrazadoCapital {
 	/** Lo que cuesta ir por una calle ya trazada o por la plaza, frente a abrir camino nuevo. */
 	private static final double YA_TRAZADA = 0.35;
 	private static final double EN_PLAZA = 0.3;
-	/** Cerca del destino se puede entrar en su obra (el camino llega hasta la puerta). */
+	/** Cerca del origen y del destino se puede pisar su obra (el camino sale de una puerta y llega a otra). */
 	private static final int LLEGADA = 2;
 	private static final int[][] VECINOS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}, {2, 1}, {2, -1}, {-2, 1},
 			{-2, -1}, {1, 2}, {1, -2}, {-1, 2}, {-1, -2}};
@@ -102,6 +102,8 @@ final class TrazadoCapital {
 		int fin = i(bx) * lado + j(bz);
 		int fi = fin / lado;
 		int fj = fin % lado;
+		int si = inicio / lado;
+		int sj = inicio % lado;
 		double[] coste = new double[lado * lado];
 		Arrays.fill(coste, Double.MAX_VALUE);
 		int[] desde = new int[lado * lado];
@@ -127,7 +129,9 @@ final class TrazadoCapital {
 					continue;
 				}
 				int m = ni * lado + nj;
-				boolean llega = Math.abs(ni - fi) <= LLEGADA && Math.abs(nj - fj) <= LLEGADA;
+				// cerca de los extremos se puede pisar una obra (se sale de su puerta y se llega a la otra)
+				boolean llega = Math.abs(ni - fi) <= LLEGADA && Math.abs(nj - fj) <= LLEGADA
+						|| Math.abs(ni - si) <= LLEGADA && Math.abs(nj - sj) <= LLEGADA;
 				if (prohibido[m] && !llega) {
 					continue;
 				}
