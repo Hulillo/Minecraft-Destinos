@@ -1920,14 +1920,15 @@ public final class CastilloCapital extends PiezaObra {
 		o.sillares(ua, -8, va, ub, -1, vb, false);
 		o.caja(ua + 1, -7, va + 1, ub - 1, -7, vb - 1, p.zocalo);
 		o.aire(ua + 1, -6, va + 1, ub - 1, -2, vb - 1);
+		// siete peldaños desde el fondo de la cripta: el último a ras del suelo de la capilla, sin escalón de más
 		for (int u = -14; u <= -12; u++) {
-			o.escalera(u, -6, 24, Direction.NORTH, 6, p.piedraEscalon, p.zocalo);
+			o.escalera(u, -6, vb - 1, Direction.NORTH, 7, p.piedraEscalon, p.zocalo);
 		}
-		for (int v = 19; v <= 21; v++) {
+		for (int v = 20; v <= 22; v++) {
 			o.pon(-15, 1, v, p.valla);
 		}
 		for (int u = -14; u <= -12; u++) {
-			o.pon(u, 1, 22, p.valla);
+			o.pon(u, 1, 23, p.valla);
 		}
 		for (int u : new int[] {-22, -18}) {
 			for (int v : new int[] {17, 21}) {
