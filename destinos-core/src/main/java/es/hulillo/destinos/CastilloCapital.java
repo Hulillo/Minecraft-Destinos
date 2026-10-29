@@ -32,7 +32,7 @@ public final class CastilloCapital extends PiezaObra {
 	public static final StructurePieceType TIPO = (StructurePieceType.ContextlessType) CastilloCapital::new;
 
 	/** La cara de fuera de la muralla; la muralla son los anillos de RONDA + 1 a MURO. */
-	private static final int MURO = 40;
+	static final int MURO = 40;
 	/** La cara de dentro de la muralla: entre ella y DENTRO, el paseo de ronda de césped (nueve de ancho). */
 	private static final int RONDA = MURO - 5;
 	/** Hasta dónde se construye por dentro de la muralla. */

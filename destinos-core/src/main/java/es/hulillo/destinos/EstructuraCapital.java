@@ -368,9 +368,9 @@ public final class EstructuraCapital extends Structure {
 		mercado.ifPresent(m -> construido.add(m.getBoundingBox()));
 		nobles.forEach(n -> construido.add(n.getBoundingBox()));
 		int[] contorno = MurallaCapital.contorno(cx, cz, construido, MARGEN_MURO, (rPlaza + radio) / 2, Math.min(radio + 6, MAX_ALCANCE - 6));
-		List<BoundingBox> fueraMuro = castillo.map(c -> List.of(c.getBoundingBox())).orElse(List.of());
+		int[] muroCastillo = castillo.map(c -> new int[] {c.cx, c.cz, CastilloCapital.MURO + 1}).orElse(null);
 		List<StructurePiece> muralla = new ArrayList<>();
-		MurallaCapital.piezas(cx, cz, nivel, contorno, terreno::alto, fueraMuro, muralla);
+		MurallaCapital.piezas(cx, cz, nivel, contorno, terreno::alto, muroCastillo, muralla);
 		// las calles que van a las puertas salen un poco por fuera de la muralla y ahí se acaban
 		calles.removeIf(c -> fueraDe(contorno, cx, cz, c.x0(), c.z0()) && fueraDe(contorno, cx, cz, c.x1(), c.z1()));
 		List<StructurePiece> enMuralla = muralla.stream().filter(m -> !terreno.aguaEsquinas(m.getBoundingBox())).toList();
