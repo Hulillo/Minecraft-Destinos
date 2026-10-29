@@ -223,11 +223,11 @@ public final class EstructuraCapital extends Structure {
 		List<List<int[]>> principales = new ArrayList<>();
 		List<int[]> subida = null;
 		for (int k = 0; k < destinos.size(); k++) {
-			int antes = principales.size();
+			int previas = principales.size();
 			calle(trazado, principales, mayor, destinos.get(k));
 			// la subida al castillo, hasta delante de su barbacana (luego se hace rampa hasta la altura de su puerta)
-			if (k < desdeMuralla && principales.size() > antes) {
-				subida = principales.remove(antes);
+			if (k < desdeMuralla && principales.size() > previas) {
+				subida = principales.remove(previas);
 			}
 		}
 		// y las rondas: un anillo (dos en las grandes) que va de una calle a otra siguiendo el terreno, para que la ciudad
