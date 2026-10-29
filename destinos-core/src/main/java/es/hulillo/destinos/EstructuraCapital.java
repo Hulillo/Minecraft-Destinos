@@ -63,8 +63,8 @@ public final class EstructuraCapital extends Structure {
 	private static final int ELEVADO = 6;
 	/** Entre la muralla y las casas, la ronda libre. */
 	private static final int RONDA_MURO = 6;
-	/** A qué distancia del borde de la calle va la puerta de las casas. */
-	private static final int ACERA = 3;
+	/** A qué distancia del eje de la calle va la puerta de las casas: pegada, y si no cabe, más atrás. */
+	private static final int[] ACERA = {3, 5, 8};
 	/** Aldeanos como mucho por capital (uno por casa hasta llegar). */
 	private static final int MAX_ALDEANOS = 48;
 
@@ -588,16 +588,23 @@ public final class EstructuraCapital extends Structure {
 			double nx = -uz * lado;
 			double nz = ux * lado;
 			Direction mira = Math.abs(nx) >= Math.abs(nz) ? (nx > 0 ? Direction.WEST : Direction.EAST) : (nz > 0 ? Direction.NORTH : Direction.SOUTH);
-			int fx = (int) Math.round(x + nx * ACERA);
-			int fz = (int) Math.round(z + nz * ACERA);
+			int lx = mira.getAxis() == Direction.Axis.X ? 0 : 1;
+			int lz = 1 - lx;
 			// pasada la muralla (las calles que van a las puertas siguen un poco) ya no hay casas
-			if (Math.hypot(fx - cx, fz - cz) > limite) {
+			if (Math.hypot(x + nx * ACERA[0] - cx, z + nz * ACERA[0] - cz) > limite) {
 				t += 3;
 				continue;
 			}
-			int lx = mira.getAxis() == Direction.Axis.X ? 0 : 1;
-			int lz = 1 - lx;
-			int hueco = ponCasa(plantillas, terreno, catalogo, fx, fz, lx, lz, mira, cabe, casas, puertas);
+			// pegada a la calle; si una esquina la pisa (en las curvas y en las calles en diagonal), un poco más atrás
+			int hueco = 0;
+			for (int acera : ACERA) {
+				int fx = (int) Math.round(x + nx * acera);
+				int fz = (int) Math.round(z + nz * acera);
+				hueco = ponCasa(plantillas, terreno, catalogo, fx, fz, lx, lz, mira, cabe, casas, puertas);
+				if (hueco > 0) {
+					break;
+				}
+			}
 			t += hueco > 0 ? hueco + 2 : 3;
 		}
 	}
