@@ -66,8 +66,8 @@ public final class EstructuraCapital extends Structure {
 	/** A qué distancia del eje de la calle va la puerta de las casas: pegada, y si no cabe, más atrás. */
 	private static final int[] ACERA = {3, 5, 8};
 	/** Cada cuántos bloques de calle sale un callejón, y lo largo que es. */
-	private static final int CALLEJON = 30;
-	private static final int LARGO_CALLEJON = 22;
+	private static final int CALLEJON = 18;
+	private static final int LARGO_CALLEJON = 26;
 	/** Aldeanos como mucho por capital (uno por casa hasta llegar). */
 	private static final int MAX_ALDEANOS = 48;
 
