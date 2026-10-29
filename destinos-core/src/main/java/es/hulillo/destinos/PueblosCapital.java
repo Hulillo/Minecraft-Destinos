@@ -129,6 +129,11 @@ public final class PueblosCapital {
 		return pieza instanceof PoolElementStructurePiece p && contieneAlguna(p.getElement().toString(), ABANDONADO);
 	}
 
+	/** Si el nombre (de una pieza o una plantilla) es de algo abandonado, zombi o en ruinas. */
+	static boolean abandonado(String nombre) {
+		return contieneAlguna(nombre, ABANDONADO);
+	}
+
 	private static boolean contieneAlguna(String texto, String[] trozos) {
 		String t = texto.toLowerCase(Locale.ROOT);
 		for (String trozo : trozos) {
