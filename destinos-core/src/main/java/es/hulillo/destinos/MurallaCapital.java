@@ -44,6 +44,14 @@ public final class MurallaCapital extends StructurePiece {
 	private static final int RADIO_TORRE = 3;
 	private static final int[] ALTO = {4, 5, 7};
 	private static final int[] GRUESO = {1, 2, 3};
+
+	static int alto(int nivel) {
+		return ALTO[Math.clamp(nivel, 0, ALTO.length - 1)];
+	}
+
+	static int grueso(int nivel) {
+		return GRUESO[Math.clamp(nivel, 0, GRUESO.length - 1)];
+	}
 	/** El alto libre bajo el dintel de las puertas. */
 	private static final int PASO = 4;
 

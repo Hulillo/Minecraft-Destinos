@@ -84,6 +84,15 @@ public final class CastilloCapital extends PiezaObra {
 		return dx > 0 ? 1 : 3;
 	}
 
+	/** Delante de la barbacana, donde llega el camino: (x, z) del mundo. */
+	int[] entrada() {
+		return mundo(0, FRENTE - 4);
+	}
+
+	int suelo() {
+		return y0;
+	}
+
 	/** Dónde está, para el registro: centro, suelo y giro. */
 	String donde() {
 		return cx + ", " + y0 + ", " + cz + " (giro " + rot + ")";

@@ -73,6 +73,9 @@ public final class EstructuraCapital extends Structure {
 	private static final int SALIDA = 14;
 	/** Lo cerca que tiene que pasar una ronda o un callejón de una puerta para que valga la pena. */
 	private static final int CERCA_PUERTA = 12;
+	/** Lo más que se rebaja o se terraplena para la subida al castillo. */
+	private static final int MAX_RAMPA = 16;
+	private static final int SEPARA_PUERTAS = 30;
 	private static final int K_PLAZUELA = 6151;
 	private static final int SEPARA_PLAZUELAS = 48;
 	private static final int MAX_DESNIVEL_PLAZUELA = 6;
@@ -206,7 +209,9 @@ public final class EstructuraCapital extends Structure {
 		grandes.forEach(g -> obras.add(g.getBoundingBox()));
 		TrazadoCapital trazado = new TrazadoCapital(terreno, cx, cz, radio + 16, obras, px, pz, rPlaza);
 		List<List<int[]>> principales = new ArrayList<>();
-		castillo.ifPresent(c -> calle(trazado, principales, obras, px, pz, rPlaza * Integer.signum(ladoMercado), puerta(c.getBoundingBox(), c.cx, c.cz, px, pz)));
+		// la subida al castillo, hasta delante de su barbacana (luego se hace rampa hasta la altura de su puerta)
+		castillo.ifPresent(c -> calle(trazado, principales, obras, px, pz, rPlaza * Integer.signum(ladoMercado), c.entrada()));
+		List<int[]> subida = principales.isEmpty() ? null : principales.remove(0);
 		for (int[] p : puertas(terreno, cx, cz, radio, nivel)) {
 			calle(trazado, principales, obras, px, pz, rPlaza * Integer.signum(ladoMercado), p);
 		}
@@ -247,6 +252,10 @@ public final class EstructuraCapital extends Structure {
 		// cada calle con su ancho (las principales, 5; las rondas, 4; los callejones, 3) y su altura suavizada
 		List<CalleCapital> calles = new ArrayList<>();
 		tramos(terreno, principales, ANCHO_PRINCIPAL, px, pz, calles);
+		if (subida != null) {
+			rampa(terreno, subida, castillo.get().suelo(), calles);
+			principales.add(subida);
+		}
 		Set<Long> enCalle = TrazadoCapital.ocupa(principales, (int) Math.ceil(ANCHO_PRINCIPAL));
 		enCalle.addAll(TrazadoCapital.ocupa(rondas, (int) Math.ceil(ANCHO_RONDA)));
 
@@ -371,6 +380,8 @@ public final class EstructuraCapital extends Structure {
 		int[] muroCastillo = castillo.map(c -> new int[] {c.cx, c.cz, CastilloCapital.MURO + 1}).orElse(null);
 		List<StructurePiece> muralla = new ArrayList<>();
 		MurallaCapital.piezas(cx, cz, nivel, contorno, terreno::alto, muroCastillo, muralla);
+		// y donde la cruza una calle principal, una puerta de verdad: torres, arco y rastrillo
+		List<PuertaCapital> portones = portones(terreno, principales, contorno, cx, cz, nivel, muroCastillo, estilo, madera, color);
 		// las calles que van a las puertas salen un poco por fuera de la muralla y ahí se acaban
 		calles.removeIf(c -> fueraDe(contorno, cx, cz, c.x0(), c.z0()) && fueraDe(contorno, cx, cz, c.x1(), c.z1()));
 		List<StructurePiece> enMuralla = muralla.stream().filter(m -> !terreno.aguaEsquinas(m.getBoundingBox())).toList();
@@ -399,6 +410,11 @@ public final class EstructuraCapital extends Structure {
 				piezas.addPiece(c);
 				cajas.add(c.getBoundingBox());
 			}
+			// las puertas antes que la muralla: los arcos se paran en sus torres
+			for (PuertaCapital q : portones) {
+				piezas.addPiece(q);
+				cajas.add(q.getBoundingBox());
+			}
 			for (StructurePiece m : enMuralla) {
 				piezas.addPiece(m);
 				cajas.add(m.getBoundingBox());
@@ -409,7 +425,7 @@ public final class EstructuraCapital extends Structure {
 			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} calles, {} tramos de ronda y {} callejones, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
 					px, alturaPlaza, pz, nivel,
 					(castillo.isPresent() ? ", con castillo" : "") + (mercado.isPresent() ? ", con mercado" : "")
-							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles") + ", " + plazuelas.size() + " placitas",
+							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles") + ", " + plazuelas.size() + " placitas, " + portones.size() + " puertas",
 					principales.size(), rondas.size(), callejones.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
 					motivos[5], motivos[6], ColocacionCapital.quien());
 		}));
@@ -432,6 +448,30 @@ public final class EstructuraCapital extends Structure {
 				}
 				calles.add(new CalleCapital(a[0], a[1], y[k], b[0], b[1], y[k + 1], radio, true));
 			}
+		}
+	}
+
+	/**
+	 * La subida al castillo: la altura de la calle se lleva hasta la de su puerta al final, como mucho un bloque de cada
+	 * dos de camino hacia atrás, rebajando o terraplenando lo que haga falta.
+	 */
+	private static void rampa(TerrenoCapital terreno, List<int[]> c, int arriba, List<CalleCapital> calles) {
+		int[] y = perfil(terreno, c);
+		int n = c.size();
+		y[n - 1] = arriba;
+		int maximo = 0;
+		for (int k = n - 2; k >= 0; k--) {
+			double d = Math.hypot(c.get(k + 1)[0] - c.get(k)[0], c.get(k + 1)[1] - c.get(k)[1]);
+			int lim = Math.max(1, (int) Math.floor(d / 2));
+			int terreno0 = y[k];
+			y[k] = Math.clamp(y[k], y[k + 1] - lim, y[k + 1] + lim);
+			maximo = Math.max(maximo, Math.abs(y[k] - terreno0));
+		}
+		maximo = Math.max(maximo, Math.abs(arriba - terreno.alto(c.get(n - 1)[0], c.get(n - 1)[1]))) + 2;
+		for (int k = 0; k + 1 < n; k++) {
+			int[] a = c.get(k);
+			int[] b = c.get(k + 1);
+			calles.add(new CalleCapital(a[0], a[1], y[k], b[0], b[1], y[k + 1], ANCHO_PRINCIPAL, true, Math.min(maximo, MAX_RAMPA)));
 		}
 	}
 
@@ -514,6 +554,42 @@ public final class EstructuraCapital extends Structure {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Las puertas de la muralla: donde cada calle principal pasa por ella (por el medio de su grueso), una puerta
+	 * mirando hacia fuera, a la altura de la calle; no dos muy juntas, ni en el agua ni en el castillo.
+	 */
+	private static List<PuertaCapital> portones(TerrenoCapital terreno, List<List<int[]>> calles, int[] contorno, int cx, int cz, int nivel,
+			int[] castillo, int estilo, int madera, int color) {
+		List<PuertaCapital> r = new ArrayList<>();
+		double medio = MurallaCapital.grueso(nivel) / 2.0;
+		for (List<int[]> c : calles) {
+			int[] y = perfil(terreno, c);
+			for (int k = 1; k < c.size(); k++) {
+				int[] q = c.get(k);
+				double a = Math.floorMod((int) Math.floor(Math.toDegrees(Math.atan2(q[1] - cz, q[0] - cx)) * 10), 3600);
+				double anillo = MurallaCapital.radioEn(contorno, a) + medio;
+				if (Math.hypot(q[0] - cx, q[1] - cz) < anillo) {
+					continue;
+				}
+				// el punto de la calle justo en la muralla (entre este y el anterior)
+				int[] p = c.get(k - 1);
+				double dp = Math.hypot(p[0] - cx, p[1] - cz);
+				double dq = Math.hypot(q[0] - cx, q[1] - cz);
+				double f = dq - dp < 1e-6 ? 1 : Math.clamp((anillo - dp) / (dq - dp), 0, 1);
+				int x = (int) Math.round(p[0] + (q[0] - p[0]) * f);
+				int z = (int) Math.round(p[1] + (q[1] - p[1]) * f);
+				int alto = (int) Math.round(y[k - 1] + (y[k] - y[k - 1]) * f);
+				boolean cerca = r.stream().anyMatch(o -> Math.hypot(o.cx - x, o.cz - z) < SEPARA_PUERTAS);
+				boolean enCastillo = castillo != null && Math.max(Math.abs(x - castillo[0]), Math.abs(z - castillo[1])) <= castillo[2] + PuertaCapital.MEDIO + 2;
+				if (!cerca && !enCastillo && !terreno.agua(x, z)) {
+					r.add(new PuertaCapital(x, z, alto, CastilloCapital.giroHacia(x - cx, z - cz), estilo, madera, color, nivel));
+				}
+				break;
+			}
+		}
+		return r;
 	}
 
 	/**

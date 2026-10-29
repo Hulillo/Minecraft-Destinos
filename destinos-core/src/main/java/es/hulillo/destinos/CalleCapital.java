@@ -51,9 +51,16 @@ public final class CalleCapital extends StructurePiece {
 	/** Medio ancho de la calle, en décimas de bloque. */
 	private final int radio;
 	private final boolean puente;
+	/** Lo que se puede rebajar o rellenar como mucho (0: lo de siempre); las rampas, como la subida al castillo, más. */
+	private final int maximo;
 
 	CalleCapital(int x0, int z0, int y0, int x1, int z1, int y1, double radio, boolean puente) {
-		super(TIPO, 0, caja(x0, z0, y0, x1, z1, y1, radio));
+		this(x0, z0, y0, x1, z1, y1, radio, puente, 0);
+	}
+
+	CalleCapital(int x0, int z0, int y0, int x1, int z1, int y1, double radio, boolean puente, int maximo) {
+		super(TIPO, 0, caja(x0, z0, y0, x1, z1, y1, radio, maximo));
+		this.maximo = maximo;
 		this.x0 = x0;
 		this.z0 = z0;
 		this.y0 = y0;
@@ -80,10 +87,11 @@ public final class CalleCapital extends StructurePiece {
 		return z1;
 	}
 
-	private static BoundingBox caja(int x0, int z0, int y0, int x1, int z1, int y1, double radio) {
+	private static BoundingBox caja(int x0, int z0, int y0, int x1, int z1, int y1, double radio, int maximo) {
 		int m = (int) Math.ceil(radio) + 2;
-		return new BoundingBox(Math.min(x0, x1) - m, Math.min(y0, y1) - MAX_CORTE - 1, Math.min(z0, z1) - m, Math.max(x0, x1) + m,
-				Math.max(y0, y1) + MAX_CORTE + 2, Math.max(z0, z1) + m);
+		int h = Math.max(MAX_CORTE, maximo);
+		return new BoundingBox(Math.min(x0, x1) - m, Math.min(y0, y1) - h - 1, Math.min(z0, z1) - m, Math.max(x0, x1) + m,
+				Math.max(y0, y1) + h + 2, Math.max(z0, z1) + m);
 	}
 
 	private CalleCapital(CompoundTag t) {
@@ -96,6 +104,7 @@ public final class CalleCapital extends StructurePiece {
 		y1 = t.getIntOr("y1", SIN_ALTURA);
 		radio = t.getIntOr("radio", 10);
 		puente = t.getBooleanOr("puente", false);
+		maximo = t.getIntOr("max", 0);
 	}
 
 	static void registra() {
@@ -112,6 +121,7 @@ public final class CalleCapital extends StructurePiece {
 		t.putInt("y1", y1);
 		t.putInt("radio", radio);
 		t.putBoolean("puente", puente);
+		t.putInt("max", maximo);
 	}
 
 	@Override
@@ -148,15 +158,15 @@ public final class CalleCapital extends StructurePiece {
 					if (puente && d <= r + 1.3) {
 						puente(level, pos, !calle, Math.floorMod(x + z, PILARES) == 0, aLoLargoDeZ);
 					}
-				} else if (y != SIN_ALTURA && Math.abs(pos.getY() - y) > MAX_CORTE + 1) {
+				} else if (y != SIN_ALTURA && Math.abs(pos.getY() - y) > corte() + 1) {
 					// un acantilado o un barranco que el trazado no vio: ahí no se pinta calle
 					continue;
 				} else if (calle) {
-					s = allana(level, pos, s, y, 0);
+					s = allana(level, pos, s, y, 0, corte(), relleno());
 					pon(level, pos, s);
 				} else if (y != SIN_ALTURA) {
 					// la cuneta: un escalón entre la calle y el suelo de al lado, para que no quede un tajo
-					allana(level, pos, s, y, 1);
+					allana(level, pos, s, y, 1, corte(), relleno());
 				}
 			}
 		}
@@ -167,12 +177,21 @@ public final class CalleCapital extends StructurePiece {
 	 * sobra o rellena con tierra lo que falta, si es poco; si no, o si hay algo que no es natural, lo deja. Devuelve el
 	 * bloque de arriba, con pos en él.
 	 */
-	private static BlockState allana(WorldGenLevel level, BlockPos.MutableBlockPos pos, BlockState s, int y, int holgura) {
+	private int corte() {
+		return Math.max(MAX_CORTE, maximo);
+	}
+
+	private int relleno() {
+		return Math.max(MAX_RELLENO, maximo);
+	}
+
+	private static BlockState allana(WorldGenLevel level, BlockPos.MutableBlockPos pos, BlockState s, int y, int holgura, int maxCorte,
+			int maxRelleno) {
 		if (y == SIN_ALTURA) {
 			return s;
 		}
 		int h = pos.getY();
-		if (h > y + holgura && h - y <= MAX_CORTE) {
+		if (h > y + holgura && h - y <= maxCorte) {
 			int x = pos.getX();
 			int z = pos.getZ();
 			for (int k = y + holgura + 1; k <= h; k++) {
@@ -197,7 +216,7 @@ public final class CalleCapital extends StructurePiece {
 			}
 			return abajo;
 		}
-		if (h < y - holgura && y - h <= MAX_RELLENO) {
+		if (h < y - holgura && y - h <= maxRelleno) {
 			int x = pos.getX();
 			int z = pos.getZ();
 			for (int k = h + 1; k <= y - holgura; k++) {

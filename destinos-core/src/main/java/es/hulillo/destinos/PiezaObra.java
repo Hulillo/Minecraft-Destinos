@@ -86,6 +86,23 @@ abstract class PiezaObra extends StructurePiece {
 	/** Lo que se construye, en local, sobre o. */
 	protected abstract void construye(Obra o);
 
+	/** El punto del mundo (x, z) que cae en (u, v) de la obra. */
+	int[] mundo(int u, int v) {
+		int x = cx + switch (rot) {
+			case 1 -> -v;
+			case 2 -> -u;
+			case 3 -> v;
+			default -> u;
+		};
+		int z = cz + switch (rot) {
+			case 1 -> u;
+			case 2 -> -v;
+			case 3 -> -u;
+			default -> v;
+		};
+		return new int[] {x, z};
+	}
+
 	/** La altura que ocupa por encima del suelo (la de la caja). */
 	protected int alto() {
 		return getBoundingBox().getYSpan() - 1;
