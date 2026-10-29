@@ -65,6 +65,9 @@ public final class EstructuraCapital extends Structure {
 	private static final int RONDA_MURO = 6;
 	/** A qué distancia del eje de la calle va la puerta de las casas: pegada, y si no cabe, más atrás. */
 	private static final int[] ACERA = {3, 5, 8};
+	/** Cada cuántos bloques de calle sale un callejón, y lo largo que es. */
+	private static final int CALLEJON = 30;
+	private static final int LARGO_CALLEJON = 22;
 	/** Aldeanos como mucho por capital (uno por casa hasta llegar). */
 	private static final int MAX_ALDEANOS = 48;
 
@@ -224,6 +227,34 @@ public final class EstructuraCapital extends Structure {
 		}
 		List<List<int[]>> todas = new ArrayList<>(principales);
 		todas.addAll(rondas);
+		// y los callejones: de cada calle, cada tanto, uno de través hacia un lado y otro (manzanas por dentro)
+		List<List<int[]>> callejones = new ArrayList<>();
+		long dentroMuro = (long) (radio - RONDA_MURO - 8) * (radio - RONDA_MURO - 8);
+		for (List<int[]> c : todas) {
+			int lado = Math.floorMod(Geo.hash(c.get(0)[0], c.get(0)[1], K_PUERTAS), 2) * 2 - 1;
+			for (int k = CALLEJON / 6; k + 1 < c.size(); k += CALLEJON / 6) {
+				int[] a = c.get(k);
+				int[] b = c.get(k + 1);
+				double largo = Math.max(1, Math.hypot(b[0] - a[0], b[1] - a[1]));
+				int x = a[0] + (int) Math.round(-(b[1] - a[1]) / largo * lado * LARGO_CALLEJON);
+				int z = a[1] + (int) Math.round((b[0] - a[0]) / largo * lado * LARGO_CALLEJON);
+				lado = -lado;
+				long dx = x - cx;
+				long dz = z - cz;
+				long qx = x - px;
+				long qz = z - pz;
+				if (dx * dx + dz * dz > dentroMuro || qx * qx + qz * qz < (long) (AdornoCapital.PLAZA + 8) * (AdornoCapital.PLAZA + 8)
+						|| terreno.agua(x, z)
+						|| obras.stream().anyMatch(o -> x >= o.minX() - 3 && x <= o.maxX() + 3 && z >= o.minZ() - 3 && z <= o.maxZ() + 3)) {
+					continue;
+				}
+				List<int[]> callejon = trazado.calle(a[0], a[1], x, z);
+				if (callejon.size() >= 2) {
+					callejones.add(callejon);
+				}
+			}
+		}
+		todas.addAll(callejones);
 		List<CalleCapital> calles = new ArrayList<>();
 		for (List<int[]> c : todas) {
 			for (int k = 0; k + 1 < c.size(); k++) {
@@ -334,11 +365,11 @@ public final class EstructuraCapital extends Structure {
 			// y lo último, el adorno, que ya ve todo lo demás puesto
 			BoundingBox.encapsulatingBoxes(cajas).ifPresent(caja -> piezas.addPiece(
 					new AdornoCapital(px, alturaPlaza, pz, estilo, color, caja, techo, mercado.isEmpty())));
-			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} calles y {} tramos de ronda, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
+			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} calles, {} tramos de ronda y {} callejones, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
 					px, alturaPlaza, pz, nivel,
 					(castillo.isPresent() ? ", con castillo" : "") + (mercado.isPresent() ? ", con mercado" : "")
 							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles"),
-					principales.size(), rondas.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
+					principales.size(), rondas.size(), callejones.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
 					motivos[5], motivos[6], ColocacionCapital.quien());
 		}));
 	}
