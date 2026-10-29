@@ -29,7 +29,7 @@ final class SueloNatural {
 	 * (los de césped de Terrain Slabs…) también se quitan, para que las calles y la muralla pisen el suelo de debajo.
 	 */
 	static BlockState superficie(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z) {
-		pos.set(x, level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1, z);
+		pos.set(x, SueloNatural.cima(level, x, z), z);
 		BlockState s = level.getBlockState(pos);
 		for (int i = 0; i < 2 && (s.canBeReplaced() && !s.is(Blocks.WATER) || s.is(BlockTags.FLOWERS) || deTerreno(s)); i++) {
 			level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
@@ -37,6 +37,24 @@ final class SueloNatural {
 			s = level.getBlockState(pos);
 		}
 		return s;
+	}
+
+	/**
+	 * La altura del bloque de arriba del todo en (x, z) que no es aire. El mapa de alturas del generador no siempre
+	 * se entera de lo que las piezas de la capital rellenan o rebajan (la plaza en alto se quedaba con la hierba
+	 * encima y el empedrado debajo), así que se parte de él y se mira bloque a bloque hacia arriba y hacia abajo.
+	 */
+	static int cima(WorldGenLevel level, int x, int z) {
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos(x, level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1, z);
+		int techo = level.getMaxY();
+		for (int i = 0; i < 64 && pos.getY() < techo && !level.getBlockState(pos.above()).isAir(); i++) {
+			pos.move(0, 1, 0);
+		}
+		int suelo = level.getMinY();
+		while (pos.getY() > suelo && level.getBlockState(pos).isAir()) {
+			pos.move(0, -1, 0);
+		}
+		return pos.getY();
 	}
 
 	/** Un medio bloque o capa de terreno puesto por un mod (no las losas de las casas, que son de Minecraft). */

@@ -44,6 +44,10 @@ public final class PlazaMercado extends PiezaObra {
 		nivel = t.getIntOr("nivel", 1);
 	}
 
+	int nivel() {
+		return nivel;
+	}
+
 	static void registra() {
 		Registry.register(BuiltInRegistries.STRUCTURE_PIECE, Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "plaza_mercado"), TIPO);
 	}
@@ -184,7 +188,7 @@ public final class PlazaMercado extends PiezaObra {
 		}
 	}
 
-	/** La fuente del centro: pilón de agua con bordillo de peldaños y una columna con faroles y los estandartes. */
+	/** La fuente del centro: pilón de agua con bordillo de peldaños y una columna con los estandartes y la campana. */
 	private static void fuente(Obra o, int cu, int cv) {
 		Paleta p = o.p;
 		int r = PARCELA / 2;
@@ -215,7 +219,8 @@ public final class PlazaMercado extends PiezaObra {
 			o.pon(cu + d.getStepX(), 6, cv + d.getStepZ(), Obra.escalon(p.piedraEscalon, d.getOpposite(), false));
 		}
 		o.pon(cu, 6, cv, p.muroBajo);
-		o.pon(cu, 7, cv, Blocks.LANTERN);
+		// y en lo alto la campana: donde se reúnen los aldeanos y se toca a rebato
+		o.pon(cu, 7, cv, Blocks.BELL);
 	}
 
 	/** Un corral de vallas con su cancela hacia frente, un pesebre, un abrevadero y dos animales. */

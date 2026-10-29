@@ -148,6 +148,9 @@ public final class CalleCapital extends StructurePiece {
 					if (puente && d <= r + 1.3) {
 						puente(level, pos, !calle, Math.floorMod(x + z, PILARES) == 0, aLoLargoDeZ);
 					}
+				} else if (y != SIN_ALTURA && Math.abs(pos.getY() - y) > MAX_CORTE + 1) {
+					// un acantilado o un barranco que el trazado no vio: ahí no se pinta calle
+					continue;
 				} else if (calle) {
 					s = allana(level, pos, s, y, 0);
 					pon(level, pos, s);

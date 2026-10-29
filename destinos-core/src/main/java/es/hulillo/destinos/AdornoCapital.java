@@ -22,7 +22,6 @@ import net.minecraft.world.level.block.TrapDoorBlock;
 import net.minecraft.world.level.block.WallBannerBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkGenerator;
-import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceSerializationContext;
@@ -48,6 +47,8 @@ public final class AdornoCapital extends StructurePiece {
 	static final int DESIERTO = 4;
 	/** Radio de la plaza mayor alrededor del centro de la capital. */
 	static final int PLAZA = 20;
+	/** El paseo empedrado alrededor del mercado cuando el mercado es la plaza mayor. */
+	static final int PASEO = 5;
 	/** Hasta dónde llegan, pasado el borde de la plaza mayor, las rampas de las avenidas. */
 	private static final int RAMPA = 14;
 	/** Distancia del centro a los puestos de mercado. */
@@ -70,8 +71,10 @@ public final class AdornoCapital extends StructurePiece {
 	private final boolean puestos;
 	/** Altura de la plaza mayor (la mediana de su suelo), o MIN_VALUE en las guardadas antes: sin allanar. */
 	private final int py;
+	/** Medio lado del mercado que ocupa la plaza mayor (con su talud), o 0 si la plaza es el redondel de siempre. */
+	private final int mercado;
 
-	AdornoCapital(int px, int py, int pz, int estilo, int color, BoundingBox capital, int techo, boolean puestos) {
+	AdornoCapital(int px, int py, int pz, int estilo, int color, BoundingBox capital, int techo, boolean puestos, int mercado) {
 		super(TIPO, 0, new BoundingBox(capital.minX(), techo, capital.minZ(), capital.maxX(), techo, capital.maxZ()));
 		this.px = px;
 		this.pz = pz;
@@ -79,6 +82,7 @@ public final class AdornoCapital extends StructurePiece {
 		this.color = color;
 		this.puestos = puestos;
 		this.py = py;
+		this.mercado = mercado;
 	}
 
 	private AdornoCapital(CompoundTag t) {
@@ -89,6 +93,7 @@ public final class AdornoCapital extends StructurePiece {
 		color = t.getIntOr("color", -1);
 		puestos = t.getBooleanOr("puestos", true);
 		py = t.getIntOr("py", Integer.MIN_VALUE);
+		mercado = t.getIntOr("mercado", 0);
 	}
 
 	static void registra() {
@@ -143,6 +148,7 @@ public final class AdornoCapital extends StructurePiece {
 		t.putInt("color", color);
 		t.putBoolean("puestos", puestos);
 		t.putInt("py", py);
+		t.putInt("mercado", mercado);
 	}
 
 	@Override
@@ -172,6 +178,10 @@ public final class AdornoCapital extends StructurePiece {
 		}
 		// 3. la plaza mayor: estandartes en las cuatro diagonales del borde (las calles entran por los lados) y un
 		// anillo de ocho puestos de mercado alrededor del pozo o la fuente del centro
+		if (mercado > 0) {
+			// la plaza es el mercado, que ya trae fuente, campana, bancos y farolas
+			return;
+		}
 		int diagonal = (int) Math.round((PLAZA - 3) / Math.sqrt(2));
 		for (int[] d : List.of(new int[] {1, 1}, new int[] {1, -1}, new int[] {-1, 1}, new int[] {-1, -1})) {
 			estandartes(level, caja, pos, px + d[0] * diagonal, pz + d[1] * diagonal);
@@ -227,10 +237,10 @@ public final class AdornoCapital extends StructurePiece {
 		if (!dentro(caja, Math.min(x0, x1), Math.min(z0, z1), Math.max(x0, x1), Math.max(z0, z1))) {
 			return Integer.MIN_VALUE;
 		}
-		int y = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x0, z0) - 1;
+		int y = SueloNatural.cima(level, x0, z0);
 		for (int x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
 			for (int z = Math.min(z0, z1); z <= Math.max(z0, z1); z++) {
-				int sy = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
+				int sy = SueloNatural.cima(level, x, z);
 				if (sy != y || !empedrado(level.getBlockState(pos.set(x, y, z))) || !libre(level, pos, x, y + 1, z, alto)) {
 					return Integer.MIN_VALUE;
 				}
@@ -296,10 +306,10 @@ public final class AdornoCapital extends StructurePiece {
 		if (!dentro(caja, x - 2, z - 2, x + 2, z + 2)) {
 			return;
 		}
-		int y = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
+		int y = SueloNatural.cima(level, x, z);
 		for (int ox = -1; ox <= 1; ox++) {
 			for (int oz = -1; oz <= 1; oz++) {
-				int sy = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x + ox, z + oz) - 1;
+				int sy = SueloNatural.cima(level, x + ox, z + oz);
 				if (sy != y || !empedrado(level.getBlockState(pos.set(x + ox, y, z + oz))) || !libre(level, pos, x + ox, y + 1, z + oz, 6)) {
 					return;
 				}
@@ -322,7 +332,7 @@ public final class AdornoCapital extends StructurePiece {
 			for (int[] b : new int[][] {{i, -2}, {i, 2}, {-2, i}, {2, i}}) {
 				int bx = x + b[0];
 				int bz = z + b[1];
-				int by = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, bx, bz) - 1;
+				int by = SueloNatural.cima(level, bx, bz);
 				if (by == y && empedrado(level.getBlockState(pos.set(bx, by, bz))) && libre(level, pos, bx, by + 1, bz, 1)) {
 					level.setBlock(pos.set(bx, by + 1, bz), borde.defaultBlockState(), 2);
 				}
@@ -371,12 +381,15 @@ public final class AdornoCapital extends StructurePiece {
 		}
 		int dx = x - px;
 		int dz = z - pz;
-		double r = Math.sqrt((double) dx * dx + (double) dz * dz);
-		boolean avenida = Math.abs(dx) <= 2 || Math.abs(dz) <= 2;
-		if (r > PLAZA + (avenida ? RAMPA : 1.5)) {
+		if (enMercado(dx, dz)) {
 			return;
 		}
-		int h = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
+		double fuera = fuera(dx, dz);
+		boolean avenida = Math.abs(dx) <= 2 || Math.abs(dz) <= 2;
+		if (fuera > (avenida ? RAMPA : 1.5)) {
+			return;
+		}
+		int h = SueloNatural.cima(level, x, z);
 		BlockState arriba = level.getBlockState(pos.set(x, h, z));
 		if (!arriba.getFluidState().isEmpty()) {
 			return;
@@ -390,13 +403,13 @@ public final class AdornoCapital extends StructurePiece {
 		if (!SueloNatural.natural(arriba) && !calle) {
 			return;
 		}
-		if (r > PLAZA && avenida) {
+		if (fuera > 0 && avenida) {
 			// la rampa de la avenida, de tierra pisada (luego se empiedra como calle)
-			int m = (int) Math.ceil(r - PLAZA);
+			int m = (int) Math.ceil(fuera);
 			mueve(level, pos, x, z, h, Math.clamp(h, py - m, py + m), Blocks.DIRT_PATH.defaultBlockState());
 			return;
 		}
-		if (r > PLAZA) {
+		if (fuera > 0) {
 			if (Math.abs(h - py) > 1) {
 				for (int y = Math.min(h, py) + 1; y <= Math.max(h, py); y++) {
 					level.setBlock(pos.set(x, y, z), calle(x, z + y), 2);
@@ -440,11 +453,14 @@ public final class AdornoCapital extends StructurePiece {
 	private void empiedra(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z) {
 		int dx = x - px;
 		int dz = z - pz;
-		int r2 = dx * dx + dz * dz;
-		pos.set(x, level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1, z);
+		if (enMercado(dx, dz)) {
+			return;
+		}
+		boolean enPlaza = fuera(dx, dz) <= 0;
+		pos.set(x, SueloNatural.cima(level, x, z), z);
 		BlockState s = level.getBlockState(pos);
 		if (s.is(Blocks.DIRT_PATH)) {
-			level.setBlock(pos, r2 <= PLAZA * PLAZA ? plaza(dx, dz) : calle(x, z), 2);
+			level.setBlock(pos, enPlaza ? plaza(dx, dz) : calle(x, z), 2);
 			return;
 		}
 		// los tablones que las calles de los pueblos echan sobre el agua acaban en mitad del río: fuera (las avenidas
@@ -453,7 +469,7 @@ public final class AdornoCapital extends StructurePiece {
 			level.setBlock(pos, Blocks.WATER.defaultBlockState(), 2);
 			return;
 		}
-		if (r2 > PLAZA * PLAZA) {
+		if (!enPlaza) {
 			return;
 		}
 		s = SueloNatural.superficie(level, pos, x, z);
@@ -480,8 +496,10 @@ public final class AdornoCapital extends StructurePiece {
 
 	/** Losa de la plaza: anillos alrededor del centro, con un borde marcado. */
 	private BlockState plaza(int dx, int dz) {
-		int anillo = (int) Math.sqrt(dx * dx + dz * dz);
-		boolean marca = anillo == PLAZA || anillo % 4 == 0;
+		// anillos alrededor del centro; alrededor del mercado, cuadrados como él
+		int anillo = mercado > 0 ? Math.max(Math.abs(dx), Math.abs(dz)) : (int) Math.sqrt(dx * dx + dz * dz);
+		int borde = mercado > 0 ? mercado + PASEO : PLAZA;
+		boolean marca = anillo == borde || anillo % 4 == 0;
 		Block b = switch (estilo) {
 			case DESIERTO -> marca ? Blocks.CUT_RED_SANDSTONE : Blocks.SMOOTH_SANDSTONE;
 			case SABANA -> marca ? Blocks.MUD_BRICKS : Blocks.PACKED_MUD;
@@ -511,7 +529,7 @@ public final class AdornoCapital extends StructurePiece {
 		for (int i = 0; i < 64; i++) {
 			int x = cx * LADO + 4 + (ox + i) % 8;
 			int z = cz * LADO + 4 + (oz + i / 8) % 8;
-			if (!caja.isInside(x, caja.minY(), z) || cerca(x, z, PLAZA)) {
+			if (!caja.isInside(x, caja.minY(), z) || fuera(x - px, z - pz) <= 0) {
 				continue;
 			}
 			BlockState suelo = SueloNatural.superficie(level, pos, x, z);
@@ -522,7 +540,7 @@ public final class AdornoCapital extends StructurePiece {
 			for (Direction d : Direction.Plane.HORIZONTAL) {
 				int sx = x + d.getStepX();
 				int sz = z + d.getStepZ();
-				int sy = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, sx, sz) - 1;
+				int sy = SueloNatural.cima(level, sx, sz);
 				if (Math.abs(sy - y) <= 1 && empedrado(level.getBlockState(pos.set(sx, sy, sz)))) {
 					ponFarola(level, pos, x, y, z);
 					return;
@@ -555,7 +573,7 @@ public final class AdornoCapital extends StructurePiece {
 		if (color < 0 || !dentro(caja, x - 1, z - 1, x + 1, z + 1)) {
 			return;
 		}
-		int y = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
+		int y = SueloNatural.cima(level, x, z);
 		if (!empedrado(level.getBlockState(pos.set(x, y, z)))) {
 			return;
 		}
@@ -617,7 +635,7 @@ public final class AdornoCapital extends StructurePiece {
 			case 3 -> Rotation.COUNTERCLOCKWISE_90;
 			default -> Rotation.NONE;
 		};
-		int y = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z) - 1;
+		int y = SueloNatural.cima(level, x, z);
 		for (int fase = 0; fase < 2; fase++) {
 			for (int u = -2; u <= 2; u++) {
 				for (int v = -2; v <= 1; v++) {
@@ -638,7 +656,7 @@ public final class AdornoCapital extends StructurePiece {
 						case 3 -> -u;
 						default -> v;
 					};
-					int sy = level.getHeight(Heightmap.Types.WORLD_SURFACE_WG, wx, wz) - 1;
+					int sy = SueloNatural.cima(level, wx, wz);
 					if (fase == 0) {
 						BlockState suelo = level.getBlockState(pos.set(wx, sy, wz));
 						boolean firme = empedrado(suelo) || SueloNatural.natural(suelo) || suelo.is(Blocks.DIRT_PATH);
@@ -668,6 +686,19 @@ public final class AdornoCapital extends StructurePiece {
 	private Block bloque(String tipo) {
 		DyeColor d = DyeColor.byId(color);
 		return BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace(d.getName() + "_" + tipo));
+	}
+
+	/** Lo que (dx, dz) queda por fuera del borde de la plaza (negativo: dentro). */
+	private double fuera(int dx, int dz) {
+		if (mercado > 0) {
+			return Math.max(Math.abs(dx), Math.abs(dz)) - (mercado + PASEO);
+		}
+		return Math.sqrt((double) dx * dx + (double) dz * dz) - PLAZA;
+	}
+
+	/** Si (dx, dz) cae en el mercado de la plaza (que se allana y se empiedra él solo). */
+	private boolean enMercado(int dx, int dz) {
+		return mercado > 0 && Math.abs(dx) <= mercado && Math.abs(dz) <= mercado;
 	}
 
 	private boolean cerca(int x, int z, int r) {
