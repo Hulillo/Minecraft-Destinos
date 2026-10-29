@@ -55,8 +55,12 @@ public final class EstructuraCapital extends Structure {
 	private static final int MAX_DESNIVEL_NOBLE = 7;
 	private static final int MAX_DESNIVEL_CASA = 5;
 	private static final int K_DESNIVEL = 3;
-	/** Hasta dónde se busca la plaza desde el centro de la capital. */
-	private static final int BUSCA_PLAZA = 28;
+	/** Hasta dónde se busca la plaza desde el centro de la capital (primero cerca; si no hay sitio, más lejos). */
+	private static final int[] BUSCA_PLAZA = {28, 52};
+	/** Hasta dónde del centro del chunk de la capital puede llegar una pieza (más lejos el juego ya no la pone). */
+	private static final int MAX_ALCANCE = 120;
+	/** Lo que cuenta que el castillo quede por encima del centro: hasta tantos bloques, más da igual. */
+	private static final int ELEVADO = 6;
 	/** Entre la muralla y las casas, la ronda libre. */
 	private static final int RONDA_MURO = 6;
 	/** A qué distancia del borde de la calle va la puerta de las casas. */
@@ -204,37 +208,51 @@ public final class EstructuraCapital extends Structure {
 		List<int[]> puertasCasas = new ArrayList<>();
 		long rMax = (long) (radio - RONDA_MURO) * (radio - RONDA_MURO);
 		long rPlaza = (long) (AdornoCapital.PLAZA + 2) * (AdornoCapital.PLAZA + 2);
+		int[] motivos = new int[7];
 		Predicate<BoundingBox> cabe = b -> {
 			for (int[] e : new int[][] {{b.minX(), b.minZ()}, {b.maxX(), b.minZ()}, {b.minX(), b.maxZ()}, {b.maxX(), b.maxZ()}}) {
 				long dx = e[0] - cx;
 				long dz = e[1] - cz;
 				if (dx * dx + dz * dz > rMax) {
+					motivos[0]++;
 					return false;
 				}
 			}
 			long qx = Math.max(0, Math.max(b.minX() - px, px - b.maxX()));
 			long qz = Math.max(0, Math.max(b.minZ() - pz, pz - b.maxZ()));
 			if (qx * qx + qz * qz <= rPlaza) {
+				motivos[1]++;
 				return false;
 			}
 			for (StructurePiece o : grandes) {
 				if (solapa(o.getBoundingBox(), b)) {
+					motivos[2]++;
 					return false;
 				}
 			}
 			for (StructurePiece o : casas) {
 				if (solapa(o.getBoundingBox(), b)) {
+					motivos[3]++;
 					return false;
 				}
 			}
 			for (int x = b.minX(); x <= b.maxX(); x++) {
 				for (int z = b.minZ(); z <= b.maxZ(); z++) {
 					if (enCalle.contains(Geo.clave(x, z))) {
+						motivos[4]++;
 						return false;
 					}
 				}
 			}
-			return !terreno.agua(b) && terreno.desnivel(b) <= MAX_DESNIVEL_CASA;
+			if (terreno.agua(b)) {
+				motivos[5]++;
+				return false;
+			}
+			if (terreno.desnivel(b) > MAX_DESNIVEL_CASA) {
+				motivos[6]++;
+				return false;
+			}
+			return true;
 		};
 		for (List<int[]> c : principales) {
 			for (int lado = -1; lado <= 1; lado += 2) {
@@ -285,11 +303,12 @@ public final class EstructuraCapital extends Structure {
 			// y lo último, el adorno, que ya ve todo lo demás puesto
 			BoundingBox.encapsulatingBoxes(cajas).ifPresent(caja -> piezas.addPiece(
 					new AdornoCapital(px, alturaPlaza, pz, estilo, color, caja, techo, mercado.isEmpty())));
-			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} calles, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms · pedida por {}",
+			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} calles, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
 					px, alturaPlaza, pz, nivel,
 					(castillo.isPresent() ? ", con castillo" : "") + (mercado.isPresent() ? ", con mercado" : "")
 							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles"),
-					principales.size(), casas.size(), gente.size(), terreno.puntos(), ms, ColocacionCapital.quien());
+					principales.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
+					motivos[5], motivos[6], ColocacionCapital.quien());
 		}));
 	}
 
@@ -298,6 +317,8 @@ public final class EstructuraCapital extends Structure {
 		List<int[]> c = trazado.calle(px, pz, destino[0], destino[1]);
 		if (c.size() >= 2) {
 			calles.add(c);
+		} else {
+			DestinosCore.LOG.info("Destinos Core: sin camino de la plaza ({}, {}) a {}, {}", px, pz, destino[0], destino[1]);
 		}
 	}
 
@@ -347,42 +368,47 @@ public final class EstructuraCapital extends Structure {
 	 * margen); a igualdad, el más cercano al centro.
 	 */
 	private static int[] plaza(TerrenoCapital terreno, int cx, int cz, List<StructurePiece> grandes) {
-		int[] mejor = {cx, cz};
-		double nota = Double.MAX_VALUE;
 		int r = AdornoCapital.PLAZA;
-		for (int dx = -BUSCA_PLAZA; dx <= BUSCA_PLAZA; dx += TerrenoCapital.PASO) {
-			for (int dz = -BUSCA_PLAZA; dz <= BUSCA_PLAZA; dz += TerrenoCapital.PASO) {
-				int x = cx + dx;
-				int z = cz + dz;
-				BoundingBox b = new BoundingBox(x - r, 0, z - r, x + r, 0, z + r);
-				if (terreno.agua(x, z) || grandes.stream().anyMatch(g -> solapa(g.getBoundingBox().inflatedBy(6), b))) {
-					continue;
-				}
-				double n = terreno.relieve(x, z, r)[1] * K_DESNIVEL + (terreno.aguaEsquinas(b) ? 20 : 0) + Math.hypot(dx, dz) / 6;
-				if (n < nota) {
-					nota = n;
-					mejor = new int[] {x, z};
+		for (int busca : BUSCA_PLAZA) {
+			int[] mejor = null;
+			double nota = Double.MAX_VALUE;
+			for (int dx = -busca; dx <= busca; dx += TerrenoCapital.PASO) {
+				for (int dz = -busca; dz <= busca; dz += TerrenoCapital.PASO) {
+					int x = cx + dx;
+					int z = cz + dz;
+					BoundingBox b = new BoundingBox(x - r, 0, z - r, x + r, 0, z + r);
+					if (terreno.agua(x, z) || grandes.stream().anyMatch(g -> solapa(g.getBoundingBox().inflatedBy(6), b))) {
+						continue;
+					}
+					double n = terreno.relieve(x, z, r)[1] * K_DESNIVEL + (terreno.aguaEsquinas(b) ? 20 : 0) + Math.hypot(dx, dz) / 6;
+					if (n < nota) {
+						nota = n;
+						mejor = new int[] {x, z};
+					}
 				}
 			}
+			if (mejor != null) {
+				return mejor;
+			}
 		}
-		return mejor;
+		return new int[] {cx, cz};
 	}
 
 	/**
-	 * Dónde va el castillo: dentro de la muralla, en lo más alto donde cabe (sin agua y con poco desnivel), con la
-	 * puerta hacia el centro de la capital, donde irá la plaza.
+	 * Dónde va el castillo: hacia el borde de la ciudad, en un sitio llano y seco, mejor si queda algo elevado, con
+	 * la puerta hacia el centro de la capital, donde irá la plaza.
 	 */
 	private static Optional<CastilloCapital> castillo(TerrenoCapital terreno, int cx, int cz, int radio, int estilo, int madera, int color) {
 		CastilloCapital mejor = null;
 		double nota = Double.MAX_VALUE;
 		int medio = CastilloCapital.MEDIO;
-		// la esquina más lejana del castillo, dentro de la muralla
-		double alcance = radio - medio * Math.sqrt(2) - 2;
-		int minimo = AdornoCapital.PLAZA + medio + 4;
-		for (int dx = -radio; dx <= radio; dx += TerrenoCapital.PASO) {
-			for (int dz = -radio; dz <= radio; dz += TerrenoCapital.PASO) {
-				double d = Math.hypot(dx, dz);
-				if (d < minimo - BUSCA_PLAZA || d > Math.max(alcance, minimo)) {
+		// el castillo es tan grande que hace de ciudadela en el borde: puede asomar por la muralla, pero no pasar de
+		// donde el juego aún pone piezas, y deja sitio en el centro para la plaza y la ciudad
+		int alcance = MAX_ALCANCE - medio - PiezaObra.TALUD;
+		int base = terreno.alto(cx, cz);
+		for (int dx = -alcance; dx <= alcance; dx += TerrenoCapital.PASO) {
+			for (int dz = -alcance; dz <= alcance; dz += TerrenoCapital.PASO) {
+				if (Math.hypot(dx, dz) < radio * 0.4) {
 					continue;
 				}
 				int x = cx + dx;
@@ -392,11 +418,11 @@ public final class EstructuraCapital extends Structure {
 					continue;
 				}
 				CastilloCapital c = new CastilloCapital(x, z, rel[0], CastilloCapital.giroHacia(-dx, -dz), estilo, madera, color);
-				if (terreno.aguaEsquinas(c.getBoundingBox()) || !dentro(c.getBoundingBox(), cx, cz, radio)) {
+				if (terreno.aguaEsquinas(c.getBoundingBox())) {
 					continue;
 				}
-				// cuanto más alto mejor; y más llano
-				double n = -rel[0] * 2.0 + rel[1] * 1.5;
+				// sobre todo llano; algo por encima del centro suma, pero sin buscar el pico (un poco elevado basta)
+				double n = rel[1] * K_DESNIVEL - Math.clamp(rel[0] - base, 0, ELEVADO) * 1.5 + Math.abs(Math.hypot(dx, dz) - radio * 0.6) / 16;
 				if (n < nota) {
 					nota = n;
 					mejor = c;
@@ -407,19 +433,6 @@ public final class EstructuraCapital extends Structure {
 			DestinosCore.LOG.info("Destinos Core: la capital en {}, {} es rica pero no tiene sitio para el castillo", cx, cz);
 		}
 		return Optional.ofNullable(mejor);
-	}
-
-	/** Si las cuatro esquinas de la caja quedan dentro del círculo de la muralla. */
-	private static boolean dentro(BoundingBox b, int cx, int cz, int radio) {
-		long r2 = (long) radio * radio;
-		for (int[] e : new int[][] {{b.minX(), b.minZ()}, {b.maxX(), b.minZ()}, {b.minX(), b.maxZ()}, {b.maxX(), b.maxZ()}}) {
-			long dx = e[0] - cx;
-			long dz = e[1] - cz;
-			if (dx * dx + dz * dz > r2) {
-				return false;
-			}
-		}
-		return true;
 	}
 
 	/**
