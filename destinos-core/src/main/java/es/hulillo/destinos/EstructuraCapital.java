@@ -73,6 +73,9 @@ public final class EstructuraCapital extends Structure {
 	private static final int SALIDA = 14;
 	/** Lo cerca que tiene que pasar una ronda o un callejón de una puerta para que valga la pena. */
 	private static final int CERCA_PUERTA = 12;
+	private static final int K_PLAZUELA = 6151;
+	private static final int SEPARA_PLAZUELAS = 48;
+	private static final int MAX_DESNIVEL_PLAZUELA = 4;
 	/** A qué distancia del eje de la calle va la puerta de las casas: pegada, y si no cabe, más atrás. */
 	private static final int[] ACERA = {3, 5, 8};
 	/** Cada cuántos bloques de calle sale un callejón, y lo largo que es. */
@@ -327,6 +330,10 @@ public final class EstructuraCapital extends Structure {
 			}
 			return true;
 		};
+		// antes que las casas, unas placitas de barrio a modo de parque junto a las calles, repartidas por la ciudad
+		List<PlazuelaCapital> plazuelas = plazuelas(terreno, todas, enCalle, cabe, 1 + 2 * nivel, px, pz, rPlaza, estilo, madera, color);
+		casas.addAll(plazuelas);
+
 		for (List<int[]> c : todas) {
 			for (int lado = -1; lado <= 1; lado += 2) {
 				aLoLargo(plantillas, terreno, catalogo, c, lado, cx, cz, radio - RONDA_MURO, cabe, casas, puertasCasas);
@@ -396,7 +403,7 @@ public final class EstructuraCapital extends Structure {
 			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} calles, {} tramos de ronda y {} callejones, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
 					px, alturaPlaza, pz, nivel,
 					(castillo.isPresent() ? ", con castillo" : "") + (mercado.isPresent() ? ", con mercado" : "")
-							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles"),
+							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles") + ", " + plazuelas.size() + " placitas",
 					principales.size(), rondas.size(), callejones.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
 					motivos[5], motivos[6], ColocacionCapital.quien());
 		}));
@@ -441,6 +448,66 @@ public final class EstructuraCapital extends Structure {
 			y[k] = (int) Math.round(h[k]);
 		}
 		return y;
+	}
+
+	/**
+	 * Hasta n placitas junto a las calles: a un lado de cada trozo, un poco apartadas, donde cabe todo (como una casa:
+	 * dentro de la muralla, en seco y sin mucha cuesta) y lejos de la plaza mayor y de las otras placitas.
+	 */
+	private static List<PlazuelaCapital> plazuelas(TerrenoCapital terreno, List<List<int[]>> calles, Set<Long> enCalle,
+			Predicate<BoundingBox> cabe, int n, int px, int pz, int rPlaza, int estilo, int madera, int color) {
+		List<PlazuelaCapital> r = new ArrayList<>();
+		int aparte = (int) Math.ceil(ANCHO_PRINCIPAL) + 2 + PlazuelaCapital.MEDIO;
+		List<int[]> sitios = new ArrayList<>();
+		for (List<int[]> c : calles) {
+			for (int k = 1; k + 1 < c.size(); k += 3) {
+				int[] a = c.get(k);
+				int[] b = c.get(k + 1);
+				double largo = Math.max(1, Math.hypot(b[0] - a[0], b[1] - a[1]));
+				for (int lado = -1; lado <= 1; lado += 2) {
+					sitios.add(new int[] {a[0] + (int) Math.round(-(b[1] - a[1]) / largo * lado * aparte),
+							a[1] + (int) Math.round((b[0] - a[0]) / largo * lado * aparte)});
+				}
+			}
+		}
+		// en un orden que cambia de capital a capital, pero siempre el mismo en cada una
+		sitios.sort(java.util.Comparator.comparingInt(s -> Geo.hash(s[0], s[1], K_PLAZUELA)));
+		for (int[] s : sitios) {
+			if (r.size() >= n) {
+				break;
+			}
+			if (Math.hypot(s[0] - px, s[1] - pz) < rPlaza + 16
+					|| r.stream().anyMatch(q -> Math.hypot(q.cx - s[0], q.cz - s[1]) < SEPARA_PLAZUELAS)) {
+				continue;
+			}
+			int[] rel = terreno.relieve(s[0], s[1], PlazuelaCapital.MEDIO);
+			if (rel[1] > MAX_DESNIVEL_PLAZUELA) {
+				continue;
+			}
+			PlazuelaCapital q = new PlazuelaCapital(s[0], s[1], rel[0], estilo, madera, color);
+			BoundingBox nucleo = new BoundingBox(s[0] - PlazuelaCapital.MEDIO - 1, 0, s[1] - PlazuelaCapital.MEDIO - 1,
+					s[0] + PlazuelaCapital.MEDIO + 1, 0, s[1] + PlazuelaCapital.MEDIO + 1);
+			if (pisaCalle(nucleo, enCalle)) {
+				continue;
+			}
+			// el resto de pruebas, las de una casa, con la caja sin el talud (que puede llegar a la calle)
+			if (!cabe.test(nucleo)) {
+				continue;
+			}
+			r.add(q);
+		}
+		return r;
+	}
+
+	private static boolean pisaCalle(BoundingBox b, Set<Long> enCalle) {
+		for (int x = b.minX(); x <= b.maxX(); x++) {
+			for (int z = b.minZ(); z <= b.maxZ(); z++) {
+				if (enCalle.contains(Geo.clave(x, z))) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	/**

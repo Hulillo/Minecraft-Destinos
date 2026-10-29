@@ -12,7 +12,7 @@ import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceSeriali
 import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
 
 /**
- * La plaza del mercado mayor, pegada a un lado de la plaza del pueblo y con la entrada hacia ella: una cuadrícula de
+ * La plaza del mercado, en medio de la plaza mayor de la capital (la más importante de la ciudad): una cuadrícula de
  * parcelas de césped con bordillo, separadas por calles empedradas, con una fuente en medio y en cada parcela un puesto
  * (de toldo, de verduras, de flores o un carro) mirando hacia la fuente, un corral con ganado o un árbol con bancos.
  * Es una pieza propia, como el castillo: allana su suelo y quita las casas del pueblo que pisa, así que sale siempre
