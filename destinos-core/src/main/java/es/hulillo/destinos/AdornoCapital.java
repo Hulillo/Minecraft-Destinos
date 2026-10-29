@@ -7,6 +7,7 @@ import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.ChunkPos;
@@ -444,6 +445,12 @@ public final class AdornoCapital extends StructurePiece {
 		BlockState s = level.getBlockState(pos);
 		if (s.is(Blocks.DIRT_PATH)) {
 			level.setBlock(pos, r2 <= PLAZA * PLAZA ? plaza(dx, dz) : calle(x, z), 2);
+			return;
+		}
+		// los tablones que las calles de los pueblos echan sobre el agua acaban en mitad del río: fuera (las avenidas
+		// cruzan por sus puentes de piedra)
+		if (s.is(BlockTags.PLANKS) && level.getBlockState(pos.below()).is(Blocks.WATER) && level.getBlockState(pos.above()).canBeReplaced()) {
+			level.setBlock(pos, Blocks.WATER.defaultBlockState(), 2);
 			return;
 		}
 		if (r2 > PLAZA * PLAZA) {

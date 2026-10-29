@@ -782,16 +782,31 @@ public final class EstructuraCapital extends Structure {
 
 	/** Tramos de calle de (x0, z0) a (x1, z1), cada uno a la altura del suelo en su mitad. */
 	/**
-	 * Las calles del plano (ver PlanoCapital): las cuatro avenidas, de la plaza hasta pasada la muralla, y la ronda
-	 * por dentro del muro, en tramos. Sin los tramos que caen sobre el agua o dentro de una pieza grande (el castillo,
-	 * el mercado, las casas nobles): la avenida sigue al otro lado.
+	 * Las calles del plano (ver PlanoCapital): las cuatro avenidas, de la plaza hasta pasada la muralla, y las dos
+	 * rondas, en tramos. Sin los tramos dentro de una pieza grande (el castillo, el mercado, las casas nobles): la
+	 * avenida sigue al otro lado. Las avenidas cruzan los ríos por puentes; las rondas no cruzan el agua.
 	 */
 	private static List<CalleCapital> callesDelPlano(Structure.GenerationContext ctx, Agua agua, PlanoCapital plano, int cx, int cz, List<StructurePiece> grandes) {
 		List<CalleCapital> calles = new ArrayList<>();
 		for (int[] d : CRUZ) {
+			// los tramos sobre el agua se quedan (el puente) solo si la avenida sigue en tierra al otro lado: un río sí,
+			// la costa no (ahí la avenida acaba en la orilla)
+			List<CalleCapital> avenida = new ArrayList<>();
+			List<Boolean> mojados = new ArrayList<>();
 			for (int r = AdornoCapital.PLAZA - 1; r < plano.finAvenida; r += TRAMO) {
 				int r2 = Math.min(r + TRAMO, plano.finAvenida);
-				tramo(ctx, agua, grandes, calles, cx + d[0] * r, cz + d[1] * r, cx + d[0] * r2, cz + d[1] * r2);
+				int ax = cx + d[0] * r, az = cz + d[1] * r, bx = cx + d[0] * r2, bz = cz + d[1] * r2;
+				CalleCapital c = new CalleCapital(ax, az, bx, bz, suelo(ctx, (ax + bx) / 2, (az + bz) / 2), true);
+				avenida.add(c);
+				mojados.add(agua.tapa(c));
+			}
+			int primero = mojados.indexOf(false);
+			int ultimo = mojados.lastIndexOf(false);
+			for (int i = 0; i < avenida.size(); i++) {
+				CalleCapital c = avenida.get(i);
+				if ((!mojados.get(i) || primero >= 0 && i > primero && i < ultimo) && grandes.stream().noneMatch(g -> enPlanta(g, c))) {
+					calles.add(c);
+				}
 			}
 		}
 		for (int radio : new int[] {plano.rondaMedia, plano.ronda}) {
@@ -808,7 +823,7 @@ public final class EstructuraCapital extends Structure {
 
 	private static void tramo(Structure.GenerationContext ctx, Agua agua, List<StructurePiece> grandes, List<CalleCapital> calles, int ax, int az,
 			int bx, int bz) {
-		CalleCapital c = new CalleCapital(ax, az, bx, bz, suelo(ctx, (ax + bx) / 2, (az + bz) / 2));
+		CalleCapital c = new CalleCapital(ax, az, bx, bz, suelo(ctx, (ax + bx) / 2, (az + bz) / 2), false);
 		if (!agua.tapa(c) && grandes.stream().noneMatch(g -> enPlanta(g, c))) {
 			calles.add(c);
 		}
