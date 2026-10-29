@@ -46,6 +46,10 @@ public final class EstructuraCapital extends Structure {
 	private static final int K_CASA = 8821;
 	private static final int K_GENTE = 4127;
 	private static final int K_PUERTAS = 7307;
+	/** Medio ancho de cada clase de calle, en bloques: 5, 4 y 3 de ancho. */
+	private static final double ANCHO_PRINCIPAL = 2;
+	private static final double ANCHO_RONDA = 1.5;
+	private static final double ANCHO_CALLEJON = 1;
 	/**
 	 * Desnivel máximo (de lo más alto a lo más bajo del sitio) en el que se pone cada obra grande: en un barranco no se
 	 * construye, se busca otro sitio o se queda sin ella. Y lo que pesa cada bloque de desnivel al elegir sitio.
@@ -255,15 +259,14 @@ public final class EstructuraCapital extends Structure {
 			}
 		}
 		todas.addAll(callejones);
+		// cada calle con su ancho (las principales, 5; las rondas, 4; los callejones, 3) y su altura suavizada
 		List<CalleCapital> calles = new ArrayList<>();
-		for (List<int[]> c : todas) {
-			for (int k = 0; k + 1 < c.size(); k++) {
-				int[] a = c.get(k);
-				int[] b = c.get(k + 1);
-				calles.add(new CalleCapital(a[0], a[1], b[0], b[1], terreno.alto((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), true));
-			}
-		}
-		Set<Long> enCalle = TrazadoCapital.ocupa(todas, 2);
+		tramos(terreno, principales, ANCHO_PRINCIPAL, px, pz, calles);
+		tramos(terreno, rondas, ANCHO_RONDA, px, pz, calles);
+		tramos(terreno, callejones, ANCHO_CALLEJON, px, pz, calles);
+		Set<Long> enCalle = TrazadoCapital.ocupa(principales, (int) Math.ceil(ANCHO_PRINCIPAL));
+		enCalle.addAll(TrazadoCapital.ocupa(rondas, (int) Math.ceil(ANCHO_RONDA)));
+		enCalle.addAll(TrazadoCapital.ocupa(callejones, (int) Math.ceil(ANCHO_CALLEJON) + 1));
 
 		// 5. las casas, a los dos lados de las calles con la puerta a la calle
 		List<StructurePiece> casas = new ArrayList<>();
@@ -372,6 +375,47 @@ public final class EstructuraCapital extends Structure {
 					principales.size(), rondas.size(), callejones.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
 					motivos[5], motivos[6], ColocacionCapital.quien());
 		}));
+	}
+
+	/**
+	 * Los tramos de las calles dadas, de medio ancho radio, con la altura de cada punto suavizada a lo largo de la
+	 * calle (así no sube y baja con cada bulto del terreno). Lo que cae dentro de la plaza mayor se lo deja a ella.
+	 */
+	private static void tramos(TerrenoCapital terreno, List<List<int[]>> lista, double radio, int px, int pz, List<CalleCapital> calles) {
+		long dentroPlaza = (long) (AdornoCapital.PLAZA - 2) * (AdornoCapital.PLAZA - 2);
+		for (List<int[]> c : lista) {
+			int[] y = perfil(terreno, c);
+			for (int k = 0; k + 1 < c.size(); k++) {
+				int[] a = c.get(k);
+				int[] b = c.get(k + 1);
+				long ax = a[0] - px, az = a[1] - pz, bx = b[0] - px, bz = b[1] - pz;
+				if (ax * ax + az * az < dentroPlaza && bx * bx + bz * bz < dentroPlaza) {
+					continue;
+				}
+				calles.add(new CalleCapital(a[0], a[1], y[k], b[0], b[1], y[k + 1], radio, true));
+			}
+		}
+	}
+
+	/** La altura de cada punto de la calle: la del terreno, pasada tres veces por una media de cada uno con sus vecinos. */
+	private static int[] perfil(TerrenoCapital terreno, List<int[]> c) {
+		int n = c.size();
+		double[] h = new double[n];
+		for (int k = 0; k < n; k++) {
+			h[k] = terreno.alto(c.get(k)[0], c.get(k)[1]);
+		}
+		for (int pasada = 0; pasada < 3; pasada++) {
+			double[] g = h.clone();
+			for (int k = 1; k + 1 < n; k++) {
+				g[k] = (h[k - 1] + 2 * h[k] + h[k + 1]) / 4;
+			}
+			h = g;
+		}
+		int[] y = new int[n];
+		for (int k = 0; k < n; k++) {
+			y[k] = (int) Math.round(h[k]);
+		}
+		return y;
 	}
 
 	/** Traza una calle de la plaza a (destino) y la apunta si hay camino. */
@@ -601,6 +645,7 @@ public final class EstructuraCapital extends Structure {
 			p.add(new double[] {calle.get(k)[0], calle.get(k)[1]});
 			acum.add(total);
 		}
+		int[] perfil = perfil(terreno, calle);
 		double t = AdornoCapital.PLAZA / 2.0;
 		int seg = 0;
 		while (t < total) {
@@ -618,6 +663,7 @@ public final class EstructuraCapital extends Structure {
 			// hacia el lado de la casa; la puerta mira al revés (a la calle), en el eje más parecido
 			double nx = -uz * lado;
 			double nz = ux * lado;
+			int yCalle = (int) Math.round(perfil[seg] + (perfil[Math.min(seg + 1, perfil.length - 1)] - perfil[seg]) * f);
 			Direction mira = Math.abs(nx) >= Math.abs(nz) ? (nx > 0 ? Direction.WEST : Direction.EAST) : (nz > 0 ? Direction.NORTH : Direction.SOUTH);
 			int lx = mira.getAxis() == Direction.Axis.X ? 0 : 1;
 			int lz = 1 - lx;
@@ -631,7 +677,7 @@ public final class EstructuraCapital extends Structure {
 			for (int acera : ACERA) {
 				int fx = (int) Math.round(x + nx * acera);
 				int fz = (int) Math.round(z + nz * acera);
-				hueco = ponCasa(plantillas, terreno, catalogo, fx, fz, lx, lz, mira, cabe, casas, puertas);
+				hueco = ponCasa(plantillas, terreno, catalogo, fx, fz, yCalle, lx, lz, mira, cabe, casas, puertas);
 				if (hueco > 0) {
 					break;
 				}
@@ -644,7 +690,7 @@ public final class EstructuraCapital extends Structure {
 	 * Intenta poner una casa con la entrada mirando a (mira) y el bloque de delante de la puerta en (x, z), empezando
 	 * a lo largo de la calle en (lx, lz). Devuelve lo que ocupa a lo largo de la calle, o 0 si no cabe ninguna.
 	 */
-	private static int ponCasa(StructureTemplateManager plantillas, TerrenoCapital terreno, CatalogoCapital catalogo, int x, int z, int lx, int lz,
+	private static int ponCasa(StructureTemplateManager plantillas, TerrenoCapital terreno, CatalogoCapital catalogo, int x, int z, int yCalle, int lx, int lz,
 			Direction mira, Predicate<BoundingBox> cabe, List<StructurePiece> casas, List<int[]> puertas) {
 		List<CatalogoCapital.Modelo> modelos = catalogo.casas;
 		int primero = Math.floorMod(Geo.hash(x, z, K_CASA), modelos.size());
@@ -667,7 +713,9 @@ public final class EstructuraCapital extends Structure {
 			if (!cabe.test(enPlanta)) {
 				continue;
 			}
-			int y = terreno.alto(x, z) + 1 - entrada.getY();
+			// la puerta a la altura de la calle (que va suavizada), si el suelo no queda muy lejos
+			int suelo = terreno.alto(x, z);
+			int y = (Math.abs(suelo - yCalle) <= 3 ? yCalle : suelo) + 1 - entrada.getY();
 			BlockPos sitio = new BlockPos(ox, y, oz);
 			BoundingBox b = m.elemento().getBoundingBox(plantillas, sitio, giro);
 			casas.add(new PoolElementStructurePiece(plantillas, m.elemento(), sitio, m.elemento().getGroundLevelDelta(), giro, b,
