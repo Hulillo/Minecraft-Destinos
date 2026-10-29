@@ -145,6 +145,20 @@ public final class PlazaMayor extends PiezaObra {
 		// los puestos, sueltos y mirando a la fuente, sin tapar los pasos de las calles
 		List<int[]> ocupado = new ArrayList<>();
 		ocupado.add(new int[] {0, 0, 6});
+		// en el desierto, cuatro palmeras alrededor de la fuente, en las diagonales (si no cae ahí una calle)
+		if (p.desierto) {
+			for (int k = 0; k < 4; k++) {
+				double a = Math.PI / 4 + k * Math.PI / 2;
+				int u = (int) Math.round(Math.cos(a) * 8.5);
+				int v = (int) Math.round(Math.sin(a) * 8.5);
+				if (enPaso(a, 0.3)) {
+					continue;
+				}
+				o.pon(u, 0, v, Blocks.SAND);
+				o.palmera(u, 1, v, 6 + o.azar(u, 0, v, 3));
+				ocupado.add(new int[] {u, v, 3});
+			}
+		}
 		int quiero = PUESTOS[Math.clamp(nivel, 0, PUESTOS.length - 1)];
 		int puestos = 0;
 		for (int k = 0; k < 400 && puestos < quiero; k++) {

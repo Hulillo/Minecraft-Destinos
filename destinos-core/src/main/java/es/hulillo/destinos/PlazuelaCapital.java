@@ -12,7 +12,7 @@ import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
 /**
  * Una placita de barrio, a modo de parque, junto a una calle: césped con un seto bajo alrededor, dos caminos
  * empedrados en cruz que la atraviesan y en medio un árbol grande con bancos, un pozo o una fuentecilla. Flores en
- * los cuartos y una farola.
+ * los cuartos y una farola. En el desierto, en vez de la fuentecilla, un oasis con palmeras.
  */
 public final class PlazuelaCapital extends PiezaObra {
 	public static final StructurePieceType TIPO = (StructurePieceType.ContextlessType) PlazuelaCapital::new;
@@ -57,7 +57,9 @@ public final class PlazuelaCapital extends PiezaObra {
 			}
 		}
 		int centro = o.azar(0, 0, 0, 3);
-		if (centro == ARBOL) {
+		if (p.desierto && centro != POZO) {
+			oasis(o);
+		} else if (centro == ARBOL) {
 			// el árbol en su alcorque, con un banco en cada esquina de la cruz
 			for (int du = -1; du <= 1; du++) {
 				for (int dv = -1; dv <= 1; dv++) {
@@ -111,5 +113,33 @@ public final class PlazuelaCapital extends PiezaObra {
 			o.pon(0, 3, 0, Blocks.POTTED_RED_TULIP);
 		}
 		o.farola(m - 2, 1, m - 2, Direction.NORTH);
+	}
+
+	/**
+	 * El oasis de las placitas del desierto: una charca redonda con nenúfares y su orilla de arena con cañas, y tres
+	 * palmeras alrededor.
+	 */
+	private static void oasis(Obra o) {
+		for (int du = -3; du <= 3; du++) {
+			for (int dv = -3; dv <= 3; dv++) {
+				double d = Math.hypot(du, dv);
+				if (d <= 2.3) {
+					o.caja(du, -1, dv, du, 0, dv, Blocks.WATER);
+					o.pon(du, -2, dv, Blocks.SAND);
+					if (o.azar(du, 1, dv, 5) == 0) {
+						o.pon(du, 1, dv, Blocks.LILY_PAD);
+					}
+				} else if (d <= 3.2) {
+					o.pon(du, 0, dv, Blocks.SAND);
+					o.pon(du, 1, dv, Blocks.AIR);
+					if (o.azar(du, 1, dv, 3) == 0) {
+						o.caja(du, 1, dv, du, 1 + o.azar(du, 2, dv, 2), dv, Blocks.SUGAR_CANE);
+					}
+				}
+			}
+		}
+		o.palmera(-3, 1, -3, 6);
+		o.palmera(3, 1, -3, 5);
+		o.palmera(-3, 1, 3, 7);
 	}
 }

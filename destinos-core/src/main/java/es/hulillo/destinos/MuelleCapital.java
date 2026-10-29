@@ -38,6 +38,18 @@ public final class MuelleCapital extends StructurePiece {
 		this.dir = dir.get2DDataValue();
 	}
 
+	int x() {
+		return x;
+	}
+
+	int z() {
+		return z;
+	}
+
+	Direction dir() {
+		return Direction.from2DDataValue(dir);
+	}
+
 	private static BoundingBox caja(int x, int z, int y, Direction d) {
 		int x1 = x + d.getStepX() * LARGO;
 		int z1 = z + d.getStepZ() * LARGO;

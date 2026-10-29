@@ -405,6 +405,12 @@ public final class EstructuraCapital extends Structure {
 		List<StructurePiece> enMuralla = muralla.stream().filter(m -> !terreno.todoAgua(m.getBoundingBox())).toList();
 		// y muelles con barcas en la orilla del río, el lago o el mar, dentro de la muralla
 		List<MuelleCapital> muelles = muelles(terreno, contorno, cx, cz, nivel, enCalle, casas, grandes, mayor);
+		// el faro, junto al muelle que da a mar abierto
+		Optional<FaroCapital> faro = faro(terreno, contorno, cx, cz, muelles, enCalle, casas, grandes, estilo, madera, color);
+		// en el pantano, las calles cruzan el agua por pasarelas de madera
+		if (bioma.is(net.minecraft.world.level.biome.Biomes.SWAMP) || bioma.is(net.minecraft.world.level.biome.Biomes.MANGROVE_SWAMP)) {
+			calles.forEach(CalleCapital::deMadera);
+		}
 
 		int techo = ctx.heightAccessor().getMinY() + ctx.heightAccessor().getHeight() - 1;
 		long ms = (System.nanoTime() - antes) / 1_000_000;
@@ -429,6 +435,10 @@ public final class EstructuraCapital extends Structure {
 				cajas.add(c.getBoundingBox());
 			}
 			muelles.forEach(piezas::addPiece);
+			faro.ifPresent(f -> {
+				piezas.addPiece(f);
+				cajas.add(f.getBoundingBox());
+			});
 			// las puertas antes que la muralla: los arcos se paran en sus torres
 			for (PuertaCapital q : portones) {
 				piezas.addPiece(q);
@@ -444,7 +454,7 @@ public final class EstructuraCapital extends Structure {
 			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} calles, {} tramos de ronda y {} callejones, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
 					px, alturaPlaza, pz, nivel,
 					(castillo.isPresent() ? ", con castillo" : "") + (mercado.isPresent() ? ", con mercado" : "")
-							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles") + ", " + plazuelas.size() + " placitas, " + portones.size() + " puertas, " + muelles.size() + " muelles",
+							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles") + ", " + plazuelas.size() + " placitas, " + portones.size() + " puertas, " + muelles.size() + " muelles" + (faro.isPresent() ? ", con faro" : ""),
 					principales.size(), rondas.size(), callejones.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
 					motivos[5], motivos[6], ColocacionCapital.quien());
 		}));
@@ -598,6 +608,56 @@ public final class EstructuraCapital extends Structure {
 			}
 		}
 		return r;
+	}
+
+	/**
+	 * El faro: junto al primer muelle que da a mar abierto (agua lejos hacia delante y a los lados), en tierra llana a
+	 * un lado del arranque, dentro de la muralla y sin pisar casas ni calles, con la puerta hacia tierra.
+	 */
+	private static Optional<FaroCapital> faro(TerrenoCapital terreno, int[] contorno, int cx, int cz, List<MuelleCapital> muelles, Set<Long> enCalle,
+			List<StructurePiece> casas, List<StructurePiece> grandes, int estilo, int madera, int color) {
+		int r = FaroCapital.RADIO + 1;
+		for (MuelleCapital m : muelles) {
+			Direction d = m.dir();
+			Direction lado = d.getClockWise();
+			int sx = d.getStepX();
+			int sz = d.getStepZ();
+			if (!terreno.agua(m.x() + sx * 18, m.z() + sz * 18) || !terreno.agua(m.x() + sx * 28, m.z() + sz * 28)
+					|| !terreno.agua(m.x() + sx * 22 + lado.getStepX() * 10, m.z() + sz * 22 + lado.getStepZ() * 10)
+					|| !terreno.agua(m.x() + sx * 22 - lado.getStepX() * 10, m.z() + sz * 22 - lado.getStepZ() * 10)) {
+				continue;
+			}
+			for (int atras = 2; atras <= 8; atras += 2) {
+				for (int fuera = 6; fuera <= 12; fuera += 2) {
+					for (int s = -1; s <= 1; s += 2) {
+						int x = m.x() + lado.getStepX() * fuera * s - sx * atras;
+						int z = m.z() + lado.getStepZ() * fuera * s - sz * atras;
+						double a = Math.floorMod((int) Math.floor(Math.toDegrees(Math.atan2(z - cz, x - cx)) * 10), 3600);
+						if (Math.hypot(x - cx, z - cz) > MurallaCapital.radioEn(contorno, a) - 8) {
+							continue;
+						}
+						boolean seco = true;
+						for (int i = -r; i <= r && seco; i += r) {
+							for (int j = -r; j <= r && seco; j += r) {
+								seco = !terreno.agua(x + i, z + j) && !enCalle.contains(Geo.clave(x + i, z + j));
+							}
+						}
+						int[] rel = terreno.relieve(x, z, r);
+						if (!seco || rel[1] > 4) {
+							continue;
+						}
+						int rot = (d.getOpposite().get2DDataValue() + 2) % 4;
+						FaroCapital f = new FaroCapital(x, z, rel[0], rot, estilo, madera, color);
+						BoundingBox b = f.getBoundingBox();
+						if (casas.stream().noneMatch(c -> solapa(c.getBoundingBox(), b)) && grandes.stream().noneMatch(g -> solapa(g.getBoundingBox(), b))
+								&& muelles.stream().noneMatch(o -> solapa(o.getBoundingBox(), b))) {
+							return Optional.of(f);
+						}
+					}
+				}
+			}
+		}
+		return Optional.empty();
 	}
 
 	/** Casas a lo largo del borde de la plaza, cada una con la puerta hacia el centro, a la altura de la plaza. */

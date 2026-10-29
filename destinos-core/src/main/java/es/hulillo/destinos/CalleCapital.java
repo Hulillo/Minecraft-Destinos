@@ -10,6 +10,7 @@ import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.BlockState;
@@ -27,7 +28,7 @@ import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
  * de toda la calle: donde el suelo queda un poco por encima se rebaja y donde queda un poco por debajo se rellena,
  * con un escalón de cuneta a los lados; si la diferencia es grande, la calle sigue el suelo. Solo se toca el suelo
  * natural, nunca las casas. Sobre el agua cruza por un puente de piedra medio bloque por encima, con pretil a los
- * lados y pilares hasta el fondo.
+ * lados y pilares hasta el fondo; en el pantano, por una pasarela de mangle sobre pilotes.
  *
  * No cuenta para el allanado del terreno (que con cajas finas a la altura de cada tramo dejaba la calle en
  * terrazas rectangulares): el allanado lo hace ella misma, columna a columna.
@@ -53,6 +54,8 @@ public final class CalleCapital extends StructurePiece {
 	private final boolean puente;
 	/** Lo que se puede rebajar o rellenar como mucho (0: lo de siempre); las rampas, como la subida al castillo, más. */
 	private final int maximo;
+	/** En el pantano: sobre el agua, pasarela de mangle sobre pilotes (también en rondas y callejones). */
+	private boolean madera;
 
 	CalleCapital(int x0, int z0, int y0, int x1, int z1, int y1, double radio, boolean puente) {
 		this(x0, z0, y0, x1, z1, y1, radio, puente, 0);
@@ -105,6 +108,13 @@ public final class CalleCapital extends StructurePiece {
 		radio = t.getIntOr("radio", 10);
 		puente = t.getBooleanOr("puente", false);
 		maximo = t.getIntOr("max", 0);
+		madera = t.getBooleanOr("madera", false);
+	}
+
+	/** La vuelve pasarela de madera sobre el agua (las capitales del pantano). */
+	CalleCapital deMadera() {
+		madera = true;
+		return this;
 	}
 
 	static void registra() {
@@ -122,6 +132,7 @@ public final class CalleCapital extends StructurePiece {
 		t.putInt("radio", radio);
 		t.putBoolean("puente", puente);
 		t.putInt("max", maximo);
+		t.putBoolean("madera", madera);
 	}
 
 	@Override
@@ -156,8 +167,8 @@ public final class CalleCapital extends StructurePiece {
 				int y = y0 == SIN_ALTURA ? SIN_ALTURA : (int) Math.round(y0 + t * (y1 - y0));
 				BlockState s = SueloNatural.superficie(level, pos, x, z);
 				if (s.is(Blocks.WATER)) {
-					if (puente && d <= r + 1.3) {
-						puente(level, pos, !calle, Math.floorMod(x + z, PILARES) == 0, aLoLargoDeZ);
+					if ((puente || madera) && d <= r + 1.3) {
+						puente(level, pos, !calle, Math.floorMod(x + z, madera ? 3 : PILARES) == 0, aLoLargoDeZ, madera);
 					}
 				} else if (y != SIN_ALTURA && Math.abs(pos.getY() - y) > corte() + 1) {
 					// un acantilado o un barranco que el trazado no vio: ahí no se pinta calle
@@ -241,29 +252,37 @@ public final class CalleCapital extends StructurePiece {
 	 * Una casilla del puente sobre el agua de pos: losa medio bloque por encima (se sube desde la orilla sin saltar),
 	 * pretil unido a lo largo (aLoLargoDeZ) y, a trechos, el pilar hasta el fondo.
 	 */
-	private static void puente(WorldGenLevel level, BlockPos.MutableBlockPos pos, boolean pretil, boolean pilar, Boolean aLoLargoDeZ) {
+	private static void puente(WorldGenLevel level, BlockPos.MutableBlockPos pos, boolean pretil, boolean pilar, Boolean aLoLargoDeZ,
+			boolean madera) {
+		Block suelo = madera ? Blocks.MANGROVE_SLAB : Blocks.STONE_BRICK_SLAB;
+		Block baranda = madera ? Blocks.MANGROVE_FENCE : Blocks.STONE_BRICK_WALL;
 		int agua = pos.getY();
 		pos.setY(agua + 1);
 		BlockState losa = level.getBlockState(pos);
 		if (!pretil) {
-			level.setBlock(pos, Blocks.STONE_BRICK_SLAB.defaultBlockState(), 2);
+			level.setBlock(pos, suelo.defaultBlockState(), 2);
 			// si el pretil de otro tramo cayó aquí (en una curva), fuera: esto es calle
 			pos.setY(agua + 2);
-			if (level.getBlockState(pos).is(Blocks.STONE_BRICK_WALL)) {
+			if (level.getBlockState(pos).is(baranda)) {
 				level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
 			}
 			return;
 		}
 		// el pretil no se pone encima de la calle de otro tramo
-		if (losa.is(Blocks.STONE_BRICK_SLAB)) {
+		if (losa.is(suelo)) {
 			return;
 		}
-		level.setBlock(pos, Blocks.STONE_BRICK_SLAB.defaultBlockState(), 2);
+		level.setBlock(pos, suelo.defaultBlockState(), 2);
 		pos.setY(agua + 2);
-		BlockState muro = Blocks.STONE_BRICK_WALL.defaultBlockState();
+		BlockState muro = baranda.defaultBlockState();
 		if (aLoLargoDeZ != null) {
-			muro = aLoLargoDeZ ? muro.setValue(BlockStateProperties.NORTH_WALL, WallSide.LOW).setValue(BlockStateProperties.SOUTH_WALL, WallSide.LOW)
-					: muro.setValue(BlockStateProperties.EAST_WALL, WallSide.LOW).setValue(BlockStateProperties.WEST_WALL, WallSide.LOW);
+			if (madera) {
+				muro = aLoLargoDeZ ? muro.setValue(BlockStateProperties.NORTH, true).setValue(BlockStateProperties.SOUTH, true)
+						: muro.setValue(BlockStateProperties.EAST, true).setValue(BlockStateProperties.WEST, true);
+			} else {
+				muro = aLoLargoDeZ ? muro.setValue(BlockStateProperties.NORTH_WALL, WallSide.LOW).setValue(BlockStateProperties.SOUTH_WALL, WallSide.LOW)
+						: muro.setValue(BlockStateProperties.EAST_WALL, WallSide.LOW).setValue(BlockStateProperties.WEST_WALL, WallSide.LOW);
+			}
 		}
 		level.setBlock(pos, muro, 2);
 		if (pilar) {
@@ -273,7 +292,7 @@ public final class CalleCapital extends StructurePiece {
 				if (y != agua && !b.is(Blocks.WATER) && !b.canBeReplaced()) {
 					break;
 				}
-				level.setBlock(pos, Blocks.STONE_BRICKS.defaultBlockState(), 2);
+				level.setBlock(pos, (madera ? Blocks.MANGROVE_LOG : Blocks.STONE_BRICKS).defaultBlockState(), 2);
 			}
 		}
 	}
