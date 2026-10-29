@@ -565,16 +565,28 @@ public final class AdornoCapital extends StructurePiece {
 			if (!SueloNatural.natural(suelo) || !libre(level, pos, x, y + 1, z, 4)) {
 				continue;
 			}
+			// en el borde de la calle: calle a un solo lado y suelo por los demás (no en un hueco de hierba o de barro
+			// que haya quedado en medio de la calle, ni en una esquina entre dos)
+			int deCalle = 0;
+			Direction haciaCalle = null;
 			for (Direction d : Direction.Plane.HORIZONTAL) {
-				int sx = x + d.getStepX();
-				int sz = z + d.getStepZ();
-				int sy = SueloNatural.cima(level, sx, sz);
-				if (Math.abs(sy - y) <= 1 && empedrado(level.getBlockState(pos.set(sx, sy, sz)))) {
-					ponFarola(level, pos, x, y, z);
-					return;
+				if (deCalle(level, pos, x + d.getStepX(), z + d.getStepZ(), y)) {
+					deCalle++;
+					haciaCalle = d;
 				}
 			}
+			if (deCalle == 1 && !deCalle(level, pos, x - 2 * haciaCalle.getStepX(), z - 2 * haciaCalle.getStepZ(), y)) {
+				ponFarola(level, pos, x, y, z);
+				return;
+			}
 		}
+	}
+
+	/** Si (x, z) es calle (empedrada o aún de tierra pisada) a la altura y, más o menos uno. */
+	private boolean deCalle(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int y) {
+		int sy = SueloNatural.cima(level, x, z);
+		BlockState b = level.getBlockState(pos.set(x, sy, z));
+		return Math.abs(sy - y) <= 1 && (empedrado(b) || b.is(Blocks.DIRT_PATH));
 	}
 
 	private void ponFarola(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int y, int z) {

@@ -11,6 +11,7 @@ import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 
 /** El suelo sobre el que se ponen las calles y la muralla de una capital. */
 final class SueloNatural {
@@ -37,6 +38,66 @@ final class SueloNatural {
 			s = level.getBlockState(pos);
 		}
 		return s;
+	}
+
+	/**
+	 * Despeja la columna (x, z) de árbol: las ramas que solo pasan por encima se podan (las hojas de esa columna) y,
+	 * si el tronco está en ella, se tala el árbol entero (todo lo unido a él: troncos, hojas, lianas…), sin salir de
+	 * caja, que es lo que se puede tocar en este chunk. Así las calles no se paran debajo de un árbol ni lo dejan
+	 * plantado en medio, y los árboles de al lado se quedan.
+	 */
+	static void tala(WorldGenLevel level, BoundingBox caja, int x, int z) {
+		BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos(x, cima(level, x, z), z);
+		BlockState b = level.getBlockState(m);
+		while ((deArbol(b) || b.isAir()) && !b.is(BlockTags.LOGS) && m.getY() > level.getMinY()) {
+			level.setBlock(m, Blocks.AIR.defaultBlockState(), 2);
+			m.move(0, -1, 0);
+			b = level.getBlockState(m);
+		}
+		if (!b.is(BlockTags.LOGS)) {
+			return;
+		}
+		BlockPos arriba = m.immutable();
+		// un tronco de verdad sale de la tierra; las vigas de una casa no (están sobre piedra o tablones)
+		while (b.is(BlockTags.LOGS) && m.getY() > level.getMinY()) {
+			m.move(0, -1, 0);
+			b = level.getBlockState(m);
+		}
+		if (!natural(b)) {
+			return;
+		}
+		java.util.ArrayDeque<BlockPos> cola = new java.util.ArrayDeque<>();
+		java.util.HashSet<BlockPos> visto = new java.util.HashSet<>();
+		cola.add(arriba);
+		visto.add(arriba);
+		while (!cola.isEmpty() && visto.size() < MAX_TALA) {
+			BlockPos p = cola.poll();
+			// de un tronco se pasa a troncos y hojas; de las hojas, solo a más hojas (si no, unas hojas pegadas a una
+			// casa se llevarían sus vigas)
+			boolean deTronco = level.getBlockState(p).is(BlockTags.LOGS);
+			level.setBlock(p, Blocks.AIR.defaultBlockState(), 2);
+			for (net.minecraft.core.Direction d : net.minecraft.core.Direction.values()) {
+				BlockPos q = p.relative(d);
+				BlockState c = level.getBlockState(q);
+				if (caja.isInside(q) && Math.abs(q.getX() - x) <= RADIO_TALA && Math.abs(q.getZ() - z) <= RADIO_TALA
+						&& deArbol(c) && (deTronco || !c.is(BlockTags.LOGS)) && visto.add(q)) {
+					cola.add(q);
+				}
+			}
+		}
+	}
+
+	private static final int MAX_TALA = 600;
+	private static final int RADIO_TALA = 7;
+
+	private static boolean deArbol(BlockState s) {
+		// las hojas que no se caen las ha puesto alguien (setos, jardineras): no son de un árbol
+		if (s.is(BlockTags.LEAVES)) {
+			return !s.hasProperty(net.minecraft.world.level.block.LeavesBlock.PERSISTENT)
+					|| !s.getValue(net.minecraft.world.level.block.LeavesBlock.PERSISTENT);
+		}
+		return s.is(BlockTags.LOGS) || s.is(Blocks.VINE) || s.is(Blocks.BEE_NEST)
+				|| s.is(Blocks.COCOA) || s.is(Blocks.MANGROVE_ROOTS) || s.is(Blocks.MOSS_CARPET);
 	}
 
 	/**

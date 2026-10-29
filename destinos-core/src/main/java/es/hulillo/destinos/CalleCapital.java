@@ -152,6 +152,7 @@ public final class CalleCapital extends StructurePiece {
 					continue;
 				}
 				boolean calle = d <= r + 0.3;
+				SueloNatural.tala(level, caja, x, z);
 				int y = y0 == SIN_ALTURA ? SIN_ALTURA : (int) Math.round(y0 + t * (y1 - y0));
 				BlockState s = SueloNatural.superficie(level, pos, x, z);
 				if (s.is(Blocks.WATER)) {
