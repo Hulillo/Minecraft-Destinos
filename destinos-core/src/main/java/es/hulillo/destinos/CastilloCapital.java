@@ -121,7 +121,6 @@ public final class CastilloCapital extends PiezaObra {
 		for (int s = -1; s <= 1; s += 2) {
 			homenaje(o, s);
 		}
-		cuerpoCentral(o);
 		mazmorras(o);
 		cripta(o);
 		// y al final, faroles en los rincones que han quedado a oscuras
@@ -1706,7 +1705,7 @@ public final class CastilloCapital extends PiezaObra {
 		o.pon(2, y, 7, Blocks.POTTED_FLOWERING_AZALEA);
 	}
 
-	/** El tejado del palacio: a dos aguas de muralla a muralla, con buhardillas (entre las torres va el cuerpo central). */
+	/** El tejado del palacio: a dos aguas de muralla a muralla, con el hastial de la fachada, buhardillas y chimeneas. */
 	private void tejadoPalacio(Obra o) {
 		Paleta p = o.p;
 		int e = DENTRO;
@@ -1719,65 +1718,24 @@ public final class CastilloCapital extends PiezaObra {
 			return;
 		}
 		o.dosAguas(-e - 1, FACHADA - 1, e + 1, FONDO + 1, 18, false, p.enlucido);
+		// el hastial de la fachada, entre las dos torres
+		for (int u = -5; u <= 5; u++) {
+			o.aire(u, 19, FACHADA, u, 18 + 6 - Math.abs(u), FACHADA + 4);
+		}
+		o.dosAguas(-6, FACHADA - 1, 6, FACHADA + 5, 18, true, p.enlucido, false);
+		// detrás del hastial, de su tejado al del palacio, forro de tablas: así desde el desván no se ve el tejado de fuera
+		for (int u = -6; u <= 6; u++) {
+			for (int y = 18 + 7 - Math.abs(u); y < alturaTejado(FACHADA + 6); y++) {
+				if (o.vacio(u, y, FACHADA + 6)) {
+					o.pon(u, y, FACHADA + 6, p.tablas);
+				}
+			}
+		}
 		for (int s = -1; s <= 1; s += 2) {
 			o.buhardilla(s * 5, FONDO, Direction.SOUTH, 19, 1, 6);
 			o.buhardilla(s * 19, FONDO, Direction.SOUTH, 19, 1, 6);
 			o.buhardilla(s * 20, FACHADA, Direction.NORTH, 19, 1, 6);
 		}
-	}
-
-	/**
-	 * Entre las dos torres del homenaje, el cuerpo central: sube de la fachada hasta el balcón con dos salas (piso 18 y
-	 * 24, con puertas a las dos torres y al desván) y arriba una terraza que une los dos balcones. Así el tejado del
-	 * palacio no asoma entre las torres ni llega por debajo de los balcones, y el alero no pasa por delante de ellas.
-	 */
-	private void cuerpoCentral(Obra o) {
-		Paleta p = o.p;
-		int va = FACHADA, vb = HV + 7, w = 6;
-		// fuera el alero por delante de las torres y del cuerpo, y el tejado que quedaba entre ellas
-		o.aire(-15, 17, va - 1, 15, 18, va - 1);
-		o.aire(-w, 17, va - 1, w, BALCON + 3, va - 1);
-		o.aire(-w, 18, va, w, BALCON + 3, vb);
-		// fachada de entramado como la de abajo, muro de atrás de piedra y los dos suelos
-		muroEntramado(o, -w, va, w, va, 18, BALCON - 1, 18, 24, BALCON - 1);
-		o.sillares(-w, 18, vb, w, BALCON - 1, vb, false);
-		for (int f : new int[] {18, 24}) {
-			o.caja(-w + 1, f, va + 1, w - 1, f, vb - 1, p.tablas);
-			ventanas(o, -2, f + 2, va, -1, f + 4, va);
-			ventanas(o, 1, f + 2, va, 2, f + 4, va);
-			ventanas(o, -5, f + 2, va, -4, f + 3, va);
-			ventanas(o, 4, f + 2, va, 5, f + 3, va);
-			for (int s = -1; s <= 1; s += 2) {
-				o.aire(s * 7, f + 1, 10, s * 7, f + 3, 11);
-			}
-			o.pon(0, f + 5, (va + vb) / 2, Obra.farolColgado());
-		}
-		// al desván de detrás, por el piso 18
-		o.aire(-1, 19, vb, 1, 21, vb);
-		// abajo, mesa de guardia; arriba, la sala de los mapas con librerías
-		o.mesa(-1, 8, 1, 10, 19, false);
-		o.silla(0, 19, 7, Direction.SOUTH);
-		o.silla(0, 19, 11, Direction.NORTH);
-		o.caja(-5, 25, vb - 1, -2, 26, vb - 1, Blocks.BOOKSHELF);
-		o.caja(2, 25, vb - 1, 5, 26, vb - 1, Blocks.BOOKSHELF);
-		o.pon(0, 25, 9, Blocks.CARTOGRAPHY_TABLE);
-		o.pon(0, 25, vb - 1, Obra.mira(Blocks.LECTERN, Direction.NORTH));
-		// la terraza, a la altura del balcón y con su mismo vuelo por delante: une los balcones de las dos torres
-		for (int u = -w; u <= w; u++) {
-			for (int v = va - 3; v <= vb; v++) {
-				o.pon(u, BALCON, v, p.losa);
-				if (v < va) {
-					o.pon(u, BALCON - 1, v, v == va - 3 ? Obra.escalon(p.piedraEscalon, Direction.SOUTH, true) : p.piedra(o, u, BALCON - 1, v));
-				}
-				o.aire(u, BALCON + 1, v, u, BALCON + 3, v);
-				if (v == va - 3 || v == vb) {
-					o.pon(u, BALCON + 1, v, p.muroBajo);
-				}
-			}
-		}
-		o.pon(-3, BALCON + 2, va - 3, Blocks.LANTERN);
-		o.pon(3, BALCON + 2, va - 3, Blocks.LANTERN);
-		o.estandarte(0, 27, va - 1, Direction.NORTH);
 	}
 
 	// ---- las torres del homenaje ----
@@ -1830,6 +1788,11 @@ public final class CastilloCapital extends PiezaObra {
 					continue;
 				}
 				int u = cu + du, v = cv + dv;
+				// por detrás, donde el tejado del palacio llega a la altura del balcón, manda el tejado: así su cumbrera
+				// sigue entera entre las torres en vez de quedar mordida por el balcón
+				if (Math.abs(u) <= DENTRO + 1 && v >= FACHADA - 1 && v <= FONDO + 1 && alturaTejado(v) >= BALCON - 1) {
+					continue;
+				}
 				Direction aLaTorre = Math.abs(du) >= Math.abs(dv) ? lado(-du) : (dv > 0 ? Direction.NORTH : Direction.SOUTH);
 				o.pon(u, BALCON, v, p.losa);
 				o.pon(u, BALCON - 1, v, anillo == 7 ? Obra.escalon(p.piedraEscalon, aLaTorre, true) : p.piedra(o, u, BALCON - 1, v));
