@@ -142,7 +142,7 @@ public final class PlazaMercado extends PiezaObra {
 	}
 
 	/** El giro que lleva el mostrador de un puesto (que mira a su norte) hacia frente. */
-	private static int giro(Direction frente) {
+	static int giro(Direction frente) {
 		return switch (frente) {
 			case EAST -> 1;
 			case SOUTH -> 2;
@@ -177,7 +177,7 @@ public final class PlazaMercado extends PiezaObra {
 	}
 
 	/** Flores y arbustos en el césped que deja libre el puesto. */
-	private static void flores(Obra o, int cu, int cv) {
+	static void flores(Obra o, int cu, int cv) {
 		int r = PARCELA / 2 - 1;
 		for (int du = -r; du <= r; du++) {
 			for (int dv = -r; dv <= r; dv++) {
@@ -189,7 +189,7 @@ public final class PlazaMercado extends PiezaObra {
 	}
 
 	/** La fuente del centro: pilón de agua con bordillo de peldaños y una columna con los estandartes y la campana. */
-	private static void fuente(Obra o, int cu, int cv) {
+	static void fuente(Obra o, int cu, int cv) {
 		Paleta p = o.p;
 		int r = PARCELA / 2;
 		for (int du = -r; du <= r; du++) {
@@ -244,7 +244,7 @@ public final class PlazaMercado extends PiezaObra {
 	}
 
 	/** Un corral de vallas con su cancela hacia frente, un pesebre, un abrevadero y dos animales. */
-	private static void corral(Obra o, int cu, int cv, Direction frente, int k) {
+	static void corral(Obra o, int cu, int cv, Direction frente, int k) {
 		Paleta p = o.p;
 		int r = PARCELA / 2 - 1;
 		for (int du = -r; du <= r; du++) {
@@ -270,7 +270,7 @@ public final class PlazaMercado extends PiezaObra {
 	}
 
 	/** Un árbol en medio de la parcela con un banco a cada lado y flores en las esquinas. */
-	private static void arbolConBancos(Obra o, int cu, int cv) {
+	static void arbolConBancos(Obra o, int cu, int cv) {
 		for (Direction d : Direction.Plane.HORIZONTAL) {
 			o.silla(cu + d.getStepX() * 2, 1, cv + d.getStepZ() * 2, d.getOpposite());
 		}

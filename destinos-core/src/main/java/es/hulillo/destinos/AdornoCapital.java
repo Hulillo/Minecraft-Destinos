@@ -73,8 +73,13 @@ public final class AdornoCapital extends StructurePiece {
 	private final int py;
 	/** Medio lado del mercado que ocupa la plaza mayor (con su talud), o 0 si la plaza es el redondel de siempre. */
 	private final int mercado;
+	/** La plaza mayor orgánica (PlazaMayor): su nivel (o -1 si no la hay), su semilla y sus entradas. */
+	private final int pnivel;
+	private final int psemilla;
+	private final int[] pentradas;
 
-	AdornoCapital(int px, int py, int pz, int estilo, int color, BoundingBox capital, int techo, boolean puestos, int mercado) {
+	AdornoCapital(int px, int py, int pz, int estilo, int color, BoundingBox capital, int techo, boolean puestos, int mercado, int pnivel,
+			int psemilla, int[] pentradas) {
 		super(TIPO, 0, new BoundingBox(capital.minX(), techo, capital.minZ(), capital.maxX(), techo, capital.maxZ()));
 		this.px = px;
 		this.pz = pz;
@@ -83,6 +88,9 @@ public final class AdornoCapital extends StructurePiece {
 		this.puestos = puestos;
 		this.py = py;
 		this.mercado = mercado;
+		this.pnivel = pnivel;
+		this.psemilla = psemilla;
+		this.pentradas = pentradas;
 	}
 
 	private AdornoCapital(CompoundTag t) {
@@ -94,6 +102,9 @@ public final class AdornoCapital extends StructurePiece {
 		puestos = t.getBooleanOr("puestos", true);
 		py = t.getIntOr("py", Integer.MIN_VALUE);
 		mercado = t.getIntOr("mercado", 0);
+		pnivel = t.getIntOr("pnivel", -1);
+		psemilla = t.getIntOr("psemilla", 0);
+		pentradas = t.getIntArray("pentradas").orElse(new int[0]);
 	}
 
 	static void registra() {
@@ -149,6 +160,9 @@ public final class AdornoCapital extends StructurePiece {
 		t.putBoolean("puestos", puestos);
 		t.putInt("py", py);
 		t.putInt("mercado", mercado);
+		t.putInt("pnivel", pnivel);
+		t.putInt("psemilla", psemilla);
+		t.putIntArray("pentradas", pentradas);
 	}
 
 	@Override
@@ -178,7 +192,7 @@ public final class AdornoCapital extends StructurePiece {
 		}
 		// 3. la plaza mayor: estandartes en las cuatro diagonales del borde (las calles entran por los lados) y un
 		// anillo de ocho puestos de mercado alrededor del pozo o la fuente del centro
-		if (mercado > 0) {
+		if (mercado > 0 || pnivel >= 0) {
 			// la plaza es el mercado, que ya trae fuente, campana, bancos y farolas
 			return;
 		}
@@ -376,7 +390,8 @@ public final class AdornoCapital extends StructurePiece {
 	 * bloque por bloque que sube o baja hasta el terreno.
 	 */
 	private void allana(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z) {
-		if (py == Integer.MIN_VALUE) {
+		// la plaza mayor orgánica se allana ella sola
+		if (py == Integer.MIN_VALUE || pnivel >= 0) {
 			return;
 		}
 		int dx = x - px;
@@ -690,6 +705,9 @@ public final class AdornoCapital extends StructurePiece {
 
 	/** Lo que (dx, dz) queda por fuera del borde de la plaza (negativo: dentro). */
 	private double fuera(int dx, int dz) {
+		if (pnivel >= 0) {
+			return Math.hypot(dx, dz) - PlazaMayor.radio(pnivel, psemilla, pentradas, Math.atan2(dz, dx));
+		}
 		if (mercado > 0) {
 			return Math.max(Math.abs(dx), Math.abs(dz)) - (mercado + PASEO);
 		}
@@ -698,6 +716,9 @@ public final class AdornoCapital extends StructurePiece {
 
 	/** Si (dx, dz) cae en el mercado de la plaza (que se allana y se empiedra él solo). */
 	private boolean enMercado(int dx, int dz) {
+		if (pnivel >= 0) {
+			return fuera(dx, dz) <= 0;
+		}
 		return mercado > 0 && Math.abs(dx) <= mercado && Math.abs(dz) <= mercado;
 	}
 
