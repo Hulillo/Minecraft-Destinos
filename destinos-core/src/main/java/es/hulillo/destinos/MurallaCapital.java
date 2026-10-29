@@ -68,8 +68,10 @@ public final class MurallaCapital extends StructurePiece {
 	private final int kx;
 	private final int kz;
 	private final int km;
+	/** Cajas (x0, z0, x1, z1 seguidos) donde no se pone muralla: delante y detrás de las puertas. */
+	private final int[] huecos;
 
-	private MurallaCapital(int cx, int cz, int nivel, int a0, int a1, int r0, int r1, int[] castillo, BoundingBox caja) {
+	private MurallaCapital(int cx, int cz, int nivel, int a0, int a1, int r0, int r1, int[] castillo, int[] huecos, BoundingBox caja) {
 		super(TIPO, 0, caja);
 		this.cx = cx;
 		this.cz = cz;
@@ -81,6 +83,7 @@ public final class MurallaCapital extends StructurePiece {
 		this.kx = castillo == null ? 0 : castillo[0];
 		this.kz = castillo == null ? 0 : castillo[1];
 		this.km = castillo == null ? -1 : castillo[2];
+		this.huecos = huecos;
 	}
 
 	private MurallaCapital(CompoundTag t) {
@@ -95,6 +98,7 @@ public final class MurallaCapital extends StructurePiece {
 		kx = t.getIntOr("kx", 0);
 		kz = t.getIntOr("kz", 0);
 		km = t.getIntOr("km", -1);
+		huecos = t.getIntArray("huecos").orElse(new int[0]);
 	}
 
 	static void registra() {
@@ -152,7 +156,7 @@ public final class MurallaCapital extends StructurePiece {
 	 * alturaEn da la altura del suelo para cada caja fina. Dentro de la muralla del castillo (centro y medio lado en
 	 * castillo, o null) no se pone nada: la de la ciudad llega hasta la suya y ahí empalma.
 	 */
-	static void piezas(int cx, int cz, int nivel, int[] radios, IntBinaryOperator alturaEn, int[] castillo, List<StructurePiece> piezas) {
+	static void piezas(int cx, int cz, int nivel, int[] radios, IntBinaryOperator alturaEn, int[] castillo, int[] huecos, List<StructurePiece> piezas) {
 		int grueso = GRUESO[nivel];
 		if (radios == null) {
 			radios = new int[ARCOS];
@@ -168,11 +172,11 @@ public final class MurallaCapital extends StructurePiece {
 				double rt = radioEn(radios, a) + grueso / 2.0;
 				int tx = cx + (int) Math.round(Math.cos(r) * rt);
 				int tz = cz + (int) Math.round(Math.sin(r) * rt);
-				if (enCastillo(castillo, tx, tz, RADIO_TORRE + 2)) {
+				if (enCastillo(castillo, tx, tz, RADIO_TORRE + 2) || enHueco(huecos, tx, tz, RADIO_TORRE + 4)) {
 					continue;
 				}
 				int y = alturaEn.applyAsInt(tx, tz);
-				piezas.add(new MurallaCapital(cx, cz, nivel, a, -1, 0, 0, castillo, new BoundingBox(tx - RADIO_TORRE - 1, y, tz - RADIO_TORRE - 1,
+				piezas.add(new MurallaCapital(cx, cz, nivel, a, -1, 0, 0, castillo, huecos, new BoundingBox(tx - RADIO_TORRE - 1, y, tz - RADIO_TORRE - 1,
 						tx + RADIO_TORRE + 1, y + 1, tz + RADIO_TORRE + 1)));
 			}
 		}
@@ -201,8 +205,17 @@ public final class MurallaCapital extends StructurePiece {
 				continue;
 			}
 			int y = alturaEn.applyAsInt((minX + maxX) / 2, (minZ + maxZ) / 2);
-			piezas.add(new MurallaCapital(cx, cz, nivel, a0, a1, r0, r1, castillo, new BoundingBox(minX - 1, y, minZ - 1, maxX + 1, y + 1, maxZ + 1)));
+			piezas.add(new MurallaCapital(cx, cz, nivel, a0, a1, r0, r1, castillo, huecos, new BoundingBox(minX - 1, y, minZ - 1, maxX + 1, y + 1, maxZ + 1)));
 		}
+	}
+
+	private static boolean enHueco(int[] huecos, int x, int z, int margen) {
+		for (int k = 0; k + 3 < huecos.length; k += 4) {
+			if (x >= huecos[k] - margen && x <= huecos[k + 2] + margen && z >= huecos[k + 1] - margen && z <= huecos[k + 3] + margen) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static boolean enCastillo(int[] castillo, int x, int z, int margen) {
@@ -221,6 +234,7 @@ public final class MurallaCapital extends StructurePiece {
 		t.putInt("kx", kx);
 		t.putInt("kz", kz);
 		t.putInt("km", km);
+		t.putIntArray("huecos", huecos);
 	}
 
 	@Override
@@ -235,7 +249,7 @@ public final class MurallaCapital extends StructurePiece {
 		}
 		for (int x = Math.max(mia.minX(), caja.minX()); x <= Math.min(mia.maxX(), caja.maxX()); x++) {
 			for (int z = Math.max(mia.minZ(), caja.minZ()); z <= Math.min(mia.maxZ(), caja.maxZ()); z++) {
-				if (km >= 0 && Math.max(Math.abs(x - kx), Math.abs(z - kz)) <= km) {
+				if (km >= 0 && Math.max(Math.abs(x - kx), Math.abs(z - kz)) <= km || enHueco(huecos, x, z, 0)) {
 					continue;
 				}
 				double d = Math.hypot(x - cx, z - cz);

@@ -24,6 +24,8 @@ public final class PuertaCapital extends PiezaObra {
 	/** Medio ancho (de torre a torre) y medio fondo. */
 	static final int MEDIO = 7;
 	private static final int FONDO = 4;
+	/** Hasta dónde, delante y detrás, la muralla no se pone (el paso y las puertas de las torres quedan libres). */
+	static final int LIBRE = FONDO + 5;
 	/** El pasaje: medio ancho y alto libre. */
 	private static final int PASO = 2;
 	private static final int ALTO_PASO = 5;

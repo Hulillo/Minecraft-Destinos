@@ -383,10 +383,20 @@ public final class EstructuraCapital extends Structure {
 		nobles.forEach(n -> construido.add(n.getBoundingBox()));
 		int[] contorno = MurallaCapital.contorno(cx, cz, construido, MARGEN_MURO, (rPlaza + radio) / 2, Math.min(radio + 6, MAX_ALCANCE - 6));
 		int[] muroCastillo = castillo.map(c -> new int[] {c.cx, c.cz, CastilloCapital.MURO + 1}).orElse(null);
-		List<StructurePiece> muralla = new ArrayList<>();
-		MurallaCapital.piezas(cx, cz, nivel, contorno, terreno::alto, muroCastillo, muralla);
-		// y donde la cruza una calle principal, una puerta de verdad: torres, arco y rastrillo
+		// donde la cruza una calle principal, una puerta de verdad: torres, arco y rastrillo; la muralla llega a los lados
+		// de sus torres y deja libre lo de delante y lo de detrás (el paso y las puertas de las torres)
 		List<PuertaCapital> portones = portones(terreno, principales, contorno, cx, cz, nivel, muroCastillo, estilo, madera, color);
+		int[] huecos = new int[portones.size() * 4];
+		for (int k = 0; k < portones.size(); k++) {
+			int[] a = portones.get(k).mundo(-PuertaCapital.MEDIO, -PuertaCapital.LIBRE);
+			int[] b = portones.get(k).mundo(PuertaCapital.MEDIO, PuertaCapital.LIBRE);
+			huecos[4 * k] = Math.min(a[0], b[0]);
+			huecos[4 * k + 1] = Math.min(a[1], b[1]);
+			huecos[4 * k + 2] = Math.max(a[0], b[0]);
+			huecos[4 * k + 3] = Math.max(a[1], b[1]);
+		}
+		List<StructurePiece> muralla = new ArrayList<>();
+		MurallaCapital.piezas(cx, cz, nivel, contorno, terreno::alto, muroCastillo, huecos, muralla);
 		// las calles que van a las puertas salen un poco por fuera de la muralla y ahí se acaban
 		calles.removeIf(c -> fueraDe(contorno, cx, cz, c.x0(), c.z0()) && fueraDe(contorno, cx, cz, c.x1(), c.z1()));
 		List<StructurePiece> enMuralla = muralla.stream().filter(m -> !terreno.aguaEsquinas(m.getBoundingBox())).toList();
