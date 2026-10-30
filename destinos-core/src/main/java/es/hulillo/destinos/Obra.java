@@ -744,6 +744,24 @@ final class Obra {
 		return seres;
 	}
 
+	// ---- carteles: el letrero con el nombre de la capital (lo escribe CartelesCapital al cargar el chunk) ----
+
+	/** Un cartel de pared en (u, ly, v). */
+	record Cartel(int u, int ly, int v) {
+	}
+
+	private final List<Cartel> carteles = new ArrayList<>();
+
+	/** Un cartel colgado de la pared de detrás, mirando hacia mira, que dirá el nombre de la capital. */
+	void cartel(int u, int ly, int v, Direction mira) {
+		pon(u, ly, v, mira(Blocks.DARK_OAK_WALL_SIGN, mira));
+		carteles.add(new Cartel(u, ly, v));
+	}
+
+	List<Cartel> carteles() {
+		return carteles;
+	}
+
 	/** Chimenea pegada a la pared: hogar con fuego bajo una repisa y el cañón hasta techo; mira hacia la sala. */
 	void chimenea(int u, int ly, int v, Direction mira, int techo) {
 		Direction lado = mira.getClockWise();

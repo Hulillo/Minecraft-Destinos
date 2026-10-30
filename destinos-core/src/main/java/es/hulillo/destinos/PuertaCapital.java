@@ -134,6 +134,8 @@ public final class PuertaCapital extends PiezaObra {
 			o.estandarte(s * (PASO + 4), torre - 1, -FONDO - 1, Direction.NORTH);
 		}
 		o.estandarte(0, alto - 1, -FONDO - 1, Direction.NORTH);
+		// el cartel con el nombre de la capital, en la torre de la izquierda, a la vista al llegar
+		o.cartel(-(PASO + 3), 3, -FONDO - 1, Direction.NORTH);
 		o.alumbra(-MEDIO, -FONDO, MEDIO, FONDO, 0, torre, 4);
 	}
 }

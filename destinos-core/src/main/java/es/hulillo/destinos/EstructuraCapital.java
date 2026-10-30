@@ -78,6 +78,9 @@ public final class EstructuraCapital extends Structure {
 	private static final int SEPARA_PUERTAS = 30;
 	private static final int SEPARA_MUELLES = 40;
 	private static final int K_PLAZUELA = 6151;
+	private static final int K_HUERTO = 4721;
+	/** Hasta dónde se mira el terreno más allá del radio de la muralla (la rejilla). */
+	private static final int TERRENO_FUERA = 36;
 	private static final int K_PLAZA = 3371;
 	private static final int SEPARA_PLAZUELAS = 48;
 	private static final int MAX_DESNIVEL_PLAZUELA = 6;
@@ -173,7 +176,7 @@ public final class EstructuraCapital extends Structure {
 		MapaTerreno.Capital esta = ColocacionCapital.capitalEn(ctx.chunkPos().x, ctx.chunkPos().z);
 		int nivel = esta != null ? esta.nivel() : 1;
 		int radio = MurallaCapital.radio(nivel);
-		TerrenoCapital terreno = new TerrenoCapital(ctx, cx, cz, radio + 24);
+		TerrenoCapital terreno = new TerrenoCapital(ctx, cx, cz, radio + TERRENO_FUERA);
 		// el estilo del pueblo, la madera del bioma y el color del reino
 		int estilo = AdornoCapital.estilo(pueblo.estructura().getRegisteredName(), bioma.value().getBaseTemperature());
 		MapaTerreno mapa = DestinosCore.mapaActual();
@@ -407,6 +410,8 @@ public final class EstructuraCapital extends Structure {
 		List<MuelleCapital> muelles = muelles(terreno, contorno, cx, cz, nivel, enCalle, casas, grandes, mayor);
 		// el faro, junto al muelle que da a mar abierto
 		Optional<FaroCapital> faro = faro(terreno, contorno, cx, cz, muelles, enCalle, casas, grandes, estilo, madera, color);
+		// los huertos de las afueras, fuera de la muralla
+		List<HuertoCapital> huertos = huertos(terreno, contorno, cx, cz, nivel, enCalle, casas, grandes, muelles, portones, estilo, madera, color);
 		// en el pantano, las calles cruzan el agua por pasarelas de madera
 		if (bioma.is(net.minecraft.world.level.biome.Biomes.SWAMP) || bioma.is(net.minecraft.world.level.biome.Biomes.MANGROVE_SWAMP)) {
 			calles.forEach(CalleCapital::deMadera);
@@ -435,6 +440,7 @@ public final class EstructuraCapital extends Structure {
 				cajas.add(c.getBoundingBox());
 			}
 			muelles.forEach(piezas::addPiece);
+			huertos.forEach(piezas::addPiece);
 			faro.ifPresent(f -> {
 				piezas.addPiece(f);
 				cajas.add(f.getBoundingBox());
@@ -454,7 +460,7 @@ public final class EstructuraCapital extends Structure {
 			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} calles, {} tramos de ronda y {} callejones, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
 					px, alturaPlaza, pz, nivel,
 					(castillo.isPresent() ? ", con castillo" : "") + (mercado.isPresent() ? ", con mercado" : "")
-							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles") + ", " + plazuelas.size() + " placitas, " + portones.size() + " puertas, " + muelles.size() + " muelles" + (faro.isPresent() ? ", con faro" : ""),
+							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles") + ", " + plazuelas.size() + " placitas, " + portones.size() + " puertas, " + muelles.size() + " muelles" + (faro.isPresent() ? ", con faro" : "") + ", " + huertos.size() + " huertos",
 					principales.size(), rondas.size(), callejones.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
 					motivos[5], motivos[6], ColocacionCapital.quien());
 		}));
@@ -658,6 +664,53 @@ public final class EstructuraCapital extends Structure {
 			}
 		}
 		return Optional.empty();
+	}
+
+	/**
+	 * Los huertos de las afueras: en anillos justo fuera de la muralla, en tierra seca y llana, sin pisar calles,
+	 * puertas, muelles ni otras obras, con la cancela hacia la ciudad. Más cuanto más rica es la capital.
+	 */
+	private static List<HuertoCapital> huertos(TerrenoCapital terreno, int[] contorno, int cx, int cz, int nivel, Set<Long> enCalle,
+			List<StructurePiece> casas, List<StructurePiece> grandes, List<MuelleCapital> muelles, List<PuertaCapital> portones, int estilo,
+			int madera, int color) {
+		List<HuertoCapital> r = new ArrayList<>();
+		int quiero = 3 + 2 * nivel;
+		int m = HuertoCapital.MEDIO;
+		int fuera = MurallaCapital.grueso(nivel) / 2 + m + PiezaObra.TALUD + 3;
+		int giro = Math.floorMod(Geo.hash(cx, cz, K_HUERTO), 3600);
+		for (int anillo = 0; anillo < 3 && r.size() < quiero; anillo++) {
+			for (int k = 0; k < 3600 && r.size() < quiero; k += 70) {
+				double a = Math.toRadians((k + giro) % 3600 / 10.0);
+				double d = MurallaCapital.radioEn(contorno, (k + giro) % 3600) + fuera + anillo * (2 * (m + PiezaObra.TALUD) + 2);
+				// fuera de la rejilla del terreno no se sabe la altura
+				if (d + m > MurallaCapital.radio(nivel) + TERRENO_FUERA - TerrenoCapital.PASO) {
+					continue;
+				}
+				int x = cx + (int) Math.round(Math.cos(a) * d);
+				int z = cz + (int) Math.round(Math.sin(a) * d);
+				boolean libre = true;
+				for (int i = -m; i <= m && libre; i += m) {
+					for (int j = -m; j <= m && libre; j += m) {
+						libre = !terreno.agua(x + i, z + j) && !enCalle.contains(Geo.clave(x + i, z + j));
+					}
+				}
+				int[] rel = terreno.relieve(x, z, m);
+				if (!libre || rel[1] > 3) {
+					continue;
+				}
+				// la cancela hacia la ciudad
+				Direction puerta = Math.abs(cx - x) >= Math.abs(cz - z) ? (cx > x ? Direction.EAST : Direction.WEST) : (cz > z ? Direction.SOUTH : Direction.NORTH);
+				HuertoCapital h = new HuertoCapital(x, z, rel[0], (puerta.get2DDataValue() + 2) % 4, estilo, madera, color);
+				BoundingBox b = h.getBoundingBox();
+				if (casas.stream().anyMatch(c -> solapa(c.getBoundingBox(), b)) || grandes.stream().anyMatch(g -> solapa(g.getBoundingBox(), b))
+						|| muelles.stream().anyMatch(o -> solapa(o.getBoundingBox(), b)) || portones.stream().anyMatch(o -> solapa(o.getBoundingBox(), b))
+						|| r.stream().anyMatch(o -> solapa(o.getBoundingBox(), b))) {
+					continue;
+				}
+				r.add(h);
+			}
+		}
+		return r;
 	}
 
 	/** Casas a lo largo del borde de la plaza, cada una con la puerta hacia el centro, a la altura de la plaza. */
