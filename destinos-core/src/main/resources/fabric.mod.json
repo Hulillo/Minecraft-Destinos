@@ -13,6 +13,7 @@
 		"journeymap": ["es.hulillo.destinos.cliente.journeymap.PluginJourneyMap"]
 	},
 	"mixins": [
+		"destinos_core.mixins.json",
 		{"config": "destinos_core.diorama.mixins.json", "environment": "client"}
 	],
 	"depends": {

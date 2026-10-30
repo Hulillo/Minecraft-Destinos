@@ -106,7 +106,10 @@ final class ReparaCapitales {
 		DestinosCore.LOG.warn("Destinos Core: la capital de {}, {} se preparó pero no llegó a su chunk; se pone ahora ({} piezas)",
 				c.x(), c.z(), inicio.getPieces().size());
 		for (StructurePiece pieza : inicio.getPieces()) {
-			prepara(level, pieza);
+			// el adorno abarca toda la capital: con él se talaría el bosque entero de alrededor
+			if (!(pieza instanceof AdornoCapital)) {
+				prepara(level, pieza);
+			}
 		}
 		// las calles y la muralla buscan el suelo con estos mapas de altura: que ya no vean los árboles
 		for (int x = min.x; x <= max.x; x++) {
