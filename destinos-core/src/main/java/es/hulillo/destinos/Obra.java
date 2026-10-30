@@ -744,6 +744,14 @@ final class Obra {
 		return seres;
 	}
 
+	/**
+	 * El cartel con el nombre de la capital, colgado de la pared de detrás y mirando hacia mira. Se pone en blanco:
+	 * lo escribe CartelesCapital al cargar el chunk (al generar no hay mundo al que avisar del texto).
+	 */
+	void cartel(int u, int ly, int v, Direction mira) {
+		pon(u, ly, v, mira(CartelesCapital.CARTEL, mira));
+	}
+
 	/** Chimenea pegada a la pared: hogar con fuego bajo una repisa y el cañón hasta techo; mira hacia la sala. */
 	void chimenea(int u, int ly, int v, Direction mira, int techo) {
 		Direction lado = mira.getClockWise();
@@ -835,12 +843,8 @@ final class Obra {
 		caja(u, ly, v, u, ly + alto - 1, v, tronco(p.troncoArbol, Direction.Axis.Y));
 		BlockState h = hojas(p.hojas);
 		if (p.desierto) {
-			for (Direction d : Direction.Plane.HORIZONTAL) {
-				for (int i = 1; i <= 3; i++) {
-					pon(u + d.getStepX() * i, ly + alto - (i == 3 ? 1 : 0), v + d.getStepZ() * i, h);
-				}
-			}
-			pon(u, ly + alto, v, h);
+			aire(u, ly, v, u, ly + alto - 1, v);
+			palmera(u, ly, v, alto);
 			return;
 		}
 		if (p.pino) {
@@ -865,6 +869,47 @@ final class Obra {
 						pon(u + du, ly + y, v + dv, h);
 					}
 				}
+			}
+		}
+	}
+
+	/**
+	 * Una palmera en (u, ly, v): tronco de jungla de alto bloques que se inclina un poco hacia un lado al subir, un
+	 * penacho de hojas en lo alto con las frondas cayendo hacia fuera y algún coco (cacao maduro) bajo las hojas.
+	 */
+	void palmera(int u, int ly, int v, int alto) {
+		Direction inclina = Direction.from2DDataValue(azar(u, ly, v, 4));
+		BlockState tronco = tronco(Blocks.JUNGLE_LOG, Direction.Axis.Y);
+		int tu = u;
+		int tv = v;
+		for (int y = 0; y < alto; y++) {
+			if (alto >= 5 && (y == alto / 2 + 1 || y == alto - 1)) {
+				// el codo: un tronco tumbado hacia donde se inclina, para que no quede cortado en diagonal
+				pon(tu, ly + y, tv, tronco(Blocks.JUNGLE_LOG, inclina.getAxis()));
+				tu += inclina.getStepX();
+				tv += inclina.getStepZ();
+			}
+			pon(tu, ly + y, tv, tronco);
+		}
+		int cima = ly + alto;
+		BlockState h = hojas(Blocks.JUNGLE_LEAVES);
+		for (int du = -1; du <= 1; du++) {
+			for (int dv = -1; dv <= 1; dv++) {
+				pon(tu + du, cima, tv + dv, h);
+			}
+		}
+		pon(tu, cima + 1, tv, h);
+		for (Direction d : Direction.Plane.HORIZONTAL) {
+			int su = d.getStepX();
+			int sv = d.getStepZ();
+			Direction l = d.getClockWise();
+			// la fronda larga, recta y cayendo; y la de la diagonal, más corta
+			pon(tu + 2 * su, cima, tv + 2 * sv, h);
+			pon(tu + 3 * su, cima - 1, tv + 3 * sv, h);
+			pon(tu + 4 * su, cima - 2, tv + 4 * sv, h);
+			pon(tu + 2 * (su + l.getStepX()), cima - 1, tv + 2 * (sv + l.getStepZ()), h);
+			if (azar(tu + su, cima, tv + sv, 3) == 0 && vacio(tu + su, cima - 1, tv + sv)) {
+				pon(tu + su, cima - 1, tv + sv, mira(Blocks.COCOA, d.getOpposite()).setValue(BlockStateProperties.AGE_2, 2));
 			}
 		}
 	}

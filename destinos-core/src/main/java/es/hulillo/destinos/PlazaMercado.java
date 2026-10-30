@@ -12,7 +12,7 @@ import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceSeriali
 import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
 
 /**
- * La plaza del mercado mayor, pegada a un lado de la plaza del pueblo y con la entrada hacia ella: una cuadrícula de
+ * La plaza del mercado, en medio de la plaza mayor de la capital (la más importante de la ciudad): una cuadrícula de
  * parcelas de césped con bordillo, separadas por calles empedradas, con una fuente en medio y en cada parcela un puesto
  * (de toldo, de verduras, de flores o un carro) mirando hacia la fuente, un corral con ganado o un árbol con bancos.
  * Es una pieza propia, como el castillo: allana su suelo y quita las casas del pueblo que pisa, así que sale siempre
@@ -42,6 +42,10 @@ public final class PlazaMercado extends PiezaObra {
 	private PlazaMercado(CompoundTag t) {
 		super(TIPO, t);
 		nivel = t.getIntOr("nivel", 1);
+	}
+
+	int nivel() {
+		return nivel;
 	}
 
 	static void registra() {
@@ -138,7 +142,7 @@ public final class PlazaMercado extends PiezaObra {
 	}
 
 	/** El giro que lleva el mostrador de un puesto (que mira a su norte) hacia frente. */
-	private static int giro(Direction frente) {
+	static int giro(Direction frente) {
 		return switch (frente) {
 			case EAST -> 1;
 			case SOUTH -> 2;
@@ -173,7 +177,7 @@ public final class PlazaMercado extends PiezaObra {
 	}
 
 	/** Flores y arbustos en el césped que deja libre el puesto. */
-	private static void flores(Obra o, int cu, int cv) {
+	static void flores(Obra o, int cu, int cv) {
 		int r = PARCELA / 2 - 1;
 		for (int du = -r; du <= r; du++) {
 			for (int dv = -r; dv <= r; dv++) {
@@ -184,8 +188,8 @@ public final class PlazaMercado extends PiezaObra {
 		}
 	}
 
-	/** La fuente del centro: pilón de agua con bordillo de peldaños y una columna con faroles y los estandartes. */
-	private static void fuente(Obra o, int cu, int cv) {
+	/** La fuente del centro: pilón de agua con bordillo de peldaños y una columna con los estandartes y la campana. */
+	static void fuente(Obra o, int cu, int cv) {
 		Paleta p = o.p;
 		int r = PARCELA / 2;
 		for (int du = -r; du <= r; du++) {
@@ -206,20 +210,41 @@ public final class PlazaMercado extends PiezaObra {
 				}
 			}
 		}
-		// la columna: basa, fuste, capitel con los estandartes y un farol en lo alto
+		// la columna: basa, fuste, capitel con los estandartes y encima un templete con la campana
 		o.pon(cu, 1, cv, p.moldura);
 		o.caja(cu, 2, cv, cu, 4, cv, p.muroBajo);
-		o.pon(cu, 5, cv, p.moldura);
+		o.caja(cu - 1, 5, cv - 1, cu + 1, 5, cv + 1, p.moldura);
 		for (Direction d : Direction.Plane.HORIZONTAL) {
-			o.estandarte(cu + d.getStepX(), 5, cv + d.getStepZ(), d);
-			o.pon(cu + d.getStepX(), 6, cv + d.getStepZ(), Obra.escalon(p.piedraEscalon, d.getOpposite(), false));
+			o.estandarte(cu + d.getStepX() * 2, 5, cv + d.getStepZ() * 2, d);
 		}
-		o.pon(cu, 6, cv, p.muroBajo);
-		o.pon(cu, 7, cv, Blocks.LANTERN);
+		campanario(o, cu, 6, cv);
+	}
+
+	/**
+	 * Un templete de campana sobre (cu, ly, cv): cuatro postes en las esquinas, un tejadillo de losas con un bloque
+	 * macizo en medio y la campana colgada de él (una campana tiene que colgar de un bloque entero o apoyarse en uno;
+	 * puesta sobre un muro se cae).
+	 */
+	static void campanario(Obra o, int cu, int ly, int cv) {
+		Paleta p = o.p;
+		for (int su = -1; su <= 1; su += 2) {
+			for (int sv = -1; sv <= 1; sv += 2) {
+				o.caja(cu + su, ly, cv + sv, cu + su, ly + 1, cv + sv, p.muroBajo);
+			}
+		}
+		for (int du = -1; du <= 1; du++) {
+			for (int dv = -1; dv <= 1; dv++) {
+				o.pon(cu + du, ly + 2, cv + dv, du == 0 && dv == 0 ? p.moldura : Obra.losa(p.piedraLosa, false));
+			}
+		}
+		o.pon(cu, ly + 3, cv, p.muroBajo);
+		o.pon(cu, ly + 4, cv, Blocks.LANTERN);
+		o.pon(cu, ly + 1, cv, Blocks.BELL.defaultBlockState()
+				.setValue(net.minecraft.world.level.block.BellBlock.ATTACHMENT, net.minecraft.world.level.block.state.properties.BellAttachType.CEILING));
 	}
 
 	/** Un corral de vallas con su cancela hacia frente, un pesebre, un abrevadero y dos animales. */
-	private static void corral(Obra o, int cu, int cv, Direction frente, int k) {
+	static void corral(Obra o, int cu, int cv, Direction frente, int k) {
 		Paleta p = o.p;
 		int r = PARCELA / 2 - 1;
 		for (int du = -r; du <= r; du++) {
@@ -245,7 +270,7 @@ public final class PlazaMercado extends PiezaObra {
 	}
 
 	/** Un árbol en medio de la parcela con un banco a cada lado y flores en las esquinas. */
-	private static void arbolConBancos(Obra o, int cu, int cv) {
+	static void arbolConBancos(Obra o, int cu, int cv) {
 		for (Direction d : Direction.Plane.HORIZONTAL) {
 			o.silla(cu + d.getStepX() * 2, 1, cv + d.getStepZ() * 2, d.getOpposite());
 		}

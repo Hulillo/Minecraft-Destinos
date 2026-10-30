@@ -5,6 +5,7 @@ import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
@@ -57,6 +58,12 @@ public final class DestinosCore implements ModInitializer {
 		AdornoCapital.registra();
 		CasaNoble.registra();
 		PlazaMercado.registra();
+		PlazuelaCapital.registra();
+		PuertaCapital.registra();
+		PlazaMayor.registra();
+		MuelleCapital.registra();
+		FaroCapital.registra();
+		HuertoCapital.registra();
 		PayloadTypeRegistry.playS2C().register(PaqueteTerritorio.TIPO, PaqueteTerritorio.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaquetePolitica.TIPO, PaquetePolitica.CODEC);
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ENVIO.olvida(handler.getPlayer().getUUID()));
@@ -70,6 +77,7 @@ public final class DestinosCore implements ModInitializer {
 			}
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+			TiemposPiezas.escribe();
 			if (politica != null) {
 				politica.guarda(server);
 			}
@@ -79,9 +87,11 @@ public final class DestinosCore implements ModInitializer {
 			politica = null;
 			EstructuraCapital.olvida();
 			REPARA.olvida();
+			CartelesCapital.olvida();
 			mapaEnviado = null;
 			ENVIO.olvidaTodo();
 		});
+		ServerChunkEvents.CHUNK_LOAD.register(CartelesCapital::alCargar);
 		ServerTickEvents.END_SERVER_TICK.register(DestinosCore::tick);
 		LOG.info("Destinos Core listo: fronteras que siguen el terreno y política viva");
 	}
@@ -105,6 +115,7 @@ public final class DestinosCore implements ModInitializer {
 		if (m != null) {
 			REPARA.tick(server, m);
 		}
+		CartelesCapital.tick(server);
 	}
 
 	private static void precarga(MinecraftServer server) {
