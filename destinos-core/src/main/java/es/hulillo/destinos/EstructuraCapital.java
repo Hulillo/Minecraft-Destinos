@@ -161,6 +161,9 @@ public final class EstructuraCapital extends Structure {
 
 	private Optional<Structure.GenerationStub> prepara(Structure.GenerationContext ctx) {
 		long antes = System.nanoTime();
+		// lo que tarda cada paso, para el log
+		StringBuilder fases = new StringBuilder();
+		long[] reloj = {antes};
 		Holder<Biome> bioma = biomaCentro(ctx);
 		Optional<Pueblo> elegido = pueblo(ctx, bioma);
 		if (elegido.isEmpty()) {
@@ -190,6 +193,7 @@ public final class EstructuraCapital extends Structure {
 		boolean enBadlands = bioma.is(net.minecraft.tags.BiomeTags.IS_BADLANDS);
 		int madera = Paleta.madera(estilo, bioma.getRegisteredName(), Geo.hash(cx, cz, 5813));
 
+		fase(fases, reloj, "terreno");
 		// 1. lo alto: el castillo de las capitales ricas, en el punto más alto donde cabe
 		List<StructurePiece> grandes = new ArrayList<>();
 		Optional<CastilloCapital> castillo = nivel == 2 ? castillo(terreno, cx, cz, radio, estilo, madera, color) : Optional.empty();
@@ -221,6 +225,7 @@ public final class EstructuraCapital extends Structure {
 		PlazaMayor mayor = new PlazaMayor(px, pz, alturaPlaza, estilo, madera, color, nivelPlaza, Geo.hash(px, pz, K_PLAZA), entradas);
 		Optional<PlazaMayor> mercado = Optional.of(mayor);
 
+		fase(fases, reloj, "castillo, plaza y nobles");
 		// 4. las calles: de la plaza al castillo, a las puertas de la muralla y a las casas nobles
 		List<BoundingBox> obras = new ArrayList<>();
 		grandes.forEach(g -> obras.add(g.getBoundingBox()));
@@ -276,6 +281,7 @@ public final class EstructuraCapital extends Structure {
 		Set<Long> enCalle = TrazadoCapital.ocupa(principales, (int) Math.ceil(ANCHO_PRINCIPAL));
 		enCalle.addAll(TrazadoCapital.ocupa(rondas, (int) Math.ceil(ANCHO_RONDA)));
 
+		fase(fases, reloj, "calles");
 		// 5. las casas, a los dos lados de las calles con la puerta a la calle
 		List<StructurePiece> casas = new ArrayList<>();
 		List<int[]> puertasCasas = new ArrayList<>();
@@ -326,6 +332,7 @@ public final class EstructuraCapital extends Structure {
 			return true;
 		};
 		Predicate<BoundingBox> cabe = b -> cabeCon.test(b, MAX_DESNIVEL_CASA);
+		fase(fases, reloj, "casas");
 		// antes que los callejones y las casas, unas placitas de barrio a modo de parque junto a las calles, repartidas
 		// por la ciudad (los callejones luego las rodean)
 		List<PlazuelaCapital> plazuelas = plazuelas(terreno, todas, enCalle, b -> cabeCon.test(b, MAX_DESNIVEL_PLAZUELA), 1 + 2 * nivel, px, pz, rPlaza, estilo, madera, color,
@@ -336,6 +343,7 @@ public final class EstructuraCapital extends Structure {
 			trazado.veta(q.getBoundingBox());
 		}
 
+		fase(fases, reloj, "placitas");
 		// y los callejones: de cada calle, cada tanto, uno de través hacia un lado y otro (manzanas por dentro)
 		List<List<int[]>> callejones = new ArrayList<>();
 		long dentroMuro = (long) (radio - RONDA_MURO - 8) * (radio - RONDA_MURO - 8);
@@ -366,6 +374,7 @@ public final class EstructuraCapital extends Structure {
 		todas.addAll(callejones);
 		enCalle.addAll(TrazadoCapital.ocupa(callejones, (int) Math.ceil(ANCHO_CALLEJON) + 1));
 
+		fase(fases, reloj, "callejones");
 		// primero las casas que dan a la plaza mayor, alrededor de su borde con la puerta hacia ella: la forma de la
 		// plaza la marcan sus fachadas
 		alrededor(plantillas, terreno, catalogo, mayor, cabe, casas, puertasCasas);
@@ -380,9 +389,11 @@ public final class EstructuraCapital extends Structure {
 		tramos(terreno, recorta(rondas, puertasCasas), ANCHO_RONDA, px, pz, calles);
 		tramos(terreno, recorta(callejones, puertasCasas), ANCHO_CALLEJON, px, pz, calles);
 
+		fase(fases, reloj, "alrededor y a lo largo");
 		// 6. la gente: un aldeano a la puerta de cada casa, gatos y el gólem de la plaza
 		List<StructurePiece> gente = gente(plantillas, terreno, catalogo, puertasCasas, px, pz, PlazaMayor.base(nivelPlaza), alturaPlaza, nivel);
 
+		fase(fases, reloj, "gente");
 		// 8. la muralla, sin los trozos que tocan el agua (allanarían un anillo de tierra en el mar)
 		// ceñida a lo construido: rodea casas, mercado y casas nobles con un margen; donde está el castillo, su muralla
 		List<BoundingBox> construido = new ArrayList<>();
@@ -409,6 +420,7 @@ public final class EstructuraCapital extends Structure {
 		calles.removeIf(c -> fueraDe(contorno, cx, cz, c.x0(), c.z0()) && fueraDe(contorno, cx, cz, c.x1(), c.z1()));
 		// sin los trozos que caen enteros en el agua (la orilla del mar); donde cruza un río, reja
 		List<StructurePiece> enMuralla = muralla.stream().filter(m -> !terreno.todoAgua(m.getBoundingBox())).toList();
+		fase(fases, reloj, "muralla y puertas");
 		// y muelles con barcas en la orilla del río, el lago o el mar, dentro de la muralla
 		List<MuelleCapital> muelles = muelles(terreno, contorno, cx, cz, nivel, enCalle, casas, grandes, mayor);
 		// el faro, junto al muelle que da a mar abierto
@@ -420,6 +432,7 @@ public final class EstructuraCapital extends Structure {
 			calles.forEach(CalleCapital::deMadera);
 		}
 
+		fase(fases, reloj, "muelles, faro y huertos");
 		int techo = ctx.heightAccessor().getMinY() + ctx.heightAccessor().getHeight() - 1;
 		long ms = (System.nanoTime() - antes) / 1_000_000;
 		BlockPos centro = new BlockPos(px, alturaPlaza, pz);
@@ -467,6 +480,7 @@ public final class EstructuraCapital extends Structure {
 							+ ", resto " + sinPlazuela[3] + "), " + portones.size() + " puertas, " + muelles.size() + " muelles" + (faro.isPresent() ? ", con faro" : "") + ", " + huertos.size() + " huertos",
 					principales.size(), rondas.size(), callejones.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
 					motivos[5], motivos[6], ColocacionCapital.quien());
+			DestinosCore.LOG.info("Destinos Core: tiempos de la capital en {}, {}:{}", px, pz, fases);
 		}));
 	}
 
@@ -1180,6 +1194,13 @@ public final class EstructuraCapital extends Structure {
 	private static final int[][] OCHO = {{0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}};
 
 	/** Si dos cajas se pisan vistas desde arriba. */
+	/** Apunta en fases lo que ha tardado el paso nombre desde la última marca del reloj. */
+	private static void fase(StringBuilder fases, long[] reloj, String nombre) {
+		long ahora = System.nanoTime();
+		fases.append(' ').append(nombre).append(' ').append((ahora - reloj[0]) / 1_000_000).append(" ms ·");
+		reloj[0] = ahora;
+	}
+
 	private static boolean solapa(BoundingBox p, BoundingBox q) {
 		return p.minX() <= q.maxX() && p.maxX() >= q.minX() && p.minZ() <= q.maxZ() && p.maxZ() >= q.minZ();
 	}

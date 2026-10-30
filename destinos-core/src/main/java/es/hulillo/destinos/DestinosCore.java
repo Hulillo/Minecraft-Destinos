@@ -77,6 +77,7 @@ public final class DestinosCore implements ModInitializer {
 			}
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+			TiemposPiezas.escribe();
 			if (politica != null) {
 				politica.guarda(server);
 			}
