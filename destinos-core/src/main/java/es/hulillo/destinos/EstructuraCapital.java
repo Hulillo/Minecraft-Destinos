@@ -82,8 +82,8 @@ public final class EstructuraCapital extends Structure {
 	/** Hasta dónde se mira el terreno más allá del radio de la muralla (la rejilla). */
 	private static final int TERRENO_FUERA = 36;
 	private static final int K_PLAZA = 3371;
-	private static final int SEPARA_PLAZUELAS = 48;
-	private static final int MAX_DESNIVEL_PLAZUELA = 6;
+	private static final int SEPARA_PLAZUELAS = 40;
+	private static final int MAX_DESNIVEL_PLAZUELA = 8;
 	/** A qué distancia del eje de la calle va la puerta de las casas: pegada, y si no cabe, más atrás. */
 	private static final int[] ACERA = {3, 5, 8};
 	/** Cada cuántos bloques de calle sale un callejón, y lo largo que es. */
@@ -281,7 +281,8 @@ public final class EstructuraCapital extends Structure {
 		List<int[]> puertasCasas = new ArrayList<>();
 		long rMax = (long) (radio - RONDA_MURO) * (radio - RONDA_MURO);
 		int[] motivos = new int[7];
-		Predicate<BoundingBox> cabe = b -> {
+		int[] sinPlazuela = new int[4];
+		java.util.function.BiPredicate<BoundingBox, Integer> cabeCon = (b, maxDesnivel) -> {
 			for (int[] e : new int[][] {{b.minX(), b.minZ()}, {b.maxX(), b.minZ()}, {b.minX(), b.maxZ()}, {b.maxX(), b.maxZ()}}) {
 				long dx = e[0] - cx;
 				long dz = e[1] - cz;
@@ -318,15 +319,17 @@ public final class EstructuraCapital extends Structure {
 				motivos[5]++;
 				return false;
 			}
-			if (terreno.desnivel(b) > MAX_DESNIVEL_CASA) {
+			if (terreno.desnivel(b) > maxDesnivel) {
 				motivos[6]++;
 				return false;
 			}
 			return true;
 		};
+		Predicate<BoundingBox> cabe = b -> cabeCon.test(b, MAX_DESNIVEL_CASA);
 		// antes que los callejones y las casas, unas placitas de barrio a modo de parque junto a las calles, repartidas
 		// por la ciudad (los callejones luego las rodean)
-		List<PlazuelaCapital> plazuelas = plazuelas(terreno, todas, enCalle, cabe, 1 + 2 * nivel, px, pz, rPlaza, estilo, madera, color);
+		List<PlazuelaCapital> plazuelas = plazuelas(terreno, todas, enCalle, b -> cabeCon.test(b, MAX_DESNIVEL_PLAZUELA), 1 + 2 * nivel, px, pz, rPlaza, estilo, madera, color,
+				sinPlazuela);
 		casas.addAll(plazuelas);
 		for (PlazuelaCapital q : plazuelas) {
 			obras.add(q.getBoundingBox());
@@ -460,7 +463,8 @@ public final class EstructuraCapital extends Structure {
 			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} calles, {} tramos de ronda y {} callejones, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
 					px, alturaPlaza, pz, nivel,
 					(castillo.isPresent() ? ", con castillo" : "") + (mercado.isPresent() ? ", con mercado" : "")
-							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles") + ", " + plazuelas.size() + " placitas, " + portones.size() + " puertas, " + muelles.size() + " muelles" + (faro.isPresent() ? ", con faro" : "") + ", " + huertos.size() + " huertos",
+							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles") + ", " + plazuelas.size() + " placitas (descartes: cerca " + sinPlazuela[0] + ", cuesta " + sinPlazuela[1] + ", calle " + sinPlazuela[2]
+							+ ", resto " + sinPlazuela[3] + "), " + portones.size() + " puertas, " + muelles.size() + " muelles" + (faro.isPresent() ? ", con faro" : "") + ", " + huertos.size() + " huertos",
 					principales.size(), rondas.size(), callejones.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
 					motivos[5], motivos[6], ColocacionCapital.quien());
 		}));
@@ -536,18 +540,21 @@ public final class EstructuraCapital extends Structure {
 	 * dentro de la muralla, en seco y sin mucha cuesta) y lejos de la plaza mayor y de las otras placitas.
 	 */
 	private static List<PlazuelaCapital> plazuelas(TerrenoCapital terreno, List<List<int[]>> calles, Set<Long> enCalle,
-			Predicate<BoundingBox> cabe, int n, int px, int pz, int rPlaza, int estilo, int madera, int color) {
+			Predicate<BoundingBox> cabe, int n, int px, int pz, int rPlaza, int estilo, int madera, int color, int[] descartes) {
 		List<PlazuelaCapital> r = new ArrayList<>();
 		int aparte = (int) Math.ceil(ANCHO_PRINCIPAL) + 2 + PlazuelaCapital.MEDIO;
 		List<int[]> sitios = new ArrayList<>();
 		for (List<int[]> c : calles) {
-			for (int k = 1; k + 1 < c.size(); k += 3) {
+			for (int k = 1; k + 1 < c.size(); k++) {
 				int[] a = c.get(k);
 				int[] b = c.get(k + 1);
 				double largo = Math.max(1, Math.hypot(b[0] - a[0], b[1] - a[1]));
 				for (int lado = -1; lado <= 1; lado += 2) {
-					sitios.add(new int[] {a[0] + (int) Math.round(-(b[1] - a[1]) / largo * lado * aparte),
-							a[1] + (int) Math.round((b[0] - a[0]) / largo * lado * aparte)});
+					// pegada a la calle o un poco más metida, por si la orilla está ocupada
+					for (int lejos = aparte; lejos <= aparte + 4; lejos += 4) {
+						sitios.add(new int[] {a[0] + (int) Math.round(-(b[1] - a[1]) / largo * lado * lejos),
+								a[1] + (int) Math.round((b[0] - a[0]) / largo * lado * lejos)});
+					}
 				}
 			}
 		}
@@ -557,22 +564,26 @@ public final class EstructuraCapital extends Structure {
 			if (r.size() >= n) {
 				break;
 			}
-			if (Math.hypot(s[0] - px, s[1] - pz) < rPlaza + 16
+			if (Math.hypot(s[0] - px, s[1] - pz) < rPlaza + 10
 					|| r.stream().anyMatch(q -> Math.hypot(q.cx - s[0], q.cz - s[1]) < SEPARA_PLAZUELAS)) {
+				descartes[0]++;
 				continue;
 			}
 			int[] rel = terreno.relieve(s[0], s[1], PlazuelaCapital.MEDIO);
 			if (rel[1] > MAX_DESNIVEL_PLAZUELA) {
+				descartes[1]++;
 				continue;
 			}
 			PlazuelaCapital q = new PlazuelaCapital(s[0], s[1], rel[0], estilo, madera, color);
 			BoundingBox nucleo = new BoundingBox(s[0] - PlazuelaCapital.MEDIO - 1, 0, s[1] - PlazuelaCapital.MEDIO - 1,
 					s[0] + PlazuelaCapital.MEDIO + 1, 0, s[1] + PlazuelaCapital.MEDIO + 1);
 			if (pisaCalle(nucleo, enCalle)) {
+				descartes[2]++;
 				continue;
 			}
 			// el resto de pruebas, las de una casa, con la caja sin el talud (que puede llegar a la calle)
 			if (!cabe.test(nucleo)) {
+				descartes[3]++;
 				continue;
 			}
 			r.add(q);
