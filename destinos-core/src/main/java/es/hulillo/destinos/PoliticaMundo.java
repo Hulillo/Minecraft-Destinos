@@ -256,6 +256,23 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		return nombres.reino(server, reino);
 	}
 
+	/**
+	 * Lo que dice el cartel de una capital del ducado (dcx, dcz): el nombre del ducado y el reino que manda hoy en él
+	 * (null si es tierra salvaje). null del todo si el ducado aún no se conoce.
+	 */
+	Component[] cartel(MinecraftServer server, int dcx, int dcz) {
+		long ducado = Grafo.id(dcx, dcz);
+		if (grafo.ducado(ducado) == null) {
+			return null;
+		}
+		aseguraDucado(server, ducado);
+		NombresPolitica.Dueno o = duenoActual(ducado);
+		if (!o.salvaje()) {
+			nombres.aseguraReino(server, o.reino());
+		}
+		return new Component[] {nombres.ducado(server, ducado), o.salvaje() ? null : nombres.reino(server, o.reino())};
+	}
+
 	private void anuncia(MinecraftServer server, List<Suceso> sucesos) {
 		if (sucesos.isEmpty()) {
 			return;

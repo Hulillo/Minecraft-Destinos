@@ -662,6 +662,9 @@ L("destinos.politica.resumen", "Han pasado %s turnos: %s sucesos · %s ducados y
 L("destinos.politica.pocos", "Aún se conocen pocos reinos alrededor, así que no tienen con quién pelearse ni aliarse. El mundo conocido crece solo con el tiempo y al explorar.",
   "Few kingdoms are known around here yet, so they have no one to fight or ally with. The known world grows over time and as you explore.")
 L("destinos.politica.lejano", "reino lejano", "distant kingdom")
+L("destinos.cartel.bienvenida", "Bienvenido a", "Welcome to")
+L("destinos.cartel.capital", "capital del", "capital of the")
+L("destinos.cartel.libre", "tierra libre", "free land")
 L("destinos.politica.mas", "… y %s sucesos más (/destinoscore cronica)", "… and %s more events (/destinoscore cronica)")
 L("destinos.politica.estado", "Año %s · turno %s · siguiente turno en %s min · %s ducados y %s reinos conocidos",
   "Year %s · turn %s · next turn in %s min · %s duchies and %s kingdoms known")

@@ -3,7 +3,7 @@
 	"minVersion": "0.8",
 	"package": "es.hulillo.destinos.mixin",
 	"compatibilityLevel": "JAVA_21",
-	"mixins": ["MixinStructure"],
+	"mixins": ["MixinStructure", "MixinStructureStart"],
 	"injectors": {
 		"defaultRequire": 1
 	}
