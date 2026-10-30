@@ -79,8 +79,9 @@ public final class EstructuraCapital extends Structure {
 	private static final int SEPARA_MUELLES = 40;
 	private static final int K_PLAZUELA = 6151;
 	private static final int K_HUERTO = 4721;
-	/** Hasta dónde se mira el terreno más allá del radio de la muralla (la rejilla). */
+	/** Hasta dónde se mira el terreno más allá del radio de la muralla (la rejilla) y lo que se lee de entrada. */
 	private static final int TERRENO_FUERA = 36;
+	private static final int TERRENO_NUCLEO = 24;
 	private static final int K_PLAZA = 3371;
 	private static final int SEPARA_PLAZUELAS = 40;
 	private static final int MAX_DESNIVEL_PLAZUELA = 8;
@@ -179,7 +180,7 @@ public final class EstructuraCapital extends Structure {
 		MapaTerreno.Capital esta = ColocacionCapital.capitalEn(ctx.chunkPos().x, ctx.chunkPos().z);
 		int nivel = esta != null ? esta.nivel() : 1;
 		int radio = MurallaCapital.radio(nivel);
-		TerrenoCapital terreno = new TerrenoCapital(ctx, cx, cz, radio + TERRENO_FUERA);
+		TerrenoCapital terreno = new TerrenoCapital(ctx, cx, cz, radio + TERRENO_FUERA, radio + TERRENO_NUCLEO);
 		// el estilo del pueblo, la madera del bioma y el color del reino
 		int estilo = AdornoCapital.estilo(pueblo.estructura().getRegisteredName(), bioma.value().getBaseTemperature());
 		MapaTerreno mapa = DestinosCore.mapaActual();
