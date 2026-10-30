@@ -8,7 +8,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.SignText;
@@ -17,8 +18,9 @@ import net.minecraft.world.level.chunk.LevelChunk;
 /**
  * Los carteles de las puertas de las capitales: "Bienvenido a <ducado>, capital del <reino>". Al generarse el
  * cartel no se sabe aún cómo se llama nada (los nombres los pone el datapack con el servidor en marcha), así que se
- * deja una marca en la cara de atrás (que en un cartel de pared no se ve) y la de delante se escribe cada vez que se
- * carga el chunk: así sigue al reino que mande hoy en el ducado. Si la zona aún no está calculada, se vuelve a probar
+ * genera en blanco y se escribe al cargar el chunk; entonces se le deja una marca en la cara de atrás (que en un
+ * cartel de pared no se ve) y la de delante se vuelve a escribir cada vez que se carga: así sigue al reino que mande
+ * hoy en el ducado. Si la zona aún no está calculada, se vuelve a probar
  * un poco después.
  */
 final class CartelesCapital {
@@ -30,14 +32,8 @@ final class CartelesCapital {
 	private CartelesCapital() {
 	}
 
-	/** Al generar: el cartel recién puesto en sitio lleva la marca detrás y un saludo provisional delante. */
-	static void marca(WorldGenLevel level, BlockPos sitio) {
-		if (level.getBlockEntity(sitio) instanceof SignBlockEntity s) {
-			s.setText(new SignText().setMessage(0, Component.literal(MARCA)), false);
-			s.setText(new SignText().setMessage(1, bienvenida()), true);
-			s.setWaxed(true);
-		}
-	}
+	/** El cartel de las capitales: se genera en blanco y sin encerar. */
+	static final Block CARTEL = Blocks.DARK_OAK_WALL_SIGN;
 
 	/** Al cargar un chunk (en el hilo del servidor): escribe los carteles marcados que tenga. */
 	static void alCargar(ServerLevel level, LevelChunk chunk) {
@@ -72,8 +68,21 @@ final class CartelesCapital {
 		PENDIENTES.clear();
 	}
 
+	/** Si es un cartel de capital: ya escrito (con la marca detrás) o recién generado (en blanco y sin encerar). */
 	private static boolean marcado(SignBlockEntity s) {
-		return MARCA.equals(s.getBackText().getMessage(0, false).getString());
+		if (MARCA.equals(s.getBackText().getMessage(0, false).getString())) {
+			return true;
+		}
+		return s.getBlockState().is(CARTEL) && !s.isWaxed() && vacio(s.getFrontText()) && vacio(s.getBackText());
+	}
+
+	private static boolean vacio(SignText t) {
+		for (int i = 0; i < 4; i++) {
+			if (!t.getMessage(i, false).getString().isEmpty()) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private static Component bienvenida() {
@@ -102,11 +111,10 @@ final class CartelesCapital {
 				.setMessage(2, nombres[1] == null ? Component.translatableWithFallback("destinos.cartel.libre", "tierra libre")
 						: Component.translatableWithFallback("destinos.cartel.capital", "capital del"))
 				.setMessage(3, nombres[1] == null ? Component.empty() : nombres[1]);
+		// la marca detrás (no se ve en un cartel de pared) y encerado, para que nadie lo cambie
+		s.setText(new SignText().setMessage(0, Component.literal(MARCA)), false);
 		s.setText(delante, true);
-		s.setChanged();
-		if (s.getLevel() != null) {
-			s.getLevel().sendBlockUpdated(p, s.getBlockState(), s.getBlockState(), 3);
-		}
+		s.setWaxed(true);
 		return true;
 	}
 }

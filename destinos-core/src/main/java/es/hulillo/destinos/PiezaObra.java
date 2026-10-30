@@ -216,14 +216,6 @@ abstract class PiezaObra extends StructurePiece {
 				SeresObra.pon(level, s, new BlockPos(x, y0 + s.ly(), z), rot);
 			}
 		}
-		// y los carteles, con la marca para que se escriban al cargar el chunk
-		for (Obra.Cartel c : o.carteles()) {
-			int[] w = mundo(c.u(), c.v());
-			BlockPos sitio = new BlockPos(w[0], y0 + c.ly(), w[1]);
-			if (caja.isInside(sitio)) {
-				CartelesCapital.marca(level, sitio);
-			}
-		}
 	}
 
 	/**
