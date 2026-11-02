@@ -381,7 +381,47 @@ final class EncargosMundo {
 		if (carta != null) {
 			res.add(carta);
 		}
+		Oferta reservada = mazmorraSinMina(server, s, pos, dia, maxEstrellas, res);
+		if (reservada != null) {
+			res.add(reservada);
+		}
 		return res;
+	}
+
+	/** Hasta dónde se busca la mazmorra que no es mina del hueco reservado. */
+	private static final int RADIO_RESERVADA = 1500;
+
+	/**
+	 * El hueco reservado: si entre las ofertas no hay ninguna mazmorra que no sea una mina, se añade una (la más
+	 * cercana que no lo sea), fijada para ese tablón y día igual que las otras. Va la última para no mover las demás.
+	 */
+	private static Oferta mazmorraSinMina(MinecraftServer server, Sitio s, BlockPos pos, long dia, int maxEstrellas, List<Oferta> ya) {
+		MazmorrasMundo mm = MazmorrasMundo.de(server);
+		for (Oferta o : ya) {
+			Mazmorra m = o.tipo() == Encargo.Tipo.mazmorra ? mm.get(o.objetivo()) : null;
+			if (m != null && m.tema != Mazmorra.Tema.mina) {
+				return null;
+			}
+		}
+		EncargosMundo em = de(server);
+		String clave = origen(pos, dia, -1);
+		em.diaFijadas(dia);
+		Long elegida = em.fijadas.get(clave);
+		Mazmorra m = elegida != null ? mm.get(elegida) : mm.cercanaSinMina(pos.getX(), pos.getZ(), RADIO_RESERVADA, maxEstrellas);
+		if (m == null || yaOfrecida(ya, m.clave)) {
+			return null;
+		}
+		if (elegida == null) {
+			em.fijadas.put(clave, m.clave);
+		}
+		MapaTerreno.Resultado r = s.mapa().consultaSiLista(m.x(), m.z());
+		long ducado = r != null ? Grafo.id(r.dcx(), r.dcz()) : s.ducado();
+		double dx = m.x() - pos.getX();
+		double dz = m.z() - pos.getZ();
+		int distancia = (int) Math.sqrt(dx * dx + dz * dz);
+		int premio = 6 + 3 * m.estrellas * m.estrellas + distancia / 150;
+		int dias = 3 + distancia / 700;
+		return new Oferta(Encargo.Tipo.mazmorra, ducado, m.x(), m.z(), m.estrellas, premio, 3 + m.estrellas, dias, 2, m.clave);
 	}
 
 	/**
