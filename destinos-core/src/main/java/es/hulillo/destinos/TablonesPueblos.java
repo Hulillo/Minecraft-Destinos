@@ -59,6 +59,7 @@ final class TablonesPueblos {
 			em.campanas.add(campana.asLong());
 			em.ensucia();
 			if (!dePueblo(level, campana)) {
+				DestinosCore.LOG.info("Destinos Core: la campana de {} no es de ningún pueblo: sin tablón", campana.toShortString());
 				continue;
 			}
 			BlockPos sitio = hueco(level, campana);
