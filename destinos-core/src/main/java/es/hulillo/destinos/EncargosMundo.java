@@ -763,7 +763,18 @@ final class EncargosMundo {
 			}
 			return false;
 		}
-		if (d2 > 24 * 24) {
+		// en las capitales ricas (con castillo) la carta se entrega al rey, en el salón del trono; en las demás, en la plaza
+		MapaTerreno.Capital destino = pol.capitalViva(e.enemigo);
+		boolean rica = destino != null && destino.nivel() == 2;
+		if (rica) {
+			if (d2 > 160 * 160 || !Embajadas.junto(level, p)) {
+				if (d2 < 24 * 24 && server.getTickCount() % 200 == 0) {
+					p.displayClientMessage(Component.translatableWithFallback("destinos.embajada.al_trono",
+							"Aquí te dirán que la carta es para el rey: búscalo en el salón del trono del castillo.").withStyle(ChatFormatting.YELLOW), true);
+				}
+				return false;
+			}
+		} else if (d2 > 24 * 24) {
 			return false;
 		}
 		if (!Embajadas.tiene(p, e.id)) {
@@ -1059,7 +1070,11 @@ final class EncargosMundo {
 					: Component.translatableWithFallback("destinos.encargo.estado.entra", "Entra en la mazmorra y aguanta las oleadas.");
 		}
 		if (e.tipo == Encargo.Tipo.embajada) {
-			return Component.translatableWithFallback("destinos.encargo.estado.carta", "Lleva la carta sellada a la plaza de su capital.");
+			PoliticaMundo pol = DestinosCore.politica();
+			MapaTerreno.Capital c = pol == null ? null : pol.capitalViva(e.enemigo);
+			return c != null && c.nivel() == 2
+					? Component.translatableWithFallback("destinos.encargo.estado.trono", "Lleva la carta sellada al rey, al salón del trono de su castillo.")
+					: Component.translatableWithFallback("destinos.encargo.estado.carta", "Lleva la carta sellada a la plaza de su capital.");
 		}
 		if (e.tipo == Encargo.Tipo.guerra) {
 			return e.campamento

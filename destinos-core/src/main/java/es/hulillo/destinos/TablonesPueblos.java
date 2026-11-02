@@ -6,12 +6,9 @@ import java.util.Map;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
-import net.minecraft.tags.StructureTags;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.core.SectionPos;
@@ -36,7 +33,6 @@ final class TablonesPueblos {
 	private static final Deque<BlockPos> PENDIENTES = new ArrayDeque<>();
 	/** Para /destinoscore tablones: chunks mirados, campanas vistas, tablones puestos, campanas sin pueblo y sin sitio. */
 	private static final int[] CUENTA = new int[5];
-	private static Structure capital;
 
 	private TablonesPueblos() {
 	}
@@ -72,7 +68,6 @@ final class TablonesPueblos {
 
 	static void olvida() {
 		PENDIENTES.clear();
-		capital = null;
 	}
 
 	static String cuenta() {
@@ -111,6 +106,9 @@ final class TablonesPueblos {
 				continue;
 			}
 			CUENTA[2]++;
+			if (!level.getBlockState(sitio.above()).isAir()) {
+				level.setBlock(sitio.above(), Blocks.AIR.defaultBlockState(), 3);
+			}
 			level.setBlock(sitio, TablonBlock.TABLON.defaultBlockState().setValue(HorizontalDirectionalBlock.FACING, mira(sitio, campana)), 3);
 			DestinosCore.LOG.info("Destinos Core: tablón de encargos junto a la campana de {}", campana.toShortString());
 		}
@@ -127,17 +125,10 @@ final class TablonesPueblos {
 		if (aqui == null) {
 			return false;
 		}
-		if (capital == null) {
-			capital = level.registryAccess().lookupOrThrow(Registries.STRUCTURE)
-					.getValue(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "capital"));
-		}
-		var estructuras = level.registryAccess().lookupOrThrow(Registries.STRUCTURE);
 		for (Map.Entry<Structure, LongSet> ref : aqui.getAllReferences().entrySet()) {
+			// pueblos de vanilla y capitales, y también los de mods que no se apuntan a #minecraft:village (Towns and
+			// Towers, etc.): basta con que la campana esté dentro de una pieza de alguna estructura
 			Structure s = ref.getKey();
-			boolean vale = s == capital || estructuras.wrapAsHolder(s).is(StructureTags.VILLAGE);
-			if (!vale) {
-				continue;
-			}
 			for (long inicio : ref.getValue()) {
 				LevelChunk c = level.getChunkSource().getChunkNow(ChunkPos.getX(inicio), ChunkPos.getZ(inicio));
 				if (c == null) {
@@ -146,7 +137,7 @@ final class TablonesPueblos {
 				StructureStart st = c.getStartForStructure(s);
 				if (st != null && st.isValid()) {
 					for (StructurePiece pieza : st.getPieces()) {
-						if (pieza.getBoundingBox().isInside(p)) {
+						if (pieza.getBoundingBox().inflatedBy(2).isInside(p)) {
 							return true;
 						}
 					}
@@ -182,7 +173,21 @@ final class TablonesPueblos {
 			return null;
 		}
 		int plaza = base + mejor;
-		for (int r = 3; r <= 6; r++) {
+		BlockPos p = hueco(level, campana, plaza, 3, 6, 1, true);
+		if (p == null) {
+			// sin un sitio llano en la plaza: uno cualquiera más cerca o más lejos, aunque no esté a ras
+			p = hueco(level, campana, plaza, 2, 9, 3, false);
+		}
+		if (p == null) {
+			// lo que sea con suelo firme y hueco, a la altura que esté
+			p = hueco(level, campana, plaza, 2, 10, 64, false);
+		}
+		return p != null ? p : alLado(level, campana);
+	}
+
+	/** El primer sitio en anillos de rMin a rMax de la campana, a una altura de la plaza ± margen. */
+	private static BlockPos hueco(ServerLevel level, BlockPos campana, int plaza, int rMin, int rMax, int margen, boolean estricto) {
+		for (int r = rMin; r <= rMax; r++) {
 			for (int dx = -r; dx <= r; dx++) {
 				for (int dz = -r; dz <= r; dz++) {
 					if (Math.max(Math.abs(dx), Math.abs(dz)) != r) {
@@ -191,9 +196,32 @@ final class TablonesPueblos {
 					int x = campana.getX() + dx;
 					int z = campana.getZ() + dz;
 					int h = suelo(level, x, z);
-					if (Math.abs(h - plaza) <= 1 && llano(level, x, z, h)) {
+					if (Math.abs(h - plaza) <= margen && (!estricto || llano(level, x, z, h))) {
 						BlockPos p = new BlockPos(x, h, z);
-						if (cabe(level, p)) {
+						if (cabe(level, p, estricto)) {
+							return p;
+						}
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Último recurso (la campana en un templete, en un tejado…): junto a la campana o justo debajo de ella, en
+	 * cualquier hueco con suelo firme a su altura o hasta 4 por debajo.
+	 */
+	private static BlockPos alLado(ServerLevel level, BlockPos campana) {
+		for (int dy = 0; dy >= -4; dy--) {
+			for (int r = 1; r <= 3; r++) {
+				for (int dx = -r; dx <= r; dx++) {
+					for (int dz = -r; dz <= r; dz++) {
+						if (Math.max(Math.abs(dx), Math.abs(dz)) != r) {
+							continue;
+						}
+						BlockPos p = campana.offset(dx, dy, dz);
+						if (cabe(level, p, false)) {
 							return p;
 						}
 					}
@@ -212,7 +240,11 @@ final class TablonesPueblos {
 		return suelo(level, x + 1, z) == h && suelo(level, x - 1, z) == h && suelo(level, x, z + 1) == h && suelo(level, x, z - 1) == h;
 	}
 
-	private static boolean cabe(ServerLevel level, BlockPos p) {
+	/**
+	 * Si cabe el tablón en p: hueco libre o con hierba o flores (se quitan), y suelo firme y seco. Estricto: además
+	 * sin madera ni hojas debajo (así no sale en un tejado ni en un puesto).
+	 */
+	private static boolean cabe(ServerLevel level, BlockPos p, boolean estricto) {
 		if (!level.isLoaded(p)) {
 			return false;
 		}
@@ -220,9 +252,16 @@ final class TablonesPueblos {
 		BlockState arriba = level.getBlockState(p.above());
 		BlockPos abajo = p.below();
 		BlockState suelo = level.getBlockState(abajo);
-		return aqui.isAir() && arriba.isAir() && suelo.isFaceSturdy(level, abajo, Direction.UP) && suelo.getFluidState().isEmpty()
-				&& !suelo.is(BlockTags.LEAVES) && !suelo.is(BlockTags.LOGS) && !suelo.is(BlockTags.PLANKS)
-				&& !suelo.is(BlockTags.WOODEN_SLABS);
+		if (!libre(aqui) || !libre(arriba) || !suelo.isFaceSturdy(level, abajo, Direction.UP) || !suelo.getFluidState().isEmpty()
+				|| suelo.is(BlockTags.LEAVES)) {
+			return false;
+		}
+		return !estricto || (!suelo.is(BlockTags.LOGS) && !suelo.is(BlockTags.PLANKS) && !suelo.is(BlockTags.WOODEN_SLABS));
+	}
+
+	/** Aire, o algo que se puede quitar sin más (hierba, flores, nieve fina), sin agua. */
+	private static boolean libre(BlockState b) {
+		return b.isAir() || (b.canBeReplaced() && b.getFluidState().isEmpty());
 	}
 
 	/** El tablón mira hacia la campana (la cara con los papeles hacia ella). */

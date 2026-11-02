@@ -787,6 +787,7 @@ ENCARGOS.update({
     "embajada.texto": ("Lleva la carta sellada de nuestro rey hasta la plaza de la capital del %s, en %s. Si hay guerra, es una carta de paz; si no, de alianza. Por el camino habrá quien quiera quitártela.",
                        "Carry our king's sealed letter to the square of the capital of the %s, in %s. If there is war, it is a letter of peace; if not, of alliance. Some will try to take it from you on the way."),
     "estado.carta": ("Lleva la carta sellada a la plaza de su capital.", "Take the sealed letter to the square of their capital."),
+    "estado.trono": ("Lleva la carta sellada al rey, al salón del trono de su castillo.", "Take the sealed letter to the king, in the throne room of their castle."),
 })
 EMBAJADA = {
     "carta": ("✉ Carta sellada del %s al %s", "✉ Sealed letter from the %s to the %s"),
@@ -795,6 +796,8 @@ EMBAJADA = {
     "guardias": ("¡Guardias! En el %s no te quieren por aquí.", "Guards! The %s doesn't want you around here."),
     "guardias_guerra": ("¡Guardias! El %s está en guerra con quien te manda.", "Guards! The %s is at war with whoever sent you."),
     "emboscada": ("¡Cazarrecompensas! Alguien no quiere que esa carta llegue.", "Bounty hunters! Someone doesn't want that letter to arrive."),
+    "al_trono": ("Aquí te dirán que la carta es para el rey: búscalo en el salón del trono del castillo.",
+                 "Here they'll tell you the letter is for the king: find him in the castle's throne room."),
     "sin_carta": ("Te falta la carta sellada: sin ella no te recibirán.", "You're missing the sealed letter: without it they won't receive you."),
     "rep": ("El %s te recibe con respeto · reputación: %s (+%s)", "The %s receives you with respect · reputation: %s (+%s)"),
     "tarde": ("La carta llega tarde: las cosas entre los dos reinos ya han cambiado.", "The letter arrives too late: things between the two kingdoms have already changed."),

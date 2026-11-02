@@ -93,6 +93,26 @@ final class Embajadas {
 		}
 	}
 
+	/**
+	 * Si el jugador está ante el trono de un castillo de capital: a 4 bloques o menos del respaldo de oro (dos bloques
+	 * de oro uno encima del otro, que solo lleva el trono).
+	 */
+	static boolean junto(ServerLevel level, ServerPlayer p) {
+		BlockPos c = p.blockPosition();
+		for (int dx = -4; dx <= 4; dx++) {
+			for (int dz = -4; dz <= 4; dz++) {
+				for (int dy = -1; dy <= 2; dy++) {
+					BlockPos b = c.offset(dx, dy, dz);
+					if (level.getBlockState(b).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK)
+							&& level.getBlockState(b.above()).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK)) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
 	// ------------------------------------------------------------------ cazarrecompensas
 
 	/** Una banda de cazarrecompensas sale a por el jugador desde detrás de él. Devuelve cuántos han salido. */

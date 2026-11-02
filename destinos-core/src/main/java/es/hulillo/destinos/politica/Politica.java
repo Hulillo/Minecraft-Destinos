@@ -98,6 +98,9 @@ public final class Politica {
 	/** Campamentos enemigos arrasados por jugadores en cada ducado del frente (encargos de guerra). */
 	private final Map<Long, Empujon> empujones = new TreeMap<>();
 
+	/** Turnos que dura como poco una guerra antes de que se pueda firmar la paz por su cuenta. */
+	public static final int GUERRA_MINIMA = 6;
+
 	/** Campamentos arrasados en un mismo ducado para que el reino lo tome seguro en el siguiente turno. */
 	public static final int CAMPAMENTOS_CONQUISTA = 3;
 	/** Turnos que dura un empujón sin rematar antes de olvidarse. */
@@ -570,8 +573,9 @@ public final class Politica {
 		for (Par p : new ArrayList<>(guerras.keySet())) {
 			int turnos = guerras.get(p) + 1;
 			guerras.put(p, turnos);
-			double prob = 0.10 + 0.05 * turnos;
-			if (reinos.get(p.a).estabilidad < 30 || reinos.get(p.b).estabilidad < 30) {
+			// una guerra dura al menos GUERRA_MINIMA turnos (días); luego la paz es cada vez más probable
+			double prob = turnos < GUERRA_MINIMA ? 0 : 0.05 + 0.03 * (turnos - GUERRA_MINIMA);
+			if (turnos >= GUERRA_MINIMA && (reinos.get(p.a).estabilidad < 30 || reinos.get(p.b).estabilidad < 30)) {
 				prob += 0.15;
 			}
 			// con un ducado a punto de caer por los campamentos arrasados no se firma la paz hasta tomarlo
@@ -670,7 +674,7 @@ public final class Politica {
 			// cruzar ríos y cordilleras cuesta: la conquista falla más; una capital resiste más
 			Long deQuien = mapa.grafo.capitalDe(objetivo);
 			boolean capital = deQuien != null && deQuien == pierde;
-			if (rnd.nextDouble() < 0.3 * (1 - 0.6 * mejor) * (capital ? 0.6 : 1)) {
+			if (rnd.nextDouble() < 0.2 * (1 - 0.6 * mejor) * (capital ? 0.6 : 1)) {
 				toma(objetivo, gana, pierde, mapa, anota, ocupados);
 			}
 		}
