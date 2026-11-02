@@ -35,36 +35,55 @@ final class CartelesCapital {
 	/** El cartel de las capitales: se genera en blanco y sin encerar. */
 	static final Block CARTEL = Blocks.DARK_OAK_WALL_SIGN;
 
-	/** Al cargar un chunk (en el hilo del servidor): escribe los carteles marcados que tenga. */
+	/** Carteles recién cargados: se escriben en el siguiente tick. */
+	private static final Deque<BlockPos> NUEVOS = new ArrayDeque<>();
+
+	/**
+	 * Al cargar un chunk (en el hilo del servidor): apunta los carteles marcados que tenga. No se escriben aquí: el
+	 * chunk aún no cuenta como cargado y escribir el cartel lo marca como cambiado, que pide ese mismo chunk al mundo;
+	 * con C2ME el servidor se quedaba esperándolo para siempre (el mundo congelado al volver a una capital).
+	 */
 	static void alCargar(ServerLevel level, LevelChunk chunk) {
 		if (level.dimension() != Level.OVERWORLD) {
 			return;
 		}
 		for (BlockEntity be : chunk.getBlockEntities().values()) {
-			if (be instanceof SignBlockEntity s && marcado(s) && !escribe(level.getServer(), s) && PENDIENTES.size() < MAX_PENDIENTES) {
-				PENDIENTES.add(s.getBlockPos());
+			if (be instanceof SignBlockEntity s && marcado(s) && NUEVOS.size() < MAX_PENDIENTES) {
+				NUEVOS.add(s.getBlockPos());
 			}
 		}
 	}
 
-	/** Cada poco: los que no se pudieron escribir (zona sin calcular, ducado sin conocer), otra vez. */
+	/** Cada tick, los recién cargados; cada poco, los que no se pudieron escribir (zona sin calcular, ducado sin conocer). */
 	static void tick(MinecraftServer server) {
+		ServerLevel level = server.overworld();
+		while (!NUEVOS.isEmpty()) {
+			BlockPos p = NUEVOS.poll();
+			if (level.isLoaded(p)) {
+				intenta(server, level, p);
+			} else if (PENDIENTES.size() < MAX_PENDIENTES) {
+				PENDIENTES.add(p); // aún no ha acabado de cargar: en el próximo reintento
+			}
+		}
 		if (PENDIENTES.isEmpty() || server.getTickCount() % TICKS_REINTENTO != 0) {
 			return;
 		}
-		ServerLevel level = server.overworld();
 		for (int n = PENDIENTES.size(); n > 0; n--) {
-			BlockPos p = PENDIENTES.poll();
-			if (!level.isLoaded(p)) {
-				continue;
-			}
-			if (level.getBlockEntity(p) instanceof SignBlockEntity s && marcado(s) && !escribe(server, s)) {
-				PENDIENTES.add(p);
-			}
+			intenta(server, level, PENDIENTES.poll());
+		}
+	}
+
+	private static void intenta(MinecraftServer server, ServerLevel level, BlockPos p) {
+		if (!level.isLoaded(p)) {
+			return;
+		}
+		if (level.getBlockEntity(p) instanceof SignBlockEntity s && marcado(s) && !escribe(server, s) && PENDIENTES.size() < MAX_PENDIENTES) {
+			PENDIENTES.add(p);
 		}
 	}
 
 	static void olvida() {
+		NUEVOS.clear();
 		PENDIENTES.clear();
 	}
 
