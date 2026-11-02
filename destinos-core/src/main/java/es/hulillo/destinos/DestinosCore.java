@@ -72,6 +72,7 @@ public final class DestinosCore implements ModInitializer {
 		PayloadTypeRegistry.playS2C().register(PaquetePolitica.TIPO, PaquetePolitica.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaqueteTablon.TIPO, PaqueteTablon.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaqueteEncargos.TIPO, PaqueteEncargos.CODEC);
+		PayloadTypeRegistry.playS2C().register(PaqueteMazmorra.TIPO, PaqueteMazmorra.CODEC);
 		PayloadTypeRegistry.playC2S().register(PaqueteAccionEncargo.TIPO, PaqueteAccionEncargo.CODEC);
 		// Fabric ya entrega los paquetes en el hilo del servidor
 		ServerPlayNetworking.registerGlobalReceiver(PaqueteAccionEncargo.TIPO, (paquete, contexto) ->
@@ -101,6 +102,7 @@ public final class DestinosCore implements ModInitializer {
 				politica.guarda(server);
 			}
 			EncargosMundo.de(server).guarda(server);
+			MazmorrasMundo.de(server).guarda(server);
 		});
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
 			mapa = null;
@@ -110,11 +112,13 @@ public final class DestinosCore implements ModInitializer {
 			CartelesCapital.olvida();
 			TablonesPueblos.olvida();
 			EncargosMundo.olvida();
+			MazmorrasMundo.olvida();
 			mapaEnviado = null;
 			ENVIO.olvidaTodo();
 		});
 		ServerChunkEvents.CHUNK_LOAD.register(CartelesCapital::alCargar);
 		ServerChunkEvents.CHUNK_LOAD.register(TablonesPueblos::alCargar);
+		ServerChunkEvents.CHUNK_LOAD.register(MazmorrasMundo::alCargar);
 		ServerTickEvents.END_SERVER_TICK.register(DestinosCore::tick);
 		LOG.info("Destinos Core listo: fronteras que siguen el terreno y política viva");
 	}
@@ -141,6 +145,7 @@ public final class DestinosCore implements ModInitializer {
 		CartelesCapital.tick(server);
 		TablonesPueblos.tick(server);
 		EncargosMundo.de(server).tick(server);
+		MazmorrasMundo.de(server).tick(server);
 	}
 
 	private static void precarga(MinecraftServer server) {

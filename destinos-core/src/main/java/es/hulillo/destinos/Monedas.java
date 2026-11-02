@@ -78,6 +78,21 @@ final class Monedas {
 		da(p, new ItemStack(COBRE, cobre % 10));
 	}
 
+	/** Las pilas de monedas que hacen esa cantidad en cobre (para meterlas en un cofre). */
+	static java.util.List<ItemStack> pilas(int cobre) {
+		java.util.List<ItemStack> l = new java.util.ArrayList<>();
+		if (cobre >= 100) {
+			l.add(new ItemStack(ORO, Math.min(64, cobre / 100)));
+		}
+		if (cobre / 10 % 10 > 0) {
+			l.add(new ItemStack(PLATA, cobre / 10 % 10));
+		}
+		if (cobre % 10 > 0) {
+			l.add(new ItemStack(COBRE, cobre % 10));
+		}
+		return l;
+	}
+
 	private static void da(ServerPlayer p, ItemStack s) {
 		while (!s.isEmpty()) {
 			ItemStack trozo = s.split(s.getMaxStackSize());

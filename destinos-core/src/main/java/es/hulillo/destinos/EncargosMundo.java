@@ -62,6 +62,8 @@ final class EncargosMundo {
 	/** Hasta dónde se busca una estructura que explorar alrededor del sitio elegido (en regiones de estructura). */
 	private static final int RADIO_ESTRUCTURA = 10;
 	private static final int MAX_HECHOS = 32;
+	/** Hasta dónde se busca una mazmorra apuntada alrededor del sitio elegido para un encargo de mazmorra. */
+	private static final int RADIO_MAZMORRA = 700;
 	private static final String[] RUMBOS = {"e", "se", "s", "so", "o", "no", "n", "ne"};
 
 	private static EncargosMundo actual;
@@ -74,10 +76,13 @@ final class EncargosMundo {
 	}
 
 	/** Una oferta del tablón (aún sin coger). saltos: a cuántos ducados está del tablón. */
-	record Oferta(Encargo.Tipo tipo, long ducado, int x, int z, int estrellas, int premio, int rep, int dias, int saltos) {
+	record Oferta(Encargo.Tipo tipo, long ducado, int x, int z, int estrellas, int premio, int rep, int dias, int saltos, long mazmorra) {
 	}
 
 	private final Map<UUID, Jugador> jugadores = new HashMap<>();
+	/** Mazmorra elegida para cada oferta de hoy (tablón, día y hueco), para que no cambie al cargar más mundo. */
+	private final Map<String, Long> fijadas = new HashMap<>();
+	private long diaFijadas = Long.MIN_VALUE;
 	/** Campanas que ya tienen su tablón (o que no lo llevan): no se vuelven a mirar. */
 	final Set<Long> campanas = new HashSet<>();
 	private int siguienteId = 1;
@@ -171,6 +176,14 @@ final class EncargosMundo {
 		sucio = false;
 	}
 
+	/** Las fijadas solo valen para hoy: al cambiar de día se tiran. */
+	private void diaFijadas(long dia) {
+		if (dia != diaFijadas) {
+			fijadas.clear();
+			diaFijadas = dia;
+		}
+	}
+
 	void ensucia() {
 		sucio = true;
 	}
@@ -241,7 +254,7 @@ final class EncargosMundo {
 			Oferta o = ofertas.get(i);
 			String origen = origen(pos, dia, i);
 			boolean cogida = j.hechos.contains(origen) || j.activos.stream().anyMatch(e -> e.origen.equals(origen));
-			lineas.add(new PaqueteTablon.Linea(titulo(server, s.pol(), o.tipo(), o.ducado()), texto(server, s.pol(), o.tipo(), o.ducado()),
+			lineas.add(new PaqueteTablon.Linea(titulo(server, s.pol(), o.tipo(), o.ducado(), o.mazmorra()), texto(server, s.pol(), o.tipo(), o.ducado(), o.mazmorra()),
 					detalle(o.estrellas(), o.premio(), s.reino() != Politica.NADIE ? o.rep() : 0, o.dias(), p, o.x(), o.z()), cogida));
 		}
 		Component cabecera = Component.translatableWithFallback("destinos.encargo.tablon", "Tablón de encargos · %s",
@@ -269,7 +282,7 @@ final class EncargosMundo {
 			return l;
 		}
 		for (Encargo e : j.activos) {
-			l.add(new PaqueteTablon.Linea(titulo(server, pol, e.tipo, e.ducado), estado(e),
+			l.add(new PaqueteTablon.Linea(titulo(server, pol, e.tipo, e.ducado, e.mazmorra), estado(e),
 					detalle(e.estrellas, e.premio, e.deReino() ? e.rep : 0, diasQuedan(server, e), p, e.x, e.z), false));
 		}
 		return l;
@@ -300,8 +313,9 @@ final class EncargosMundo {
 		int n = s.capital() ? OFERTAS_CAPITAL : OFERTAS;
 		List<Oferta> res = new ArrayList<>();
 		for (int i = 0; i < n; i++) {
-			Encargo.Tipo tipo = rnd.nextInt(100) < 45 ? Encargo.Tipo.caza : Encargo.Tipo.exploracion;
-			int saltos = tipo == Encargo.Tipo.caza ? rnd.nextInt(2) : 1 + rnd.nextInt(3);
+			int dado = rnd.nextInt(100);
+			Encargo.Tipo tipo = dado < 30 ? Encargo.Tipo.caza : dado < 60 ? Encargo.Tipo.exploracion : Encargo.Tipo.mazmorra;
+			int saltos = tipo == Encargo.Tipo.caza ? rnd.nextInt(2) : tipo == Encargo.Tipo.mazmorra ? rnd.nextInt(3) : 1 + rnd.nextInt(3);
 			while (saltos > 0 && anillos.get(saltos).isEmpty()) {
 				saltos--;
 			}
@@ -321,19 +335,47 @@ final class EncargosMundo {
 				int[] centro = Geo.centroDucado(Grafo.x(ducado), Grafo.z(ducado), sal);
 				c = enTierra(s.mapa(), ducado, centro[0], centro[1]);
 			}
+			long mazmorra = 0;
+			int fija = 0;
+			if (tipo == Encargo.Tipo.mazmorra) {
+				// una mazmorra ya apuntada cerca del sitio elegido; si no hay ninguna, se queda en exploración
+				// la elegida se fija para ese tablón, día y hueco: si no, al cargar chunks nuevos podía salir otra más
+				// cerca entre que lo ves y lo coges (cogías un bastión y te daban una mina)
+				MazmorrasMundo mm = MazmorrasMundo.de(server);
+				EncargosMundo em = de(server);
+				String clave = origen(pos, dia, i);
+				em.diaFijadas(dia);
+				Long elegida = em.fijadas.get(clave);
+				Mazmorra m = elegida != null ? mm.get(elegida) : mm.cercana(c[0], c[1], RADIO_MAZMORRA, maxEstrellas);
+				if (elegida == null && m != null) {
+					em.fijadas.put(clave, m.clave);
+				}
+				if (m == null || yaOfrecida(res, m.clave)) {
+					tipo = Encargo.Tipo.exploracion;
+				} else {
+					mazmorra = m.clave;
+					c = new int[] {m.x(), m.z()};
+					fija = m.estrellas;
+				}
+			}
 			double dx = c[0] - pos.getX();
 			double dz = c[1] - pos.getZ();
 			int distancia = (int) Math.sqrt(dx * dx + dz * dz);
 			double lejosSpawn = Math.sqrt((double) c[0] * c[0] + (double) c[1] * c[1]);
 			int estrellas = 1 + saltos + (lejosSpawn > 4000 ? 1 : 0) + (rnd.nextInt(4) == 0 ? 1 : 0);
-			estrellas = Math.max(1, Math.min(maxEstrellas, estrellas));
+			estrellas = fija > 0 ? fija : Math.max(1, Math.min(maxEstrellas, estrellas));
 			// en cobre: de unas pocas monedas (1★ cerca) a varias de plata (5★ lejos)
-			int premio = (tipo == Encargo.Tipo.caza ? 4 + 5 * estrellas * estrellas / 2 : 3 + 2 * estrellas * estrellas) + distancia / 150;
-			int rep = (tipo == Encargo.Tipo.caza ? 2 : 1) + estrellas;
-			int dias = 2 + distancia / 700 + (tipo == Encargo.Tipo.caza ? 1 : 0);
-			res.add(new Oferta(tipo, ducado, c[0], c[1], estrellas, premio, rep, dias, saltos));
+			int premio = (tipo == Encargo.Tipo.mazmorra ? 6 + 3 * estrellas * estrellas
+					: tipo == Encargo.Tipo.caza ? 4 + 5 * estrellas * estrellas / 2 : 3 + 2 * estrellas * estrellas) + distancia / 150;
+			int rep = (tipo == Encargo.Tipo.mazmorra ? 3 : tipo == Encargo.Tipo.caza ? 2 : 1) + estrellas;
+			int dias = 2 + distancia / 700 + (tipo == Encargo.Tipo.exploracion ? 0 : 1);
+			res.add(new Oferta(tipo, ducado, c[0], c[1], estrellas, premio, rep, dias, saltos, mazmorra));
 		}
 		return res;
+	}
+
+	private static boolean yaOfrecida(List<Oferta> ya, long mazmorra) {
+		return ya.stream().anyMatch(o -> o.tipo() == Encargo.Tipo.mazmorra && o.mazmorra() == mazmorra);
 	}
 
 	/** Si ya hay en el tablón un encargo igual (lejos del tablón, mismo tipo y ducado). */
@@ -426,6 +468,10 @@ final class EncargosMundo {
 		Oferta o = ofertas.get(indice);
 		Encargo e = new Encargo(siguienteId++, o.tipo(), s.reino(), o.ducado(), o.x(), o.z(), o.estrellas(), o.premio(), o.rep(),
 				server.overworld().getDayTime() + (long) o.dias() * DIA, origen);
+		if (e.tipo == Encargo.Tipo.mazmorra) {
+			e.mazmorra = o.mazmorra();
+			MazmorrasMundo.de(server).despierta(server, e.mazmorra, e.vence);
+		}
 		j.activos.add(e);
 		j.hechos.addLast(origen);
 		while (j.hechos.size() > MAX_HECHOS) {
@@ -433,8 +479,8 @@ final class EncargosMundo {
 		}
 		sucio = true;
 		p.sendSystemMessage(Component.translatableWithFallback("destinos.encargo.cogido", "📜 Encargo aceptado: %s",
-				titulo(server, s.pol(), e.tipo, e.ducado)).withStyle(ChatFormatting.GOLD));
-		p.sendSystemMessage(Component.empty().append(texto(server, s.pol(), e.tipo, e.ducado)).withStyle(ChatFormatting.GRAY));
+				titulo(server, s.pol(), e.tipo, e.ducado, e.mazmorra)).withStyle(ChatFormatting.GOLD));
+		p.sendSystemMessage(Component.empty().append(texto(server, s.pol(), e.tipo, e.ducado, e.mazmorra)).withStyle(ChatFormatting.GRAY));
 		sonido(server, p, "minecraft:item.book.page_turn", 1, 1);
 		envia(server, p);
 	}
@@ -504,7 +550,7 @@ final class EncargosMundo {
 		PoliticaMundo pol = DestinosCore.politica();
 		if (pol != null) {
 			p.sendSystemMessage(Component.translatableWithFallback("destinos.encargo.dejado", "Dejas el encargo: %s",
-					titulo(server, pol, e.tipo, e.ducado)).withStyle(ChatFormatting.GRAY));
+					titulo(server, pol, e.tipo, e.ducado, e.mazmorra)).withStyle(ChatFormatting.GRAY));
 		}
 		envia(server, p);
 	}
@@ -534,7 +580,8 @@ final class EncargosMundo {
 					cambia = true;
 					continue;
 				}
-				if (p.level() != level) {
+				if (p.level() != level || e.tipo == Encargo.Tipo.mazmorra) {
+					// las mazmorras se cumplen solas al matar a su jefe (MazmorrasMundo)
 					continue;
 				}
 				double dx = e.x + 0.5 - p.getX();
@@ -589,7 +636,7 @@ final class EncargosMundo {
 		j.activos.remove(e);
 		sucio = true;
 		Monedas.paga(p, e.premio);
-		Component titulo = titulo(server, pol, e.tipo, e.ducado);
+		Component titulo = titulo(server, pol, e.tipo, e.ducado, e.mazmorra);
 		MutableComponent sub = Component.translatableWithFallback("destinos.encargo.paga", "+%s", Monedas.texto(e.premio));
 		if (e.deReino()) {
 			int v = sumaRep(p, e.reino, e.rep);
@@ -604,11 +651,55 @@ final class EncargosMundo {
 		sonido(server, p, "minecraft:ui.toast.challenge_complete", 0.6f, 1);
 	}
 
+	/**
+	 * Una mazmorra ha quedado limpia: se cumplen los encargos que la pedían (de quien esté conectado) y, si se había
+	 * despertado sola de noche, los que estaban en la pelea sin encargo ganan reputación con el dueño de esas tierras.
+	 */
+	void mazmorraLimpia(MinecraftServer server, Mazmorra m, List<ServerPlayer> cerca, boolean nocturna) {
+		PoliticaMundo pol = DestinosCore.politica();
+		if (pol == null) {
+			return;
+		}
+		Set<UUID> conEncargo = new HashSet<>();
+		for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+			Jugador j = jugadores.get(p.getUUID());
+			if (j == null) {
+				continue;
+			}
+			for (Encargo e : new ArrayList<>(j.activos)) {
+				if (e.tipo == Encargo.Tipo.mazmorra && e.mazmorra == m.clave) {
+					cumple(server, pol, p, j, e);
+					conEncargo.add(p.getUUID());
+				}
+			}
+			if (conEncargo.contains(p.getUUID())) {
+				envia(server, p);
+			}
+		}
+		if (!nocturna) {
+			return;
+		}
+		long[] d = MazmorrasMundo.dueno(server, m.x(), m.z());
+		if (d == null || d[1] == Politica.NADIE) {
+			return;
+		}
+		int delta = 2 + m.estrellas / 2;
+		for (ServerPlayer p : cerca) {
+			if (conEncargo.contains(p.getUUID())) {
+				continue;
+			}
+			int v = sumaRep(p, d[1], delta);
+			sucio = true;
+			p.sendSystemMessage(Component.translatableWithFallback("destinos.mazmorra.rep", "El %s te lo agradece · reputación: %s (+%s)",
+					pol.nombreReino(server, d[1]), v, delta).withStyle(ChatFormatting.DARK_AQUA));
+		}
+	}
+
 	private void falla(MinecraftServer server, PoliticaMundo pol, ServerPlayer p, Jugador j, Encargo e) {
 		j.activos.remove(e);
 		sucio = true;
 		MutableComponent t = Component.translatableWithFallback("destinos.encargo.vencido", "✘ Se acabó el plazo: %s",
-				titulo(server, pol, e.tipo, e.ducado));
+				titulo(server, pol, e.tipo, e.ducado, e.mazmorra));
 		if (e.deReino()) {
 			int v = sumaRep(p, e.reino, -2);
 			t.append(Component.translatableWithFallback("destinos.encargo.rep_baja", " · reputación con el %s: %s (-%s)",
@@ -619,6 +710,10 @@ final class EncargosMundo {
 
 	/** Al morir algo: los bandidos de los campamentos cuentan, y matar aldeanos o gólems baja la reputación. */
 	void alMorir(MinecraftServer server, LivingEntity muerto, DamageSource fuente) {
+		if (muerto.getTags().contains(MazmorrasMundo.TAG)) {
+			MazmorrasMundo.de(server).alMorir(muerto);
+			return;
+		}
 		if (muerto.getTags().contains(BANDIDO)) {
 			UUID id = muerto.getUUID();
 			for (Map.Entry<UUID, Jugador> en : jugadores.entrySet()) {
@@ -662,14 +757,25 @@ final class EncargosMundo {
 
 	// ------------------------------------------------------------------ textos
 
-	static Component titulo(MinecraftServer server, PoliticaMundo pol, Encargo.Tipo tipo, long ducado) {
+	static Component titulo(MinecraftServer server, PoliticaMundo pol, Encargo.Tipo tipo, long ducado, long mazmorra) {
+		if (tipo == Encargo.Tipo.mazmorra) {
+			Mazmorra m = MazmorrasMundo.de(server).get(mazmorra);
+			Component n = m != null ? MazmorrasMundo.nombre(server, m) : pol.nombreDucado(server, ducado);
+			return Component.translatableWithFallback("destinos.encargo.mazmorra", "Limpia %s", n);
+		}
 		Component d = pol.nombreDucado(server, ducado);
 		return tipo == Encargo.Tipo.caza
 				? Component.translatableWithFallback("destinos.encargo.caza", "Bandidos en %s", d)
 				: Component.translatableWithFallback("destinos.encargo.exploracion", "Explora %s", d);
 	}
 
-	private static Component texto(MinecraftServer server, PoliticaMundo pol, Encargo.Tipo tipo, long ducado) {
+	private static Component texto(MinecraftServer server, PoliticaMundo pol, Encargo.Tipo tipo, long ducado, long mazmorra) {
+		if (tipo == Encargo.Tipo.mazmorra) {
+			Mazmorra m = MazmorrasMundo.de(server).get(mazmorra);
+			Component n = m != null ? MazmorrasMundo.nombre(server, m) : pol.nombreDucado(server, ducado);
+			return Component.translatableWithFallback("destinos.encargo.mazmorra.texto",
+					"Algo se ha despertado en %s. Entra, aguanta las oleadas y acaba con lo que las manda.", n);
+		}
 		Component d = pol.nombreDucado(server, ducado);
 		return tipo == Encargo.Tipo.caza
 				? Component.translatableWithFallback("destinos.encargo.caza.texto",
@@ -680,6 +786,16 @@ final class EncargosMundo {
 
 	/** Cómo va un encargo en curso. */
 	private static Component estado(Encargo e) {
+		if (e.tipo == Encargo.Tipo.mazmorra) {
+			MazmorrasMundo mm = MazmorrasMundo.siHay();
+			Mazmorra m = mm == null ? null : mm.get(e.mazmorra);
+			if (m != null && m.oleada == MazmorrasMundo.JEFE) {
+				return Component.translatableWithFallback("destinos.encargo.estado.jefe", "Solo queda el jefe.");
+			}
+			return m != null && m.oleada > 0
+					? Component.translatableWithFallback("destinos.encargo.estado.oleada", "Oleada %s de %s.", m.oleada, MazmorrasMundo.OLEADAS)
+					: Component.translatableWithFallback("destinos.encargo.estado.entra", "Entra en la mazmorra y aguanta las oleadas.");
+		}
 		if (e.tipo == Encargo.Tipo.caza) {
 			return e.campamento
 					? Component.translatableWithFallback("destinos.encargo.estado.quedan", "Quedan %s bandidos en el campamento.", e.bandidos.size())
@@ -719,7 +835,7 @@ final class EncargosMundo {
 				Component.translatableWithFallback("destinos.rumbo." + RUMBOS[rumbo], RUMBOS[rumbo].toUpperCase()));
 	}
 
-	private static void sonido(MinecraftServer server, ServerPlayer p, String sonido, float volumen, float tono) {
+	static void sonido(MinecraftServer server, ServerPlayer p, String sonido, float volumen, float tono) {
 		CommandSourceStack f = server.createCommandSourceStack().withLevel((ServerLevel) p.level()).withPosition(p.position())
 				.withSuppressedOutput();
 		server.getCommands().performPrefixedCommand(f, "playsound " + sonido + " master " + p.getScoreboardName() + " ~ ~ ~ "
@@ -735,7 +851,17 @@ final class EncargosMundo {
 		Jugador j = jugadores.get(p.getUUID());
 		if (j != null && pol != null) {
 			for (Encargo e : j.activos) {
-				l.add(new PaqueteEncargos.Activo(titulo(server, pol, e.tipo, e.ducado), e.x, e.z, e.vence));
+				l.add(new PaqueteEncargos.Activo(titulo(server, pol, e.tipo, e.ducado, e.mazmorra), e.x, e.z, e.vence,
+						e.tipo == Encargo.Tipo.mazmorra ? PaqueteEncargos.CALAVERA : PaqueteEncargos.ROMBO));
+			}
+		}
+		// las mazmorras despertadas solas de noche cerca, aunque no lleves su encargo
+		if (pol != null && p.level() == server.overworld()) {
+			for (Mazmorra m : MazmorrasMundo.de(server).nocturnas(p, 1500, 2)) {
+				if (j != null && j.activos.stream().anyMatch(e -> e.tipo == Encargo.Tipo.mazmorra && e.mazmorra == m.clave)) {
+					continue;
+				}
+				l.add(new PaqueteEncargos.Activo(MazmorrasMundo.nombre(server, m), m.x(), m.z(), m.hasta, PaqueteEncargos.CALAVERA_NOCHE));
 			}
 		}
 		if (ServerPlayNetworking.canSend(p, PaqueteEncargos.TIPO)) {
@@ -756,7 +882,7 @@ final class EncargosMundo {
 		fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.encargo.en_curso", "📜 Encargos en curso")
 				.withStyle(ChatFormatting.GOLD), false);
 		for (Encargo e : j.activos) {
-			Component linea = Component.empty().append(titulo(server, pol, e.tipo, e.ducado)).append(" · ").append(estado(e))
+			Component linea = Component.empty().append(titulo(server, pol, e.tipo, e.ducado, e.mazmorra)).append(" · ").append(estado(e))
 					.append(" · ").append(detalle(e.estrellas, e.premio, e.deReino() ? e.rep : 0, diasQuedan(server, e), p, e.x, e.z));
 			fuente.sendSuccess(() -> linea, false);
 		}

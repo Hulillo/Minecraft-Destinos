@@ -17,7 +17,9 @@ final class Encargo {
 		/** Llegar a una estructura (o al corazón del ducado si no hay ninguna cerca). */
 		exploracion,
 		/** Acabar con un campamento de bandidos que aparece al acercarse. */
-		caza
+		caza,
+		/** Limpiar una mazmorra despertada: aguantar las oleadas y matar al jefe. */
+		mazmorra
 	}
 
 	final int id;
@@ -40,6 +42,8 @@ final class Encargo {
 	/** caza: si el campamento ya está montado, y los bandidos que quedan vivos. */
 	boolean campamento;
 	final List<UUID> bandidos = new ArrayList<>();
+	/** mazmorra: la clave de la mazmorra (chunk de inicio de su estructura). */
+	long mazmorra;
 
 	Encargo(int id, Tipo tipo, long reino, long ducado, int x, int z, int estrellas, int premio, int rep, long vence, String origen) {
 		this.id = id;
@@ -74,6 +78,7 @@ final class Encargo {
 		t.putString("origen", origen);
 		t.putBoolean("estructura", estructura);
 		t.putBoolean("campamento", campamento);
+		t.putLong("mazmorra", mazmorra);
 		ListTag l = new ListTag();
 		for (UUID u : bandidos) {
 			l.add(StringTag.valueOf(u.toString()));
@@ -95,6 +100,7 @@ final class Encargo {
 				t.getLongOr("vence", 0), t.getStringOr("origen", ""));
 		e.estructura = t.getBooleanOr("estructura", false);
 		e.campamento = t.getBooleanOr("campamento", false);
+		e.mazmorra = t.getLongOr("mazmorra", 0);
 		ListTag l = t.getListOrEmpty("bandidos");
 		for (int i = 0; i < l.size(); i++) {
 			try {

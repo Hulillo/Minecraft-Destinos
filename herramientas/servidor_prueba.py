@@ -36,6 +36,8 @@ COMANDOS = [
     # encargos: lo que ofrecería hoy un tablón en la zona ya calculada
     "destinoscore encargos 1234 -5678",
     "destinoscore tablones",
+    "destinoscore mazmorras",
+    "destinoscore mazmorras prueba",
     # las capitales de los 9×9 reinos de alrededor: ninguna en el agua (con la altura de verdad); las ricas son
     # pocas, así que hacen falta bastantes reinos para que salga una y probar su castillo
     "destinoscore revisa 4",
@@ -137,6 +139,15 @@ if cuentas and int(cuentas[-1][0]) > 0 and int(cuentas[-1][1]) == 0:
     sys.exit("se han visto campanas de capitales pero ninguna ha recibido su tablón")
 if "tablón de encargos junto a la campana" not in salida:
     print("AVISO: ninguna campana de pueblo o capital ha recibido su tablón")
+maz = re.findall(r"mazmorras · (\d+) apuntadas", salida)
+print("mazmorras:", (re.findall(r"Destinos Core: mazmorras · .*", salida) or ["sin respuesta"])[-1])
+print("prueba:", (re.findall(r"Destinos Core: mazmorra de prueba · .*", salida) or ["sin respuesta"])[-1])
+if not maz:
+    sys.exit("/destinoscore mazmorras no ha contestado")
+if "jefe MAL" in salida:
+    sys.exit("el jefe de la mazmorra de prueba no ha salido bien")
+if int(maz[-1]) == 0:
+    print("AVISO: no se ha apuntado ninguna mazmorra en los chunks cargados")
 if not ok_terr:
     sys.exit("geo/territorio no devolvió #tdx: el mod no respondió")
 print("\nOK: el servidor carga Destinos Core y el datapack sin errores")

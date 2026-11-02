@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.MapaTerreno;
 import es.hulillo.destinos.PaqueteEncargos;
+import es.hulillo.destinos.PaqueteMazmorra;
 import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTablon;
 import es.hulillo.destinos.PaqueteTerritorio;
@@ -37,11 +38,14 @@ public final class DestinosCoreCliente implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PaquetePolitica.TIPO, (paquete, contexto) -> TerritoriosCliente.politica(paquete));
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteTablon.TIPO, (paquete, contexto) -> PantallaTablon.abre(paquete));
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteEncargos.TIPO, (paquete, contexto) -> HudEncargos.recibe(paquete));
+		ClientPlayNetworking.registerGlobalReceiver(PaqueteMazmorra.TIPO, (paquete, contexto) -> BarraMazmorra.recibe(paquete));
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, cliente) -> cliente.execute(() -> {
 			TerritoriosCliente.borra();
 			HudEncargos.borra();
+			BarraMazmorra.borra();
 		}));
 		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "encargos"), HudEncargos::pinta);
+		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "mazmorra"), BarraMazmorra::pinta);
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, contexto) ->
 				dispatcher.register(ClientCommandManager.literal("destinosmapa").executes(c -> diagnostico(c.getSource()))
 						.then(ClientCommandManager.literal("alternar").executes(c -> {

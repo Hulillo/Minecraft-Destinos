@@ -42,6 +42,24 @@ final class ComandosDestinos {
 						.then(Commands.argument("n", IntegerArgumentType.integer(1, 500))
 								.executes(ctx -> turno(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "n")))))
 				.then(Commands.literal("cronica").executes(ctx -> conPolitica(ctx.getSource(), false, (pol, m) -> pol.cronica(ctx.getSource()))))
+				.then(Commands.literal("mazmorras").executes(ctx -> {
+					String t = MazmorrasMundo.de(ctx.getSource().getServer()).cuenta(ctx.getSource().getPlayer());
+					DestinosCore.LOG.info(t);
+					ctx.getSource().sendSuccess(() -> Component.literal(t), false);
+					return 1;
+				}).then(Commands.literal("despierta").executes(ctx -> {
+					String t = MazmorrasMundo.de(ctx.getSource().getServer()).despiertaCercana(ctx.getSource().getServer(),
+							ctx.getSource().getPlayerOrException());
+					DestinosCore.LOG.info(t);
+					ctx.getSource().sendSuccess(() -> Component.literal(t), false);
+					return 1;
+				})).then(Commands.literal("prueba").executes(ctx -> {
+					String t = MazmorrasMundo.de(ctx.getSource().getServer()).prueba(ctx.getSource().getServer().overworld(),
+							net.minecraft.core.BlockPos.containing(ctx.getSource().getPosition()));
+					DestinosCore.LOG.info(t);
+					ctx.getSource().sendSuccess(() -> Component.literal(t), false);
+					return 1;
+				})))
 				.then(Commands.literal("tablones").executes(ctx -> {
 					String t = TablonesPueblos.cuenta();
 					DestinosCore.LOG.info(t);

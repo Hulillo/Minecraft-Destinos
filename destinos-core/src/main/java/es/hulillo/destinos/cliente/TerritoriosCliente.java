@@ -33,6 +33,10 @@ public final class TerritoriosCliente {
 		/** Se ha encendido o apagado el mapa político. */
 		default void visibilidad(boolean visible) {
 		}
+
+		/** Han cambiado los encargos en curso o las mazmorras despertadas (sus marcas en el mapa). */
+		default void encargos() {
+		}
 	}
 
 	public static final int SIN_ALTURA = Integer.MIN_VALUE;
@@ -75,6 +79,10 @@ public final class TerritoriosCliente {
 		PaqueteTerritorio anterior = ZONAS.put(Geo.clave(zona.wx(), zona.wz()), zona);
 		ultima = null;
 		OYENTES.forEach(o -> o.zonaNueva(zona, anterior));
+	}
+
+	static void avisaEncargos() {
+		OYENTES.forEach(Oyente::encargos);
 	}
 
 	static void politica(PaquetePolitica p) {
