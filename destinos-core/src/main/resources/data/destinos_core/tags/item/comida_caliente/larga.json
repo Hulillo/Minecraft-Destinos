@@ -1,0 +1,16 @@
+{
+	"values": [
+		{"id": "farmersdelight:shepherds_pie", "required": false},
+		{"id": "farmersdelight:steak_and_potatoes", "required": false},
+		{"id": "farmersdelight:stuffed_pumpkin", "required": false},
+		{"id": "farmersdelight:roast_chicken", "required": false},
+		{"id": "farmersdelight:honey_glazed_ham", "required": false},
+		{"id": "farmersdelight:roasted_mutton_chops", "required": false},
+		{"id": "farmersdelight:pasta_with_meatballs", "required": false},
+		{"id": "farmersdelight:pasta_with_mutton_chop", "required": false},
+		{"id": "farmersdelight:ratatouille", "required": false},
+		{"id": "amcdelight:moose_roast", "required": false},
+		{"id": "amcdelight:sunbird_roast", "required": false},
+		{"id": "amcdelight:tiger_curry", "required": false}
+	]
+}
