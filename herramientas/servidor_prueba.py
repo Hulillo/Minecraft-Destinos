@@ -33,6 +33,7 @@ COMANDOS = [
     "execute positioned 196 100 667 run destinoscore capital",
     # encargos: lo que ofrecería hoy un tablón en la zona ya calculada
     "destinoscore encargos 1234 -5678",
+    "destinoscore tablones",
     # las capitales de los 9×9 reinos de alrededor: ninguna en el agua (con la altura de verdad); las ricas son
     # pocas, así que hacen falta bastantes reinos para que salga una y probar su castillo
     "destinoscore revisa 4",
@@ -79,7 +80,7 @@ for _ in range(100):
 if rica:
     rx, rz = int(rica.group(1)), int(rica.group(2))
     for c in [f"forceload add {rx - 160} {rz - 160} {rx} {rz + 160}", f"forceload add {rx + 16} {rz - 160} {rx + 160} {rz + 160}",
-              f"execute positioned {rx} 100 {rz} run destinoscore capital"]:
+              f"execute positioned {rx} 100 {rz} run destinoscore capital", "destinoscore tablones"]:
         p.stdin.write(c + "\n"); p.stdin.flush(); time.sleep(10)
 p.stdin.write("stop\n"); p.stdin.flush()
 try:

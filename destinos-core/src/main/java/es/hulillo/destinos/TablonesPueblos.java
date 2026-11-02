@@ -27,6 +27,8 @@ import net.minecraft.world.level.levelgen.structure.Structure;
 final class TablonesPueblos {
 	private static final int MAX_PENDIENTES = 256;
 	private static final Deque<BlockPos> PENDIENTES = new ArrayDeque<>();
+	/** Para /destinoscore tablones: chunks mirados, campanas vistas, tablones puestos, campanas sin pueblo y sin sitio. */
+	private static final int[] CUENTA = new int[5];
 
 	private TablonesPueblos() {
 	}
@@ -36,6 +38,7 @@ final class TablonesPueblos {
 			return;
 		}
 		// se miran los bloques y no los datos de bloque: en un chunk recién generado aún no están creados
+		CUENTA[0]++;
 		LevelChunkSection[] secciones = chunk.getSections();
 		for (int i = 0; i < secciones.length; i++) {
 			LevelChunkSection s = secciones[i];
@@ -47,6 +50,7 @@ final class TablonesPueblos {
 				for (int z = 0; z < 16; z++) {
 					for (int x = 0; x < 16; x++) {
 						if (s.getBlockState(x, y, z).is(Blocks.BELL) && PENDIENTES.size() < MAX_PENDIENTES) {
+							CUENTA[1]++;
 							PENDIENTES.add(new BlockPos(chunk.getPos().getMinBlockX() + x, y0 + y, chunk.getPos().getMinBlockZ() + z));
 						}
 					}
@@ -57,6 +61,12 @@ final class TablonesPueblos {
 
 	static void olvida() {
 		PENDIENTES.clear();
+	}
+
+	static String cuenta() {
+		return "Destinos Core: tablones · " + CUENTA[0] + " chunks mirados · " + CUENTA[1] + " campanas vistas · " + CUENTA[2]
+				+ " tablones puestos · " + CUENTA[3] + " campanas sin pueblo · " + CUENTA[4] + " sin sitio · " + PENDIENTES.size()
+				+ " pendientes";
 	}
 
 	static void tick(MinecraftServer server) {
@@ -73,14 +83,17 @@ final class TablonesPueblos {
 			em.campanas.add(campana.asLong());
 			em.ensucia();
 			if (!dePueblo(level, campana)) {
+				CUENTA[3]++;
 				DestinosCore.LOG.info("Destinos Core: la campana de {} no es de ningún pueblo: sin tablón", campana.toShortString());
 				continue;
 			}
 			BlockPos sitio = hueco(level, campana);
 			if (sitio == null) {
+				CUENTA[4]++;
 				DestinosCore.LOG.info("Destinos Core: no hay sitio para el tablón junto a la campana de {}", campana.toShortString());
 				continue;
 			}
+			CUENTA[2]++;
 			level.setBlock(sitio, TablonBlock.TABLON.defaultBlockState().setValue(HorizontalDirectionalBlock.FACING, mira(sitio, campana)), 3);
 			DestinosCore.LOG.info("Destinos Core: tablón de encargos junto a la campana de {}", campana.toShortString());
 		}

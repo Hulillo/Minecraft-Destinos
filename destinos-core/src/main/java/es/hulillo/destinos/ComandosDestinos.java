@@ -42,6 +42,12 @@ final class ComandosDestinos {
 						.then(Commands.argument("n", IntegerArgumentType.integer(1, 500))
 								.executes(ctx -> turno(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "n")))))
 				.then(Commands.literal("cronica").executes(ctx -> conPolitica(ctx.getSource(), false, (pol, m) -> pol.cronica(ctx.getSource()))))
+				.then(Commands.literal("tablones").executes(ctx -> {
+					String t = TablonesPueblos.cuenta();
+					DestinosCore.LOG.info(t);
+					ctx.getSource().sendSuccess(() -> Component.literal(t), false);
+					return 1;
+				}))
 				.then(Commands.literal("encargos")
 						.then(Commands.argument("x", IntegerArgumentType.integer())
 								.then(Commands.argument("z", IntegerArgumentType.integer())
