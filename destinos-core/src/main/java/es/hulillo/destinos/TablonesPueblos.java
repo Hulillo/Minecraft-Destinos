@@ -33,6 +33,8 @@ final class TablonesPueblos {
 	private static final Deque<BlockPos> PENDIENTES = new ArrayDeque<>();
 	/** Para /destinoscore tablones: chunks mirados, campanas vistas, tablones puestos, campanas sin pueblo y sin sitio. */
 	private static final int[] CUENTA = new int[5];
+	/** Campanas ya probadas en esta sesión (con o sin tablón), para no repetir. */
+	private static final java.util.Set<Long> probadas = new java.util.HashSet<>();
 
 	private TablonesPueblos() {
 	}
@@ -68,6 +70,7 @@ final class TablonesPueblos {
 
 	static void olvida() {
 		PENDIENTES.clear();
+		probadas.clear();
 	}
 
 	static String cuenta() {
@@ -87,13 +90,21 @@ final class TablonesPueblos {
 			if (em.campanas.contains(campana.asLong()) || !level.isLoaded(campana)) {
 				continue;
 			}
-			if (!level.hasChunksAt(campana.offset(-7, 0, -7), campana.offset(7, 0, 7))) {
+			if (!level.hasChunksAt(campana.offset(-11, 0, -11), campana.offset(11, 0, 11))) {
 				// mirar alturas en un chunk sin cargar lo generaría aquí mismo: se espera a que estén los de al lado
 				PENDIENTES.addLast(campana);
 				return;
 			}
-			em.campanas.add(campana.asLong());
-			em.ensucia();
+			// solo se apuntan para siempre las que ya tienen tablón; las que no, se vuelven a probar la próxima vez que se
+			// carguen (en otra sesión), por si ahora hay sitio
+			if (!probadas.add(campana.asLong())) {
+				continue;
+			}
+			if (hayTablon(level, campana)) {
+				em.campanas.add(campana.asLong());
+				em.ensucia();
+				continue;
+			}
 			if (!dePueblo(level, campana)) {
 				CUENTA[3]++;
 				DestinosCore.LOG.info("Destinos Core: la campana de {} no es de ningún pueblo: sin tablón", campana.toShortString());
@@ -106,6 +117,8 @@ final class TablonesPueblos {
 				continue;
 			}
 			CUENTA[2]++;
+			em.campanas.add(campana.asLong());
+			em.ensucia();
 			if (!level.getBlockState(sitio.above()).isAir()) {
 				level.setBlock(sitio.above(), Blocks.AIR.defaultBlockState(), 3);
 			}
@@ -229,6 +242,16 @@ final class TablonesPueblos {
 			}
 		}
 		return null;
+	}
+
+	/** Si ya hay un tablón a 7 bloques o menos de la campana (puesto en otra versión; esos chunks ya están cargados). */
+	private static boolean hayTablon(ServerLevel level, BlockPos campana) {
+		for (BlockPos b : BlockPos.betweenClosed(campana.offset(-7, -6, -7), campana.offset(7, 4, 7))) {
+			if (level.getBlockState(b).is(TablonBlock.TABLON)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** El primer hueco encima del suelo (sin contar hojas). */

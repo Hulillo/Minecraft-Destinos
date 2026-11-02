@@ -110,7 +110,8 @@ final class EncargosMundo {
 		EncargosMundo e = new EncargosMundo();
 		CompoundTag t = server.getCommandStorage().get(STORAGE);
 		e.siguienteId = Math.max(1, t.getIntOr("siguiente", 1));
-		for (long c : t.getLongArray("campanas").orElse(new long[0])) {
+		// "campanas2": desde la v0.5.3 solo se apuntan las que tienen tablón (las de antes se vuelven a mirar una vez)
+		for (long c : t.getLongArray("campanas2").orElse(new long[0])) {
 			e.campanas.add(c);
 		}
 		ListTag js = t.getListOrEmpty("jugadores");
@@ -147,7 +148,7 @@ final class EncargosMundo {
 	void guarda(MinecraftServer server) {
 		CompoundTag t = new CompoundTag();
 		t.putInt("siguiente", siguienteId);
-		t.putLongArray("campanas", campanas.stream().mapToLong(Long::longValue).toArray());
+		t.putLongArray("campanas2", campanas.stream().mapToLong(Long::longValue).toArray());
 		ListTag js = new ListTag();
 		jugadores.forEach((id, j) -> {
 			CompoundTag c = new CompoundTag();
