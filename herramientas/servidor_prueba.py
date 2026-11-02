@@ -8,7 +8,9 @@ RUN = os.path.join(RAIZ, "run")
 os.makedirs(RUN, exist_ok=True)
 open(os.path.join(RUN, "eula.txt"), "w").write("eula=true\n")
 open(os.path.join(RUN, "server.properties"), "w").write(
-    "online-mode=false\nlevel-seed=184467221\nspawn-protection=0\nsync-chunk-writes=false\n")
+    "online-mode=false\nlevel-seed=184467221\nspawn-protection=0\nsync-chunk-writes=false\n"
+    # sin jugadores el servidor se pausa a los 60 s y deja de hacer ticks (los tablones se ponen en un tick)
+    "pause-when-empty-seconds=-1\n")
 
 # La zona se calcula en segundo plano: se repite geo/territorio hasta que #tlisto sea 1
 ESPERA = ["scoreboard players set #vx dr.calc 1234", "scoreboard players set #vz dr.calc -5678",
@@ -31,6 +33,9 @@ COMANDOS = [
     "place structure destinos_core:capital 0 80 600",
     # la capital que ha salido sola al cargar los chunks: que su chunk la tenga y los de alrededor la conozcan
     "execute positioned 196 100 667 run destinoscore capital",
+    # encargos: lo que ofrecería hoy un tablón en la zona ya calculada
+    "destinoscore encargos 1234 -5678",
+    "destinoscore tablones",
     # las capitales de los 9×9 reinos de alrededor: ninguna en el agua (con la altura de verdad); las ricas son
     # pocas, así que hacen falta bastantes reinos para que salga una y probar su castillo
     "destinoscore revisa 4",
@@ -77,7 +82,7 @@ for _ in range(100):
 if rica:
     rx, rz = int(rica.group(1)), int(rica.group(2))
     for c in [f"forceload add {rx - 160} {rz - 160} {rx} {rz + 160}", f"forceload add {rx + 16} {rz - 160} {rx + 160} {rz + 160}",
-              f"execute positioned {rx} 100 {rz} run destinoscore capital"]:
+              f"execute positioned {rx} 100 {rz} run destinoscore capital", "destinoscore tablones"]:
         p.stdin.write(c + "\n"); p.stdin.flush(); time.sleep(10)
 p.stdin.write("stop\n"); p.stdin.flush()
 try:
@@ -123,6 +128,15 @@ if "Tried to load a DUMMY block entity" in salida:
     sys.exit("hay bloques con datos (estandartes, barriles…) puestos fuera de su sitio: " + re.search(r"Tried to load a DUMMY.*", salida).group(0))
 if "plaza mayor de la capital" not in salida:
     print("AVISO: ninguna plaza mayor ha tenido sitio para sus estandartes")
+if not re.search(r"Destinos Core: tablón en .*: [1-9]\d* encargos", salida):
+    print("\n".join(l.rstrip() for l in lineas if "tablón" in l or "encargo" in l.lower())[-3000:])
+    sys.exit("el tablón de prueba no ha ofrecido ningún encargo")
+cuentas = re.findall(r"tablones · \d+ chunks mirados · (\d+) campanas vistas · (\d+) tablones puestos", salida)
+if cuentas and int(cuentas[-1][0]) > 0 and int(cuentas[-1][1]) == 0:
+    print("\n".join(l.rstrip() for l in lineas if "tabl" in l or "campana" in l)[-3000:])
+    sys.exit("se han visto campanas de capitales pero ninguna ha recibido su tablón")
+if "tablón de encargos junto a la campana" not in salida:
+    print("AVISO: ninguna campana de pueblo o capital ha recibido su tablón")
 if not ok_terr:
     sys.exit("geo/territorio no devolvió #tdx: el mod no respondió")
 print("\nOK: el servidor carga Destinos Core y el datapack sin errores")

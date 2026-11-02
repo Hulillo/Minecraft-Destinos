@@ -256,6 +256,42 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		return nombres.reino(server, reino);
 	}
 
+	// ------------------------------------------------------------------ para los encargos
+
+	Grafo grafo() {
+		return grafo;
+	}
+
+	/** Dueño de hoy de un ducado conocido: un reino, o Politica.SALVAJE (también si no se conoce). */
+	long duenoDe(long ducado) {
+		Grafo.Ducado d = grafo.ducado(ducado);
+		return d == null ? Politica.SALVAJE : politica.dueno(d);
+	}
+
+	/** Nombre del ducado, pidiendo antes su registro al datapack. */
+	Component nombreDucado(MinecraftServer server, long ducado) {
+		aseguraDucado(server, ducado);
+		return nombres.ducado(server, ducado);
+	}
+
+	/** "Reino de X", pidiendo antes su registro al datapack. */
+	Component nombreReino(MinecraftServer server, long reino) {
+		nombres.aseguraReino(server, reino);
+		return nombres.reino(server, reino);
+	}
+
+	/** Si (x, z) está a menos de r bloques de alguna capital conocida. */
+	boolean cercaDeCapital(int x, int z, int r) {
+		for (MapaTerreno.Capital c : capitales.values()) {
+			long dx = c.x() - x;
+			long dz = c.z() - z;
+			if (dx * dx + dz * dz < (long) r * r) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/**
 	 * Lo que dice el cartel de una capital del ducado (dcx, dcz): el nombre del ducado y el reino que manda hoy en él
 	 * (null si es tierra salvaje). null del todo si el ducado aún no se conoce.

@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": {"model": "destinos_core:block/tablon"},
+    "facing=east": {"model": "destinos_core:block/tablon", "y": 90},
+    "facing=south": {"model": "destinos_core:block/tablon", "y": 180},
+    "facing=west": {"model": "destinos_core:block/tablon", "y": 270}
+  }
+}

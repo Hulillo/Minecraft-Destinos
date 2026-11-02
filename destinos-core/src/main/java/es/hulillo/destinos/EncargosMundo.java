@@ -1,0 +1,807 @@
+package es.hulillo.destinos;
+
+import es.hulillo.destinos.politica.Grafo;
+import es.hulillo.destinos.politica.Politica;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.SplittableRandom;
+import java.util.TreeMap;
+import java.util.UUID;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.ChatFormatting;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
+import net.minecraft.world.phys.Vec3;
+
+/**
+ * Los encargos de los tablones y la reputación de cada jugador con cada reino. Cada tablón ofrece cada día unos
+ * encargos (siempre los mismos ese día en ese tablón, para todos): explorar un sitio de un ducado de la zona o acabar
+ * con un campamento de bandidos. Los cumple quien los coge y pagan en monedas y reputación con el reino del tablón.
+ * Se guarda en el storage destinos:encargos. Solo se usa desde el hilo del servidor.
+ */
+final class EncargosMundo {
+	private static final Identifier STORAGE = Identifier.fromNamespaceAndPath("destinos", "encargos");
+	static final TagKey<Structure> EXPLORABLES = TagKey.create(Registries.STRUCTURE,
+			Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "explorable"));
+	static final String BANDIDO = "destinos_bandido";
+	static final int MAX_ACTIVOS = 3;
+	private static final int DIA = 24000;
+	/** Tablones a menos de esto de una capital: más encargos. */
+	private static final int RADIO_CAPITAL = 200;
+	private static final int OFERTAS = 3;
+	private static final int OFERTAS_CAPITAL = 5;
+	/** Reputación para que un reino te dé encargos de 4 y 5 estrellas. */
+	static final int REP_DIFICILES = 30;
+	/** Hasta dónde se busca una estructura que explorar alrededor del sitio elegido (en regiones de estructura). */
+	private static final int RADIO_ESTRUCTURA = 10;
+	private static final int MAX_HECHOS = 32;
+	private static final String[] RUMBOS = {"e", "se", "s", "so", "o", "no", "n", "ne"};
+
+	private static EncargosMundo actual;
+
+	/** Lo de cada jugador: su reputación por reino, los encargos en curso y los últimos que ha cogido. */
+	private static final class Jugador {
+		final Map<Long, Integer> rep = new TreeMap<>();
+		final List<Encargo> activos = new ArrayList<>();
+		final ArrayDeque<String> hechos = new ArrayDeque<>();
+	}
+
+	/** Una oferta del tablón (aún sin coger). saltos: a cuántos ducados está del tablón. */
+	record Oferta(Encargo.Tipo tipo, long ducado, int x, int z, int estrellas, int premio, int rep, int dias, int saltos) {
+	}
+
+	private final Map<UUID, Jugador> jugadores = new HashMap<>();
+	/** Campanas que ya tienen su tablón (o que no lo llevan): no se vuelven a mirar. */
+	final Set<Long> campanas = new HashSet<>();
+	private int siguienteId = 1;
+	private boolean sucio;
+
+	private EncargosMundo() {
+	}
+
+	static EncargosMundo de(MinecraftServer server) {
+		if (actual == null) {
+			actual = carga(server);
+		}
+		return actual;
+	}
+
+	static void olvida() {
+		actual = null;
+		explorables = null;
+	}
+
+	// ------------------------------------------------------------------ guardado
+
+	private static EncargosMundo carga(MinecraftServer server) {
+		EncargosMundo e = new EncargosMundo();
+		CompoundTag t = server.getCommandStorage().get(STORAGE);
+		e.siguienteId = Math.max(1, t.getIntOr("siguiente", 1));
+		for (long c : t.getLongArray("campanas").orElse(new long[0])) {
+			e.campanas.add(c);
+		}
+		ListTag js = t.getListOrEmpty("jugadores");
+		for (int i = 0; i < js.size(); i++) {
+			CompoundTag c = js.getCompoundOrEmpty(i);
+			UUID id;
+			try {
+				id = UUID.fromString(c.getStringOr("uuid", ""));
+			} catch (IllegalArgumentException x) {
+				continue;
+			}
+			Jugador j = new Jugador();
+			ListTag rep = c.getListOrEmpty("rep");
+			for (int k = 0; k < rep.size(); k++) {
+				CompoundTag r = rep.getCompoundOrEmpty(k);
+				j.rep.put(r.getLongOr("reino", 0), r.getIntOr("valor", 0));
+			}
+			ListTag activos = c.getListOrEmpty("activos");
+			for (int k = 0; k < activos.size(); k++) {
+				Encargo en = Encargo.carga(activos.getCompoundOrEmpty(k));
+				if (en != null) {
+					j.activos.add(en);
+				}
+			}
+			ListTag hechos = c.getListOrEmpty("hechos");
+			for (int k = 0; k < hechos.size(); k++) {
+				j.hechos.add(hechos.getStringOr(k, ""));
+			}
+			e.jugadores.put(id, j);
+		}
+		return e;
+	}
+
+	void guarda(MinecraftServer server) {
+		CompoundTag t = new CompoundTag();
+		t.putInt("siguiente", siguienteId);
+		t.putLongArray("campanas", campanas.stream().mapToLong(Long::longValue).toArray());
+		ListTag js = new ListTag();
+		jugadores.forEach((id, j) -> {
+			CompoundTag c = new CompoundTag();
+			c.putString("uuid", id.toString());
+			ListTag rep = new ListTag();
+			j.rep.forEach((reino, v) -> {
+				CompoundTag r = new CompoundTag();
+				r.putLong("reino", reino);
+				r.putInt("valor", v);
+				rep.add(r);
+			});
+			c.put("rep", rep);
+			ListTag activos = new ListTag();
+			for (Encargo en : j.activos) {
+				activos.add(en.guarda());
+			}
+			c.put("activos", activos);
+			ListTag hechos = new ListTag();
+			for (String h : j.hechos) {
+				hechos.add(StringTag.valueOf(h));
+			}
+			c.put("hechos", hechos);
+			js.add(c);
+		});
+		t.put("jugadores", js);
+		server.getCommandStorage().set(STORAGE, t);
+		sucio = false;
+	}
+
+	void ensucia() {
+		sucio = true;
+	}
+
+	private Jugador jugador(ServerPlayer p) {
+		return jugadores.computeIfAbsent(p.getUUID(), k -> new Jugador());
+	}
+
+	int rep(ServerPlayer p, long reino) {
+		Jugador j = jugadores.get(p.getUUID());
+		return j == null ? 0 : j.rep.getOrDefault(reino, 0);
+	}
+
+	private int sumaRep(ServerPlayer p, long reino, int delta) {
+		Jugador j = jugador(p);
+		int v = Math.max(-100, Math.min(100, j.rep.getOrDefault(reino, 0) + delta));
+		j.rep.put(reino, v);
+		sucio = true;
+		return v;
+	}
+
+	// ------------------------------------------------------------------ tablón
+
+	/** Lo que necesita un tablón para saber qué ofrece: dónde está y de quién es esa tierra hoy. */
+	private record Sitio(MapaTerreno mapa, PoliticaMundo pol, long ducado, long reino, boolean capital) {
+	}
+
+	private static Sitio sitio(MinecraftServer server, BlockPos pos) {
+		MapaTerreno mapa = DestinosCore.mapa(server);
+		PoliticaMundo pol = DestinosCore.politica();
+		if (mapa == null || pol == null) {
+			return null;
+		}
+		MapaTerreno.Resultado r = mapa.consultaSiLista(pos.getX(), pos.getZ());
+		if (r == null) {
+			return null;
+		}
+		r = pol.aplica(r);
+		long ducado = Grafo.id(r.dcx(), r.dcz());
+		if (pol.grafo().ducado(ducado) == null) {
+			return null;
+		}
+		long reino = r.salvaje() || r.oceano() ? Politica.NADIE : Grafo.id(r.kx(), r.kz());
+		return new Sitio(mapa, pol, ducado, reino, pol.cercaDeCapital(pos.getX(), pos.getZ(), RADIO_CAPITAL));
+	}
+
+	/** El jugador usa un tablón: se le manda lo que hay clavado. */
+	static void abre(ServerPlayer p, BlockPos pos) {
+		MinecraftServer server = ((ServerLevel) p.level()).getServer();
+		if (p.level().dimension() != Level.OVERWORLD) {
+			return;
+		}
+		Sitio s = sitio(server, pos);
+		if (s == null) {
+			p.displayClientMessage(Component.translatableWithFallback("destinos.encargo.vacio",
+					"El tablón está vacío: los mensajeros aún no han llegado. Vuelve en un momento.").withStyle(ChatFormatting.GRAY), true);
+			return;
+		}
+		de(server).mandaTablon(server, p, pos, s);
+	}
+
+	private void mandaTablon(MinecraftServer server, ServerPlayer p, BlockPos pos, Sitio s) {
+		Jugador j = jugador(p);
+		List<Oferta> ofertas = ofertas(server, pos, s, maxEstrellas(p, s.reino()));
+		long dia = dia(server);
+		List<PaqueteTablon.Linea> lineas = new ArrayList<>();
+		for (int i = 0; i < ofertas.size(); i++) {
+			Oferta o = ofertas.get(i);
+			String origen = origen(pos, dia, i);
+			boolean cogida = j.hechos.contains(origen) || j.activos.stream().anyMatch(e -> e.origen.equals(origen));
+			lineas.add(new PaqueteTablon.Linea(titulo(server, s.pol(), o.tipo(), o.ducado()), texto(server, s.pol(), o.tipo(), o.ducado()),
+					detalle(o.estrellas(), o.premio(), s.reino() != Politica.NADIE ? o.rep() : 0, o.dias(), p, o.x(), o.z()), cogida));
+		}
+		Component cabecera = Component.translatableWithFallback("destinos.encargo.tablon", "Tablón de encargos · %s",
+				s.pol().nombreDucado(server, s.ducado()));
+		Component sub = s.reino() == Politica.NADIE
+				? Component.translatableWithFallback("destinos.encargo.libres", "Encargos de gente libre: aquí no hay señor al que servir")
+				: Component.translatableWithFallback("destinos.encargo.del_reino", "Encargos del %s", s.pol().nombreReino(server, s.reino()));
+		Component reputacion = s.reino() == Politica.NADIE ? Component.empty()
+				: Component.translatableWithFallback("destinos.encargo.tu_rep", "Tu reputación aquí: %s/100%s", rep(p, s.reino()),
+						rep(p, s.reino()) >= REP_DIFICILES ? Component.empty()
+								: Component.translatableWithFallback("destinos.encargo.tu_rep_dificiles",
+										" · con %s te darán encargos de 4 y 5 estrellas", REP_DIFICILES));
+		ServerPlayNetworking.send(p, new PaqueteTablon(pos, cabecera, sub, reputacion, lineas, lineasActivos(server, p), MAX_ACTIVOS));
+	}
+
+	private int maxEstrellas(ServerPlayer p, long reino) {
+		return reino != Politica.NADIE && rep(p, reino) >= REP_DIFICILES ? 5 : 3;
+	}
+
+	private List<PaqueteTablon.Linea> lineasActivos(MinecraftServer server, ServerPlayer p) {
+		PoliticaMundo pol = DestinosCore.politica();
+		List<PaqueteTablon.Linea> l = new ArrayList<>();
+		Jugador j = jugadores.get(p.getUUID());
+		if (j == null || pol == null) {
+			return l;
+		}
+		for (Encargo e : j.activos) {
+			l.add(new PaqueteTablon.Linea(titulo(server, pol, e.tipo, e.ducado), estado(e),
+					detalle(e.estrellas, e.premio, e.deReino() ? e.rep : 0, diasQuedan(server, e), p, e.x, e.z), false));
+		}
+		return l;
+	}
+
+	private static long dia(MinecraftServer server) {
+		return Math.floorDiv(server.overworld().getDayTime(), DIA);
+	}
+
+	private static String origen(BlockPos pos, long dia, int i) {
+		return pos.getX() + "," + pos.getY() + "," + pos.getZ() + "@" + dia + "#" + i;
+	}
+
+	private static int diasQuedan(MinecraftServer server, Encargo e) {
+		return (int) Math.max(0, (e.vence - server.overworld().getDayTime() + DIA - 1) / DIA);
+	}
+
+	/**
+	 * Las ofertas de hoy en un tablón. Salen de la sal, el día y el sitio del tablón: todos ven lo mismo y no cambian
+	 * hasta el día siguiente. Solo depende del jugador cuántas estrellas pueden tener (según su reputación).
+	 */
+	static List<Oferta> ofertas(MinecraftServer server, BlockPos pos, Sitio s, int maxEstrellas) {
+		long dia = dia(server);
+		int sal = s.pol().sal();
+		SplittableRandom rnd = new SplittableRandom(((long) Geo.hash(pos.getX(), pos.getZ(), sal + pos.getY()) << 32)
+				^ (dia * 0x9E3779B97F4A7C15L) ^ sal);
+		List<List<Long>> anillos = anillos(s.pol().grafo(), s.ducado(), 3);
+		int n = s.capital() ? OFERTAS_CAPITAL : OFERTAS;
+		List<Oferta> res = new ArrayList<>();
+		for (int i = 0; i < n; i++) {
+			Encargo.Tipo tipo = rnd.nextInt(100) < 45 ? Encargo.Tipo.caza : Encargo.Tipo.exploracion;
+			int saltos = tipo == Encargo.Tipo.caza ? rnd.nextInt(2) : 1 + rnd.nextInt(3);
+			while (saltos > 0 && anillos.get(saltos).isEmpty()) {
+				saltos--;
+			}
+			List<Long> lista = anillos.get(saltos);
+			long ducado = lista.get(rnd.nextInt(lista.size()));
+			// el mismo encargo dos veces en el tablón no: se prueba con otro ducado (o el mismo, si no hay más)
+			for (int intento = 0; intento < 6 && repetido(res, tipo, ducado, saltos); intento++) {
+				ducado = lista.get(rnd.nextInt(lista.size()));
+			}
+			int[] c;
+			if (saltos == 0) {
+				// en el mismo ducado: a unos cientos de bloques del tablón
+				double a = rnd.nextDouble() * Math.PI * 2;
+				int r = 250 + rnd.nextInt(300);
+				c = enTierra(s.mapa(), ducado, pos.getX() + (int) (Math.cos(a) * r), pos.getZ() + (int) (Math.sin(a) * r));
+			} else {
+				int[] centro = Geo.centroDucado(Grafo.x(ducado), Grafo.z(ducado), sal);
+				c = enTierra(s.mapa(), ducado, centro[0], centro[1]);
+			}
+			double dx = c[0] - pos.getX();
+			double dz = c[1] - pos.getZ();
+			int distancia = (int) Math.sqrt(dx * dx + dz * dz);
+			double lejosSpawn = Math.sqrt((double) c[0] * c[0] + (double) c[1] * c[1]);
+			int estrellas = 1 + saltos + (lejosSpawn > 4000 ? 1 : 0) + (rnd.nextInt(4) == 0 ? 1 : 0);
+			estrellas = Math.max(1, Math.min(maxEstrellas, estrellas));
+			// en cobre: de unas pocas monedas (1★ cerca) a varias de plata (5★ lejos)
+			int premio = (tipo == Encargo.Tipo.caza ? 4 + 5 * estrellas * estrellas / 2 : 3 + 2 * estrellas * estrellas) + distancia / 150;
+			int rep = (tipo == Encargo.Tipo.caza ? 2 : 1) + estrellas;
+			int dias = 2 + distancia / 700 + (tipo == Encargo.Tipo.caza ? 1 : 0);
+			res.add(new Oferta(tipo, ducado, c[0], c[1], estrellas, premio, rep, dias, saltos));
+		}
+		return res;
+	}
+
+	/** Si ya hay en el tablón un encargo igual (lejos del tablón, mismo tipo y ducado). */
+	private static boolean repetido(List<Oferta> ya, Encargo.Tipo tipo, long ducado, int saltos) {
+		return saltos > 0 && ya.stream().anyMatch(o -> o.tipo() == tipo && o.ducado() == ducado);
+	}
+
+	/** Ducados a 0, 1, 2… saltos por tierra del de partida (los que se conocen). */
+	private static List<List<Long>> anillos(Grafo g, long desde, int max) {
+		List<List<Long>> res = new ArrayList<>();
+		Set<Long> vistos = new HashSet<>();
+		List<Long> anillo = new ArrayList<>(List.of(desde));
+		vistos.add(desde);
+		res.add(anillo);
+		for (int i = 1; i <= max; i++) {
+			Set<Long> sig = new LinkedHashSet<>();
+			for (long d : anillo) {
+				for (long v : g.vecinos(d).keySet()) {
+					if (vistos.add(v)) {
+						sig.add(v);
+					}
+				}
+			}
+			anillo = new ArrayList<>(sig);
+			res.add(anillo);
+		}
+		return res;
+	}
+
+	/**
+	 * Un punto de tierra del ducado cerca de (x, z): se prueba en espiral alrededor. Si la zona aún no está calculada
+	 * se queda (x, z) tal cual.
+	 */
+	private static int[] enTierra(MapaTerreno mapa, long ducado, int x, int z) {
+		for (int i = 0; i < 16; i++) {
+			double a = i * 2.4;
+			int r = i * 90;
+			int px = x + (int) (Math.cos(a) * r);
+			int pz = z + (int) (Math.sin(a) * r);
+			MapaTerreno.Resultado res = mapa.consultaSiLista(px, pz);
+			if (res == null) {
+				return new int[] {x, z};
+			}
+			if (!res.oceano() && Grafo.id(res.dcx(), res.dcz()) == ducado) {
+				return new int[] {px, pz};
+			}
+		}
+		return new int[] {x, z};
+	}
+
+	// ------------------------------------------------------------------ coger y dejar
+
+	/** Lo que pide el cliente desde la pantalla del tablón. */
+	static void accion(ServerPlayer p, PaqueteAccionEncargo a) {
+		MinecraftServer server = ((ServerLevel) p.level()).getServer();
+		EncargosMundo em = de(server);
+		if (a.coger()) {
+			em.coge(server, p, a.pos(), a.indice());
+		} else {
+			em.deja(server, p, a.indice());
+		}
+		Sitio s = p.level().dimension() == Level.OVERWORLD ? sitio(server, a.pos()) : null;
+		if (s != null && p.level().getBlockState(a.pos()).is(TablonBlock.TABLON)) {
+			em.mandaTablon(server, p, a.pos(), s);
+		}
+	}
+
+	private void coge(MinecraftServer server, ServerPlayer p, BlockPos pos, int indice) {
+		if (!p.level().getBlockState(pos).is(TablonBlock.TABLON) || p.distanceToSqr(Vec3.atCenterOf(pos)) > 64) {
+			return;
+		}
+		Sitio s = sitio(server, pos);
+		if (s == null) {
+			return;
+		}
+		Jugador j = jugador(p);
+		if (j.activos.size() >= MAX_ACTIVOS) {
+			p.displayClientMessage(Component.translatableWithFallback("destinos.encargo.lleno",
+					"Ya llevas %s encargos: termina o deja alguno antes de coger otro.", MAX_ACTIVOS).withStyle(ChatFormatting.RED), false);
+			return;
+		}
+		List<Oferta> ofertas = ofertas(server, pos, s, maxEstrellas(p, s.reino()));
+		if (indice < 0 || indice >= ofertas.size()) {
+			return;
+		}
+		String origen = origen(pos, dia(server), indice);
+		if (j.hechos.contains(origen) || j.activos.stream().anyMatch(e -> e.origen.equals(origen))) {
+			return;
+		}
+		Oferta o = ofertas.get(indice);
+		Encargo e = new Encargo(siguienteId++, o.tipo(), s.reino(), o.ducado(), o.x(), o.z(), o.estrellas(), o.premio(), o.rep(),
+				server.overworld().getDayTime() + (long) o.dias() * DIA, origen);
+		j.activos.add(e);
+		j.hechos.addLast(origen);
+		while (j.hechos.size() > MAX_HECHOS) {
+			j.hechos.removeFirst();
+		}
+		sucio = true;
+		p.sendSystemMessage(Component.translatableWithFallback("destinos.encargo.cogido", "📜 Encargo aceptado: %s",
+				titulo(server, s.pol(), e.tipo, e.ducado)).withStyle(ChatFormatting.GOLD));
+		p.sendSystemMessage(Component.empty().append(texto(server, s.pol(), e.tipo, e.ducado)).withStyle(ChatFormatting.GRAY));
+		sonido(server, p, "minecraft:item.book.page_turn", 1, 1);
+		envia(server, p);
+	}
+
+	/**
+	 * Para explorar, mejor una estructura de verdad cerca del sitio elegido que el corazón pelado del ducado. Se busca
+	 * cuando el jugador ya se acerca y solo entre los chunks que ya están cargados (sus inicios de estructura ya están
+	 * calculados): buscar al coger el encargo con findNearestMapStructure generaba chunks lejanos y daba tirones.
+	 */
+	private static boolean buscaEstructura(ServerLevel level, Encargo e) {
+		Set<Structure> explorables = explorables(level);
+		int cx = e.x >> 4;
+		int cz = e.z >> 4;
+		BlockPos mejor = null;
+		long mejorD = Long.MAX_VALUE;
+		for (int dx = -RADIO_ESTRUCTURA; dx <= RADIO_ESTRUCTURA; dx++) {
+			for (int dz = -RADIO_ESTRUCTURA; dz <= RADIO_ESTRUCTURA; dz++) {
+				LevelChunk c = level.getChunkSource().getChunkNow(cx + dx, cz + dz);
+				if (c == null) {
+					continue;
+				}
+				for (Map.Entry<Structure, StructureStart> en : c.getAllStarts().entrySet()) {
+					if (!explorables.contains(en.getKey()) || !en.getValue().isValid()) {
+						continue;
+					}
+					BlockPos centro = en.getValue().getBoundingBox().getCenter();
+					long d = (long) (centro.getX() - e.x) * (centro.getX() - e.x) + (long) (centro.getZ() - e.z) * (centro.getZ() - e.z);
+					if (d < mejorD) {
+						mejorD = d;
+						mejor = centro;
+					}
+				}
+			}
+		}
+		if (mejor == null) {
+			return false;
+		}
+		e.x = mejor.getX();
+		e.z = mejor.getZ();
+		e.estructura = true;
+		return true;
+	}
+
+	private static Set<Structure> explorables;
+
+	private static Set<Structure> explorables(ServerLevel level) {
+		if (explorables == null) {
+			Set<Structure> s = new HashSet<>();
+			for (Holder<Structure> h : level.registryAccess().lookupOrThrow(Registries.STRUCTURE).getTagOrEmpty(EXPLORABLES)) {
+				s.add(h.value());
+			}
+			explorables = s;
+		}
+		return explorables;
+	}
+
+	private void deja(MinecraftServer server, ServerPlayer p, int indice) {
+		Jugador j = jugadores.get(p.getUUID());
+		if (j == null || indice < 0 || indice >= j.activos.size()) {
+			return;
+		}
+		Encargo e = j.activos.remove(indice);
+		if (e.deReino()) {
+			sumaRep(p, e.reino, -1);
+		}
+		sucio = true;
+		PoliticaMundo pol = DestinosCore.politica();
+		if (pol != null) {
+			p.sendSystemMessage(Component.translatableWithFallback("destinos.encargo.dejado", "Dejas el encargo: %s",
+					titulo(server, pol, e.tipo, e.ducado)).withStyle(ChatFormatting.GRAY));
+		}
+		envia(server, p);
+	}
+
+	// ------------------------------------------------------------------ en marcha
+
+	/** Cada segundo: plazos, llegadas, campamentos que montar y encargos que se cumplen. */
+	void tick(MinecraftServer server) {
+		if (server.getTickCount() % 20 != 0) {
+			return;
+		}
+		PoliticaMundo pol = DestinosCore.politica();
+		if (pol == null) {
+			return;
+		}
+		ServerLevel level = server.overworld();
+		long ahora = level.getDayTime();
+		for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+			Jugador j = jugadores.get(p.getUUID());
+			if (j == null || j.activos.isEmpty()) {
+				continue;
+			}
+			boolean cambia = false;
+			for (Encargo e : new ArrayList<>(j.activos)) {
+				if (ahora > e.vence) {
+					falla(server, pol, p, j, e);
+					cambia = true;
+					continue;
+				}
+				if (p.level() != level) {
+					continue;
+				}
+				double dx = e.x + 0.5 - p.getX();
+				double dz = e.z + 0.5 - p.getZ();
+				double d2 = dx * dx + dz * dz;
+				if (e.tipo == Encargo.Tipo.exploracion) {
+					if (!e.estructura && d2 < 300 * 300 && server.getTickCount() % 100 == 0 && buscaEstructura(level, e)) {
+						p.displayClientMessage(Component.translatableWithFallback("destinos.encargo.avistada",
+								"A lo lejos se ve algo: el encargo te lleva hasta allí.").withStyle(ChatFormatting.YELLOW), true);
+						cambia = true;
+						sucio = true;
+						continue;
+					}
+					int r = e.estructura ? 32 : 48;
+					if (d2 < r * r) {
+						cumple(server, pol, p, j, e);
+						cambia = true;
+					}
+				} else if (!e.campamento) {
+					if (d2 < 96 * 96 && level.hasChunksAt(new BlockPos(e.x - 48, 64, e.z - 48), new BlockPos(e.x + 48, 64, e.z + 48))) {
+						monta(server, pol, level, p, e);
+						cambia = true;
+					}
+				} else if (e.bandidos.isEmpty() || (d2 < 48 * 48 && CampamentoBandidos.desaparecidos(level, e))) {
+					cumple(server, pol, p, j, e);
+					cambia = true;
+				}
+			}
+			if (cambia) {
+				envia(server, p);
+			}
+		}
+		if (sucio && server.getTickCount() % 600 == 0) {
+			guarda(server);
+		}
+	}
+
+	private void monta(MinecraftServer server, PoliticaMundo pol, ServerLevel level, ServerPlayer p, Encargo e) {
+		CampamentoBandidos.Montado m = CampamentoBandidos.monta(level, e.x, e.z, e.estrellas, e.id);
+		e.x = m.x();
+		e.z = m.z();
+		e.bandidos.clear();
+		e.bandidos.addAll(m.bandidos());
+		e.campamento = true;
+		sucio = true;
+		p.displayClientMessage(Component.translatableWithFallback("destinos.encargo.humo",
+				"Huele a humo de hoguera: el campamento de los bandidos está cerca.").withStyle(ChatFormatting.YELLOW), true);
+		DestinosCore.LOG.info("Destinos Core: campamento de bandidos en {}, {} ({} bandidos)", m.x(), m.z(), m.bandidos().size());
+	}
+
+	private void cumple(MinecraftServer server, PoliticaMundo pol, ServerPlayer p, Jugador j, Encargo e) {
+		j.activos.remove(e);
+		sucio = true;
+		Monedas.paga(p, e.premio);
+		Component titulo = titulo(server, pol, e.tipo, e.ducado);
+		MutableComponent sub = Component.translatableWithFallback("destinos.encargo.paga", "+%s", Monedas.texto(e.premio));
+		if (e.deReino()) {
+			int v = sumaRep(p, e.reino, e.rep);
+			sub = Component.translatableWithFallback("destinos.encargo.paga_rep", "+%s · reputación con el %s: %s (+%s)",
+					Monedas.texto(e.premio), pol.nombreReino(server, e.reino), v, e.rep);
+		}
+		p.connection.send(new ClientboundSetTitleTextPacket(Component.translatableWithFallback("destinos.encargo.cumplido",
+				"¡Encargo cumplido!").withStyle(ChatFormatting.GOLD)));
+		p.connection.send(new ClientboundSetSubtitleTextPacket(titulo));
+		p.sendSystemMessage(Component.translatableWithFallback("destinos.encargo.cumplido_chat", "✔ %s · %s", titulo, sub)
+				.withStyle(ChatFormatting.GREEN));
+		sonido(server, p, "minecraft:ui.toast.challenge_complete", 0.6f, 1);
+	}
+
+	private void falla(MinecraftServer server, PoliticaMundo pol, ServerPlayer p, Jugador j, Encargo e) {
+		j.activos.remove(e);
+		sucio = true;
+		MutableComponent t = Component.translatableWithFallback("destinos.encargo.vencido", "✘ Se acabó el plazo: %s",
+				titulo(server, pol, e.tipo, e.ducado));
+		if (e.deReino()) {
+			int v = sumaRep(p, e.reino, -2);
+			t.append(Component.translatableWithFallback("destinos.encargo.rep_baja", " · reputación con el %s: %s (-%s)",
+					pol.nombreReino(server, e.reino), v, 2));
+		}
+		p.sendSystemMessage(t.withStyle(ChatFormatting.RED));
+	}
+
+	/** Al morir algo: los bandidos de los campamentos cuentan, y matar aldeanos o gólems baja la reputación. */
+	void alMorir(MinecraftServer server, LivingEntity muerto, DamageSource fuente) {
+		if (muerto.getTags().contains(BANDIDO)) {
+			UUID id = muerto.getUUID();
+			for (Map.Entry<UUID, Jugador> en : jugadores.entrySet()) {
+				for (Encargo e : en.getValue().activos) {
+					if (e.bandidos.remove(id)) {
+						sucio = true;
+						ServerPlayer p = server.getPlayerList().getPlayer(en.getKey());
+						if (p != null && !e.bandidos.isEmpty()) {
+							p.displayClientMessage(Component.translatableWithFallback("destinos.encargo.quedan",
+									"Quedan %s bandidos", e.bandidos.size()).withStyle(ChatFormatting.YELLOW), true);
+						}
+					}
+				}
+			}
+			return;
+		}
+		boolean aldeano = muerto.getType() == EntityType.VILLAGER;
+		boolean golem = muerto.getType() == EntityType.IRON_GOLEM;
+		if ((!aldeano && !golem) || !(fuente.getEntity() instanceof ServerPlayer p) || muerto.level().dimension() != Level.OVERWORLD) {
+			return;
+		}
+		MapaTerreno mapa = DestinosCore.mapaActual();
+		PoliticaMundo pol = DestinosCore.politica();
+		if (mapa == null || pol == null) {
+			return;
+		}
+		MapaTerreno.Resultado r = mapa.consultaSiLista(muerto.getBlockX(), muerto.getBlockZ());
+		if (r == null) {
+			return;
+		}
+		r = pol.aplica(r);
+		if (r.salvaje() || r.oceano()) {
+			return;
+		}
+		long reino = Grafo.id(r.kx(), r.kz());
+		int delta = aldeano ? 5 : 3;
+		int v = sumaRep(p, reino, -delta);
+		p.displayClientMessage(Component.translatableWithFallback("destinos.encargo.crimen", "Reputación con el %s: %s (-%s)",
+				pol.nombreReino(server, reino), v, delta).withStyle(ChatFormatting.RED), true);
+	}
+
+	// ------------------------------------------------------------------ textos
+
+	static Component titulo(MinecraftServer server, PoliticaMundo pol, Encargo.Tipo tipo, long ducado) {
+		Component d = pol.nombreDucado(server, ducado);
+		return tipo == Encargo.Tipo.caza
+				? Component.translatableWithFallback("destinos.encargo.caza", "Bandidos en %s", d)
+				: Component.translatableWithFallback("destinos.encargo.exploracion", "Explora %s", d);
+	}
+
+	private static Component texto(MinecraftServer server, PoliticaMundo pol, Encargo.Tipo tipo, long ducado) {
+		Component d = pol.nombreDucado(server, ducado);
+		return tipo == Encargo.Tipo.caza
+				? Component.translatableWithFallback("destinos.encargo.caza.texto",
+						"Una banda asalta los caminos de %s. Encuentra su campamento y acaba con todos.", d)
+				: Component.translatableWithFallback("destinos.encargo.exploracion.texto",
+						"Nadie ha vuelto con noticias de %s. Viaja hasta allí y descubre qué esconde.", d);
+	}
+
+	/** Cómo va un encargo en curso. */
+	private static Component estado(Encargo e) {
+		if (e.tipo == Encargo.Tipo.caza) {
+			return e.campamento
+					? Component.translatableWithFallback("destinos.encargo.estado.quedan", "Quedan %s bandidos en el campamento.", e.bandidos.size())
+					: Component.translatableWithFallback("destinos.encargo.estado.buscar", "Ve a la zona marcada y busca su campamento.");
+		}
+		return e.estructura
+				? Component.translatableWithFallback("destinos.encargo.estado.estructura", "Dicen que allí hay unas ruinas. Llega hasta ellas.")
+				: Component.translatableWithFallback("destinos.encargo.estado.corazon", "Llega al corazón del ducado.");
+	}
+
+	/** "★★★☆☆ · 2 plata 5 cobre · +5 reputación · 6 días · a 1200 bloques al NE". */
+	private static Component detalle(int estrellas, int premio, int rep, int dias, ServerPlayer p, int x, int z) {
+		MutableComponent t = Component.literal("★".repeat(estrellas) + "☆".repeat(Math.max(0, 5 - estrellas))).withStyle(ChatFormatting.GOLD);
+		t.append(Component.literal(" · ").withStyle(ChatFormatting.DARK_GRAY));
+		t.append(Monedas.texto(premio));
+		if (rep > 0) {
+			t.append(Component.literal(" · ").withStyle(ChatFormatting.DARK_GRAY));
+			t.append(Component.translatableWithFallback("destinos.encargo.rep", "+%s reputación", rep).withStyle(ChatFormatting.DARK_AQUA));
+		}
+		t.append(Component.literal(" · ").withStyle(ChatFormatting.DARK_GRAY));
+		t.append(Component.translatableWithFallback(dias == 1 ? "destinos.encargo.dia" : "destinos.encargo.dias",
+				dias == 1 ? "%s día" : "%s días", dias));
+		t.append(Component.literal(" · ").withStyle(ChatFormatting.DARK_GRAY));
+		t.append(distancia(x - p.getX(), z - p.getZ()));
+		return t;
+	}
+
+	/** "a 1200 bloques al NE". */
+	static Component distancia(double dx, double dz) {
+		int d = (int) Math.round(Math.sqrt(dx * dx + dz * dz) / 50) * 50;
+		if (d < 100) {
+			return Component.translatableWithFallback("destinos.encargo.aqui", "aquí mismo");
+		}
+		// el norte es -z en Minecraft; atan2 con z hacia abajo da el rumbo en sentido horario desde el este
+		int rumbo = Math.floorMod((int) Math.round(Math.atan2(dz, dx) / (Math.PI / 4)), 8);
+		return Component.translatableWithFallback("destinos.encargo.lejos", "a %s bloques al %s", d,
+				Component.translatableWithFallback("destinos.rumbo." + RUMBOS[rumbo], RUMBOS[rumbo].toUpperCase()));
+	}
+
+	private static void sonido(MinecraftServer server, ServerPlayer p, String sonido, float volumen, float tono) {
+		CommandSourceStack f = server.createCommandSourceStack().withLevel((ServerLevel) p.level()).withPosition(p.position())
+				.withSuppressedOutput();
+		server.getCommands().performPrefixedCommand(f, "playsound " + sonido + " master " + p.getScoreboardName() + " ~ ~ ~ "
+				+ volumen + " " + tono);
+	}
+
+	// ------------------------------------------------------------------ al cliente y comandos
+
+	/** Los encargos en curso a la línea de la pantalla del jugador. */
+	void envia(MinecraftServer server, ServerPlayer p) {
+		PoliticaMundo pol = DestinosCore.politica();
+		List<PaqueteEncargos.Activo> l = new ArrayList<>();
+		Jugador j = jugadores.get(p.getUUID());
+		if (j != null && pol != null) {
+			for (Encargo e : j.activos) {
+				l.add(new PaqueteEncargos.Activo(titulo(server, pol, e.tipo, e.ducado), e.x, e.z, e.vence));
+			}
+		}
+		if (ServerPlayNetworking.canSend(p, PaqueteEncargos.TIPO)) {
+			ServerPlayNetworking.send(p, new PaqueteEncargos(l));
+		}
+	}
+
+	/** /destinos encargos */
+	void lista(CommandSourceStack fuente, ServerPlayer p) {
+		MinecraftServer server = fuente.getServer();
+		PoliticaMundo pol = DestinosCore.politica();
+		Jugador j = jugadores.get(p.getUUID());
+		if (pol == null || j == null || j.activos.isEmpty()) {
+			fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.encargo.ninguno",
+					"No llevas ningún encargo. Búscalos en el tablón junto a la campana de los pueblos.").withStyle(ChatFormatting.GRAY), false);
+			return;
+		}
+		fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.encargo.en_curso", "📜 Encargos en curso")
+				.withStyle(ChatFormatting.GOLD), false);
+		for (Encargo e : j.activos) {
+			Component linea = Component.empty().append(titulo(server, pol, e.tipo, e.ducado)).append(" · ").append(estado(e))
+					.append(" · ").append(detalle(e.estrellas, e.premio, e.deReino() ? e.rep : 0, diasQuedan(server, e), p, e.x, e.z));
+			fuente.sendSuccess(() -> linea, false);
+		}
+	}
+
+	/** /destinos reputacion */
+	void reputacion(CommandSourceStack fuente, ServerPlayer p) {
+		MinecraftServer server = fuente.getServer();
+		PoliticaMundo pol = DestinosCore.politica();
+		Jugador j = jugadores.get(p.getUUID());
+		if (pol == null || j == null || j.rep.isEmpty()) {
+			fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.encargo.sin_rep",
+					"Ningún reino sabe aún quién eres. Haz encargos para que se hable de ti.").withStyle(ChatFormatting.GRAY), false);
+			return;
+		}
+		fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.encargo.reputacion", "⚖ Tu reputación (de -100 a 100)")
+				.withStyle(ChatFormatting.GOLD), false);
+		j.rep.entrySet().stream().sorted((a, b) -> Integer.compare(b.getValue(), a.getValue())).forEach(en -> {
+			int v = en.getValue();
+			Component linea = Component.translatableWithFallback("destinos.encargo.reputacion_linea", "%s: %s",
+					pol.nombreReino(server, en.getKey()), Component.literal(String.valueOf(v))
+							.withStyle(v >= REP_DIFICILES ? ChatFormatting.GREEN : v < 0 ? ChatFormatting.RED : ChatFormatting.WHITE));
+			fuente.sendSuccess(() -> linea, false);
+		});
+	}
+
+	/** /destinoscore encargos x z: las ofertas que tendría hoy un tablón en (x, z), para probar. */
+	static void prueba(CommandSourceStack fuente, int x, int z) {
+		MinecraftServer server = fuente.getServer();
+		BlockPos pos = new BlockPos(x, 64, z);
+		Sitio s = sitio(server, pos);
+		if (s == null) {
+			fuente.sendFailure(Component.literal("Destinos Core: la zona del tablón aún no está calculada"));
+			return;
+		}
+		List<Oferta> ofertas = ofertas(server, pos, s, 5);
+		StringBuilder b = new StringBuilder("Destinos Core: tablón en " + x + ", " + z + (s.capital() ? " (capital)" : "") + ": "
+				+ ofertas.size() + " encargos");
+		for (Oferta o : ofertas) {
+			b.append(" · ").append(o.tipo()).append(" a ").append(o.saltos()).append(" ducados (").append(o.x()).append(", ")
+					.append(o.z()).append(") ").append(o.estrellas()).append("★ ").append(o.premio()).append(" cobre ")
+					.append(o.dias()).append(" días");
+		}
+		String texto = b.toString();
+		DestinosCore.LOG.info(texto);
+		fuente.sendSuccess(() -> Component.literal(texto), false);
+	}
+}

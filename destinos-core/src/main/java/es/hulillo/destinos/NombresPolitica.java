@@ -3,8 +3,11 @@ package es.hulillo.destinos;
 import es.hulillo.destinos.politica.Grafo;
 import es.hulillo.destinos.politica.Politica;
 import es.hulillo.destinos.politica.Suceso;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.nbt.CompoundTag;
@@ -53,6 +56,12 @@ final class NombresPolitica {
 	}
 
 	private final int sal;
+	/**
+	 * Lo que ya se ha pedido al datapack en esta partida, para no volver a llamar a sus funciones (cada llamada es un
+	 * comando con macro, y los tablones y el HUD piden nombres a menudo). Las claves se mezclan (Geo.mezcla) por las colisiones de Long.hashCode.
+	 */
+	private final Set<Long> reinosPedidos = new HashSet<>();
+	private final Map<Long, Dueno> ducadosPedidos = new HashMap<>();
 
 	NombresPolitica(int sal) {
 		this.sal = sal;
@@ -71,6 +80,9 @@ final class NombresPolitica {
 
 	/** Que exista el registro del reino (nombre, casa, color), generado en el centro del reino. */
 	void aseguraReino(MinecraftServer server, long reino) {
+		if (!reinosPedidos.add(Geo.mezcla(reino))) {
+			return;
+		}
 		int kx = Grafo.x(reino);
 		int kz = Grafo.z(reino);
 		int[] c = Geo.centroReino(kx, kz, sal);
@@ -79,11 +91,15 @@ final class NombresPolitica {
 
 	/** Que exista el registro del ducado, con su dueño de hoy. */
 	void aseguraDucado(MinecraftServer server, long ducado, Dueno dueno) {
+		if (dueno.equals(ducadosPedidos.put(Geo.mezcla(ducado), dueno))) {
+			return;
+		}
 		llamaDucado(server, ducado, dueno, "asegurar_ducado", "");
 	}
 
 	/** El registro del ducado sigue al nuevo dueño. conquistado: lo tiene otro reino con señor que el de origen. */
 	void cambiaDucado(MinecraftServer server, long ducado, Dueno dueno, boolean conquistado) {
+		ducadosPedidos.put(Geo.mezcla(ducado), dueno);
 		llamaDucado(server, ducado, dueno, "cambio", ",c:" + (conquistado ? 1 : 0));
 	}
 
