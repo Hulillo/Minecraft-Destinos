@@ -31,6 +31,8 @@ COMANDOS = [
     "place structure destinos_core:capital 0 80 600",
     # la capital que ha salido sola al cargar los chunks: que su chunk la tenga y los de alrededor la conozcan
     "execute positioned 196 100 667 run destinoscore capital",
+    # encargos: lo que ofrecería hoy un tablón en la capital
+    "destinoscore encargos 196 667",
     # las capitales de los 9×9 reinos de alrededor: ninguna en el agua (con la altura de verdad); las ricas son
     # pocas, así que hacen falta bastantes reinos para que salga una y probar su castillo
     "destinoscore revisa 4",
@@ -123,6 +125,11 @@ if "Tried to load a DUMMY block entity" in salida:
     sys.exit("hay bloques con datos (estandartes, barriles…) puestos fuera de su sitio: " + re.search(r"Tried to load a DUMMY.*", salida).group(0))
 if "plaza mayor de la capital" not in salida:
     print("AVISO: ninguna plaza mayor ha tenido sitio para sus estandartes")
+if not re.search(r"Destinos Core: tablón en .*: [1-9]\d* encargos", salida):
+    print("\n".join(l.rstrip() for l in lineas if "tablón" in l or "encargo" in l.lower())[-3000:])
+    sys.exit("el tablón de prueba no ha ofrecido ningún encargo")
+if "tablón de encargos junto a la campana" not in salida:
+    print("AVISO: ninguna campana de pueblo o capital ha recibido su tablón")
 if not ok_terr:
     sys.exit("geo/territorio no devolvió #tdx: el mod no respondió")
 print("\nOK: el servidor carga Destinos Core y el datapack sin errores")

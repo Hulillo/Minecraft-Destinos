@@ -693,6 +693,70 @@ L("destinos.politica.permiso", "Solo en modo creativo o desde la consola.", "Onl
 L("destinos.politica.forzado", "Pasan %s turnos de política…", "%s political turns go by…")
 L("destinos.politica.ritmo", "Ahora pasa un turno de política cada %s días de juego.", "A political turn now happens every %s in-game days.")
 for k, (a, b) in TIPOS.items(): L(f"destinos.tipo.{k}", a, b)
+# encargos (v0.5): los textos los escribe Destinos Core
+ENCARGOS = {
+    "vacio": ("El tablón está vacío: los mensajeros aún no han llegado. Vuelve en un momento.",
+              "The board is empty: the messengers haven't arrived yet. Come back in a moment."),
+    "tablon": ("Tablón de encargos · %s", "Quest board · %s"),
+    "libres": ("Encargos de gente libre: aquí no hay señor al que servir", "Jobs from free folk: there is no lord to serve here"),
+    "del_reino": ("Encargos del %s", "Jobs from the %s"),
+    "tu_rep": ("Tu reputación aquí: %s/100%s", "Your reputation here: %s/100%s"),
+    "tu_rep_dificiles": (" · con %s te darán encargos de 4 y 5 estrellas", " · at %s you'll get 4 and 5 star jobs"),
+    "lleno": ("Ya llevas %s encargos: termina o deja alguno antes de coger otro.",
+              "You already carry %s jobs: finish or drop one before taking another."),
+    "cogido": ("📜 Encargo aceptado: %s", "📜 Job accepted: %s"),
+    "dejado": ("Dejas el encargo: %s", "You drop the job: %s"),
+    "humo": ("Huele a humo de hoguera: el campamento de los bandidos está cerca.",
+             "You smell campfire smoke: the bandit camp is close."),
+    "cumplido": ("¡Encargo cumplido!", "Job done!"),
+    "paga": ("+%s", "+%s"),
+    "paga_rep": ("+%s · reputación con el %s: %s (+%s)", "+%s · reputation with the %s: %s (+%s)"),
+    "cumplido_chat": ("✔ %s · %s", "✔ %s · %s"),
+    "vencido": ("✘ Se acabó el plazo: %s", "✘ Time ran out: %s"),
+    "rep_baja": (" · reputación con el %s: %s (-%s)", " · reputation with the %s: %s (-%s)"),
+    "quedan": ("Quedan %s bandidos", "%s bandits left"),
+    "crimen": ("Reputación con el %s: %s (-%s)", "Reputation with the %s: %s (-%s)"),
+    "caza": ("Bandidos en %s", "Bandits in %s"),
+    "exploracion": ("Explora %s", "Explore %s"),
+    "caza.texto": ("Una banda asalta los caminos de %s. Encuentra su campamento y acaba con todos.",
+                   "A gang is raiding the roads of %s. Find their camp and finish them all."),
+    "exploracion.texto": ("Nadie ha vuelto con noticias de %s. Viaja hasta allí y descubre qué esconde.",
+                          "No one has come back with news of %s. Travel there and find out what it hides."),
+    "estado.quedan": ("Quedan %s bandidos en el campamento.", "%s bandits left in the camp."),
+    "estado.buscar": ("Ve a la zona marcada y busca su campamento.", "Go to the marked area and look for their camp."),
+    "estado.estructura": ("Dicen que allí hay unas ruinas. Llega hasta ellas.", "They say there are ruins there. Reach them."),
+    "estado.corazon": ("Llega al corazón del ducado.", "Reach the heart of the duchy."),
+    "rep": ("+%s reputación", "+%s reputation"),
+    "dia": ("%s día", "%s day"),
+    "dias": ("%s días", "%s days"),
+    "aqui": ("aquí mismo", "right here"),
+    "lejos": ("a %s bloques al %s", "%s blocks to the %s"),
+    "ninguno": ("No llevas ningún encargo. Búscalos en el tablón junto a la campana de los pueblos.",
+                "You carry no jobs. Look for them on the board next to the village bell."),
+    "en_curso": ("📜 Encargos en curso", "📜 Jobs in progress"),
+    "sin_rep": ("Ningún reino sabe aún quién eres. Haz encargos para que se hable de ti.",
+                "No kingdom knows who you are yet. Do jobs so they start talking about you."),
+    "reputacion": ("⚖ Tu reputación (de -100 a 100)", "⚖ Your reputation (from -100 to 100)"),
+    "reputacion_linea": ("%s: %s", "%s: %s"),
+    "bandido": ("Bandido", "Bandit"),
+    "jefe": ("Jefe de los bandidos", "Bandit chief"),
+    "pestana.tablon": ("Tablón", "Board"),
+    "pestana.curso": ("En curso (%s/%s)", "In progress (%s/%s)"),
+    "coger": ("Coger", "Take"),
+    "dejar": ("Dejar", "Drop"),
+    "ya_cogido": ("✔ Cogido", "✔ Taken"),
+    "pantalla.ninguno": ("No llevas ningún encargo.", "You carry no jobs."),
+    "pantalla.vacio": ("Hoy no hay nada clavado en el tablón.", "Nothing is pinned to the board today."),
+    "hud": ("%s m %s · %s d", "%s m %s · %s d"),
+}
+for k, (a, b) in ENCARGOS.items(): L(f"destinos.encargo.{k}", a, b)
+L("destinos.moneda.cobre", "%s cobre", "%s copper")
+L("destinos.moneda.plata", "%s plata", "%s silver")
+L("destinos.moneda.oro", "%s oro", "%s gold")
+L("block.destinos_core.tablon", "Tablón de encargos", "Quest board")
+L("item.destinos_core.moneda_cobre", "Moneda de cobre", "Copper coin")
+L("item.destinos_core.moneda_plata", "Moneda de plata", "Silver coin")
+L("item.destinos_core.moneda_oro", "Moneda de oro", "Gold coin")
 for k, (m, f) in TITULOS.items():
     L(f"destinos.titulo.{k}.m", *m); L(f"destinos.titulo.{k}.f", *f)
 for i, (a, b) in enumerate(LEMAS): L(f"destinos.lema.{i}", a, b)

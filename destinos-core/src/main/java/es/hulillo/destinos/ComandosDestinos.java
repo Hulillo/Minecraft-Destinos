@@ -41,7 +41,31 @@ final class ComandosDestinos {
 				.then(Commands.literal("turno").executes(ctx -> turno(ctx.getSource(), 1))
 						.then(Commands.argument("n", IntegerArgumentType.integer(1, 500))
 								.executes(ctx -> turno(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "n")))))
-				.then(Commands.literal("cronica").executes(ctx -> conPolitica(ctx.getSource(), false, (pol, m) -> pol.cronica(ctx.getSource())))));
+				.then(Commands.literal("cronica").executes(ctx -> conPolitica(ctx.getSource(), false, (pol, m) -> pol.cronica(ctx.getSource()))))
+				.then(Commands.literal("encargos")
+						.then(Commands.argument("x", IntegerArgumentType.integer())
+								.then(Commands.argument("z", IntegerArgumentType.integer())
+										.executes(ctx -> conPolitica(ctx.getSource(), false, (pol, m) -> EncargosMundo.prueba(ctx.getSource(),
+												IntegerArgumentType.getInteger(ctx, "x"), IntegerArgumentType.getInteger(ctx, "z"))))))));
+		// para los jugadores, sin permisos: sus encargos y su reputación
+		dispatcher.register(Commands.literal("destinos")
+				.then(Commands.literal("encargos").executes(ctx -> deJugador(ctx.getSource(), false)))
+				.then(Commands.literal("reputacion").executes(ctx -> deJugador(ctx.getSource(), true))));
+	}
+
+	private static int deJugador(CommandSourceStack fuente, boolean reputacion) {
+		ServerPlayer p = fuente.getPlayer();
+		if (p == null) {
+			fuente.sendFailure(Component.literal("Destinos Core: solo para jugadores"));
+			return 0;
+		}
+		EncargosMundo em = EncargosMundo.de(fuente.getServer());
+		if (reputacion) {
+			em.reputacion(fuente, p);
+		} else {
+			em.lista(fuente, p);
+		}
+		return 1;
 	}
 
 	/**

@@ -11,6 +11,8 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
@@ -64,8 +66,23 @@ public final class DestinosCore implements ModInitializer {
 		MuelleCapital.registra();
 		FaroCapital.registra();
 		HuertoCapital.registra();
+		TablonBlock.registra();
+		Monedas.registra();
 		PayloadTypeRegistry.playS2C().register(PaqueteTerritorio.TIPO, PaqueteTerritorio.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaquetePolitica.TIPO, PaquetePolitica.CODEC);
+		PayloadTypeRegistry.playS2C().register(PaqueteTablon.TIPO, PaqueteTablon.CODEC);
+		PayloadTypeRegistry.playS2C().register(PaqueteEncargos.TIPO, PaqueteEncargos.CODEC);
+		PayloadTypeRegistry.playC2S().register(PaqueteAccionEncargo.TIPO, PaqueteAccionEncargo.CODEC);
+		// Fabric ya entrega los paquetes en el hilo del servidor
+		ServerPlayNetworking.registerGlobalReceiver(PaqueteAccionEncargo.TIPO, (paquete, contexto) ->
+				EncargosMundo.accion(contexto.player(), paquete));
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
+				EncargosMundo.de(server).envia(server, handler.getPlayer()));
+		ServerLivingEntityEvents.AFTER_DEATH.register((muerto, fuente) -> {
+			if (muerto.level() instanceof ServerLevel sl) {
+				EncargosMundo.de(sl.getServer()).alMorir(sl.getServer(), muerto, fuente);
+			}
+		});
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ENVIO.olvida(handler.getPlayer().getUUID()));
 		// la sal tiene que estar antes del primer chunk (los de alrededor del spawn se generan antes de que el
 		// datapack cargue); si no, ahí no salen capitales
@@ -81,6 +98,7 @@ public final class DestinosCore implements ModInitializer {
 			if (politica != null) {
 				politica.guarda(server);
 			}
+			EncargosMundo.de(server).guarda(server);
 		});
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
 			mapa = null;
@@ -88,10 +106,13 @@ public final class DestinosCore implements ModInitializer {
 			EstructuraCapital.olvida();
 			REPARA.olvida();
 			CartelesCapital.olvida();
+			TablonesPueblos.olvida();
+			EncargosMundo.olvida();
 			mapaEnviado = null;
 			ENVIO.olvidaTodo();
 		});
 		ServerChunkEvents.CHUNK_LOAD.register(CartelesCapital::alCargar);
+		ServerChunkEvents.CHUNK_LOAD.register(TablonesPueblos::alCargar);
 		ServerTickEvents.END_SERVER_TICK.register(DestinosCore::tick);
 		LOG.info("Destinos Core listo: fronteras que siguen el terreno y política viva");
 	}
@@ -116,6 +137,8 @@ public final class DestinosCore implements ModInitializer {
 			REPARA.tick(server, m);
 		}
 		CartelesCapital.tick(server);
+		TablonesPueblos.tick(server);
+		EncargosMundo.de(server).tick(server);
 	}
 
 	private static void precarga(MinecraftServer server) {

@@ -3,7 +3,9 @@ package es.hulillo.destinos.cliente;
 import com.mojang.blaze3d.platform.InputConstants;
 import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.MapaTerreno;
+import es.hulillo.destinos.PaqueteEncargos;
 import es.hulillo.destinos.PaquetePolitica;
+import es.hulillo.destinos.PaqueteTablon;
 import es.hulillo.destinos.PaqueteTerritorio;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
@@ -15,6 +17,7 @@ import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -32,7 +35,13 @@ public final class DestinosCoreCliente implements ClientModInitializer {
 		// Fabric ya entrega los paquetes en el hilo del cliente
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteTerritorio.TIPO, (paquete, contexto) -> TerritoriosCliente.recibe(paquete));
 		ClientPlayNetworking.registerGlobalReceiver(PaquetePolitica.TIPO, (paquete, contexto) -> TerritoriosCliente.politica(paquete));
-		ClientPlayConnectionEvents.DISCONNECT.register((handler, cliente) -> cliente.execute(TerritoriosCliente::borra));
+		ClientPlayNetworking.registerGlobalReceiver(PaqueteTablon.TIPO, (paquete, contexto) -> PantallaTablon.abre(paquete));
+		ClientPlayNetworking.registerGlobalReceiver(PaqueteEncargos.TIPO, (paquete, contexto) -> HudEncargos.recibe(paquete));
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, cliente) -> cliente.execute(() -> {
+			TerritoriosCliente.borra();
+			HudEncargos.borra();
+		}));
+		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "encargos"), HudEncargos::pinta);
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, contexto) ->
 				dispatcher.register(ClientCommandManager.literal("destinosmapa").executes(c -> diagnostico(c.getSource()))
 						.then(ClientCommandManager.literal("alternar").executes(c -> {
