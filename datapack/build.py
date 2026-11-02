@@ -708,6 +708,8 @@ ENCARGOS = {
     "dejado": ("Dejas el encargo: %s", "You drop the job: %s"),
     "humo": ("Huele a humo de hoguera: el campamento de los bandidos está cerca.",
              "You smell campfire smoke: the bandit camp is close."),
+    "avistada": ("A lo lejos se ve algo: el encargo te lleva hasta allí.",
+                 "Something stands out in the distance: the job leads you there."),
     "cumplido": ("¡Encargo cumplido!", "Job done!"),
     "paga": ("+%s", "+%s"),
     "paga_rep": ("+%s · reputación con el %s: %s (+%s)", "+%s · reputation with the %s: %s (+%s)"),

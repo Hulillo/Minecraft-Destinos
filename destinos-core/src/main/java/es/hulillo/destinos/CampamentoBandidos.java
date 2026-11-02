@@ -113,7 +113,7 @@ final class CampamentoBandidos {
 
 	/** Un sitio en tierra seca cerca de (x, z), en espiral; si no hay ninguno cargado, (x, z) tal cual. */
 	private static BlockPos seco(ServerLevel level, int x, int z) {
-		for (int i = 0; i < 40; i++) {
+		for (int i = 0; i < 20; i++) {
 			double a = i * 2.4;
 			int r = i * 2;
 			int px = x + (int) (Math.cos(a) * r);

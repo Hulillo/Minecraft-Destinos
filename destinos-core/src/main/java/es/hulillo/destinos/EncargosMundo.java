@@ -17,6 +17,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -34,7 +35,9 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -57,7 +60,7 @@ final class EncargosMundo {
 	/** Reputación para que un reino te dé encargos de 4 y 5 estrellas. */
 	static final int REP_DIFICILES = 30;
 	/** Hasta dónde se busca una estructura que explorar alrededor del sitio elegido (en regiones de estructura). */
-	private static final int RADIO_ESTRUCTURA = 6;
+	private static final int RADIO_ESTRUCTURA = 10;
 	private static final int MAX_HECHOS = 32;
 	private static final String[] RUMBOS = {"e", "se", "s", "so", "o", "no", "n", "ne"};
 
@@ -92,6 +95,7 @@ final class EncargosMundo {
 
 	static void olvida() {
 		actual = null;
+		explorables = null;
 	}
 
 	// ------------------------------------------------------------------ guardado
@@ -422,9 +426,6 @@ final class EncargosMundo {
 		Oferta o = ofertas.get(indice);
 		Encargo e = new Encargo(siguienteId++, o.tipo(), s.reino(), o.ducado(), o.x(), o.z(), o.estrellas(), o.premio(), o.rep(),
 				server.overworld().getDayTime() + (long) o.dias() * DIA, origen);
-		if (e.tipo == Encargo.Tipo.exploracion) {
-			buscaEstructura(server.overworld(), e);
-		}
 		j.activos.add(e);
 		j.hechos.addLast(origen);
 		while (j.hechos.size() > MAX_HECHOS) {
@@ -438,18 +439,56 @@ final class EncargosMundo {
 		envia(server, p);
 	}
 
-	/** Para explorar, mejor una estructura de verdad cerca del sitio elegido que el corazón pelado del ducado. */
-	private static void buscaEstructura(ServerLevel level, Encargo e) {
-		try {
-			BlockPos b = level.findNearestMapStructure(EXPLORABLES, new BlockPos(e.x, 64, e.z), RADIO_ESTRUCTURA, false);
-			if (b != null && Math.abs(b.getX() - e.x) < 1200 && Math.abs(b.getZ() - e.z) < 1200) {
-				e.x = b.getX();
-				e.z = b.getZ();
-				e.estructura = true;
+	/**
+	 * Para explorar, mejor una estructura de verdad cerca del sitio elegido que el corazón pelado del ducado. Se busca
+	 * cuando el jugador ya se acerca y solo entre los chunks que ya están cargados (sus inicios de estructura ya están
+	 * calculados): buscar al coger el encargo con findNearestMapStructure generaba chunks lejanos y daba tirones.
+	 */
+	private static boolean buscaEstructura(ServerLevel level, Encargo e) {
+		Set<Structure> explorables = explorables(level);
+		int cx = e.x >> 4;
+		int cz = e.z >> 4;
+		BlockPos mejor = null;
+		long mejorD = Long.MAX_VALUE;
+		for (int dx = -RADIO_ESTRUCTURA; dx <= RADIO_ESTRUCTURA; dx++) {
+			for (int dz = -RADIO_ESTRUCTURA; dz <= RADIO_ESTRUCTURA; dz++) {
+				LevelChunk c = level.getChunkSource().getChunkNow(cx + dx, cz + dz);
+				if (c == null) {
+					continue;
+				}
+				for (Map.Entry<Structure, StructureStart> en : c.getAllStarts().entrySet()) {
+					if (!explorables.contains(en.getKey()) || !en.getValue().isValid()) {
+						continue;
+					}
+					BlockPos centro = en.getValue().getBoundingBox().getCenter();
+					long d = (long) (centro.getX() - e.x) * (centro.getX() - e.x) + (long) (centro.getZ() - e.z) * (centro.getZ() - e.z);
+					if (d < mejorD) {
+						mejorD = d;
+						mejor = centro;
+					}
+				}
 			}
-		} catch (RuntimeException x) {
-			DestinosCore.LOG.warn("Destinos Core: no se ha podido buscar una estructura para un encargo", x);
 		}
+		if (mejor == null) {
+			return false;
+		}
+		e.x = mejor.getX();
+		e.z = mejor.getZ();
+		e.estructura = true;
+		return true;
+	}
+
+	private static Set<Structure> explorables;
+
+	private static Set<Structure> explorables(ServerLevel level) {
+		if (explorables == null) {
+			Set<Structure> s = new HashSet<>();
+			for (Holder<Structure> h : level.registryAccess().lookupOrThrow(Registries.STRUCTURE).getTagOrEmpty(EXPLORABLES)) {
+				s.add(h.value());
+			}
+			explorables = s;
+		}
+		return explorables;
 	}
 
 	private void deja(MinecraftServer server, ServerPlayer p, int indice) {
@@ -502,13 +541,20 @@ final class EncargosMundo {
 				double dz = e.z + 0.5 - p.getZ();
 				double d2 = dx * dx + dz * dz;
 				if (e.tipo == Encargo.Tipo.exploracion) {
+					if (!e.estructura && d2 < 300 * 300 && server.getTickCount() % 100 == 0 && buscaEstructura(level, e)) {
+						p.displayClientMessage(Component.translatableWithFallback("destinos.encargo.avistada",
+								"A lo lejos se ve algo: el encargo te lleva hasta allí.").withStyle(ChatFormatting.YELLOW), true);
+						cambia = true;
+						sucio = true;
+						continue;
+					}
 					int r = e.estructura ? 32 : 48;
 					if (d2 < r * r) {
 						cumple(server, pol, p, j, e);
 						cambia = true;
 					}
 				} else if (!e.campamento) {
-					if (d2 < 96 * 96 && level.isLoaded(new BlockPos(e.x, 64, e.z))) {
+					if (d2 < 96 * 96 && level.hasChunksAt(new BlockPos(e.x - 48, 64, e.z - 48), new BlockPos(e.x + 48, 64, e.z + 48))) {
 						monta(server, pol, level, p, e);
 						cambia = true;
 					}

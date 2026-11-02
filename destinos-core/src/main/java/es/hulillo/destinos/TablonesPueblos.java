@@ -8,6 +8,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.StructureTags;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
@@ -16,12 +17,13 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.Structure;
 
 /**
  * Pone el tablón de encargos junto a la campana de cada pueblo y de cada capital. Las campanas se ven al cargar sus
  * chunks (las trae el pueblo, de vanilla o de cualquier mod); se apuntan y en el siguiente tick se busca al lado un
- * hueco con suelo firme. Cada campana se mira una sola vez (EncargosMundo.campanas): si alguien rompe el tablón, no
+ * hueco en el suelo de la plaza. Cada campana se mira una sola vez (EncargosMundo.campanas): si alguien rompe el tablón, no
  * vuelve a salir. Las campanas que no son de un pueblo (las que pone un jugador) no llevan tablón.
  */
 final class TablonesPueblos {
@@ -29,6 +31,7 @@ final class TablonesPueblos {
 	private static final Deque<BlockPos> PENDIENTES = new ArrayDeque<>();
 	/** Para /destinoscore tablones: chunks mirados, campanas vistas, tablones puestos, campanas sin pueblo y sin sitio. */
 	private static final int[] CUENTA = new int[5];
+	private static Structure capital;
 
 	private TablonesPueblos() {
 	}
@@ -38,6 +41,9 @@ final class TablonesPueblos {
 			return;
 		}
 		// se miran los bloques y no los datos de bloque: en un chunk recién generado aún no están creados
+		if (chunk.getAllReferences().isEmpty()) {
+			return; // las campanas de pueblo siempre van en chunks de una estructura
+		}
 		CUENTA[0]++;
 		LevelChunkSection[] secciones = chunk.getSections();
 		for (int i = 0; i < secciones.length; i++) {
@@ -61,6 +67,7 @@ final class TablonesPueblos {
 
 	static void olvida() {
 		PENDIENTES.clear();
+		capital = null;
 	}
 
 	static String cuenta() {
@@ -79,6 +86,11 @@ final class TablonesPueblos {
 			BlockPos campana = PENDIENTES.poll();
 			if (em.campanas.contains(campana.asLong()) || !level.isLoaded(campana)) {
 				continue;
+			}
+			if (!level.hasChunksAt(campana.offset(-7, 0, -7), campana.offset(7, 0, 7))) {
+				// mirar alturas en un chunk sin cargar lo generaría aquí mismo: se espera a que estén los de al lado
+				PENDIENTES.addLast(campana);
+				return;
 			}
 			em.campanas.add(campana.asLong());
 			em.ensucia();
@@ -104,21 +116,50 @@ final class TablonesPueblos {
 		if (level.structureManager().getStructureWithPieceAt(p, StructureTags.VILLAGE).isValid()) {
 			return true;
 		}
-		Structure capital = level.registryAccess().lookupOrThrow(Registries.STRUCTURE)
-				.getValue(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "capital"));
+		if (capital == null) {
+			capital = level.registryAccess().lookupOrThrow(Registries.STRUCTURE)
+					.getValue(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "capital"));
+		}
 		return capital != null && level.structureManager().getStructureWithPieceAt(p, capital).isValid();
 	}
 
-	/** Un hueco a 2-4 bloques de la campana, con suelo firme debajo y aire encima, o null. */
+	/**
+	 * Un sitio en el suelo de la plaza a 3-6 bloques de la campana, o null. El suelo de la plaza es la altura más
+	 * repetida alrededor de la campana; solo valen columnas a esa altura (±1) con las cuatro de al lado también, así que
+	 * nunca sale encima de un pozo, de un tejado o de un puesto, ni al borde de un escalón.
+	 */
 	private static BlockPos hueco(ServerLevel level, BlockPos campana) {
-		for (int r = 2; r <= 4; r++) {
+		int[] cuenta = new int[64];
+		int base = campana.getY() - 32;
+		for (int dx = -6; dx <= 6; dx++) {
+			for (int dz = -6; dz <= 6; dz++) {
+				int h = suelo(level, campana.getX() + dx, campana.getZ() + dz) - base;
+				if (h >= 0 && h < cuenta.length) {
+					cuenta[h]++;
+				}
+			}
+		}
+		int mejor = -1;
+		for (int i = 0; i < cuenta.length; i++) {
+			if (mejor < 0 || cuenta[i] > cuenta[mejor]) {
+				mejor = i;
+			}
+		}
+		if (mejor < 0 || cuenta[mejor] == 0) {
+			return null;
+		}
+		int plaza = base + mejor;
+		for (int r = 3; r <= 6; r++) {
 			for (int dx = -r; dx <= r; dx++) {
 				for (int dz = -r; dz <= r; dz++) {
 					if (Math.max(Math.abs(dx), Math.abs(dz)) != r) {
 						continue;
 					}
-					for (int dy = 1; dy >= -3; dy--) {
-						BlockPos p = campana.offset(dx, dy, dz);
+					int x = campana.getX() + dx;
+					int z = campana.getZ() + dz;
+					int h = suelo(level, x, z);
+					if (Math.abs(h - plaza) <= 1 && llano(level, x, z, h)) {
+						BlockPos p = new BlockPos(x, h, z);
 						if (cabe(level, p)) {
 							return p;
 						}
@@ -129,6 +170,15 @@ final class TablonesPueblos {
 		return null;
 	}
 
+	/** El primer hueco encima del suelo (sin contar hojas). */
+	private static int suelo(ServerLevel level, int x, int z) {
+		return level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+	}
+
+	private static boolean llano(ServerLevel level, int x, int z, int h) {
+		return suelo(level, x + 1, z) == h && suelo(level, x - 1, z) == h && suelo(level, x, z + 1) == h && suelo(level, x, z - 1) == h;
+	}
+
 	private static boolean cabe(ServerLevel level, BlockPos p) {
 		if (!level.isLoaded(p)) {
 			return false;
@@ -136,8 +186,10 @@ final class TablonesPueblos {
 		BlockState aqui = level.getBlockState(p);
 		BlockState arriba = level.getBlockState(p.above());
 		BlockPos abajo = p.below();
-		return aqui.isAir() && arriba.isAir() && level.getBlockState(abajo).isFaceSturdy(level, abajo, Direction.UP)
-				&& level.getBlockState(abajo).getFluidState().isEmpty();
+		BlockState suelo = level.getBlockState(abajo);
+		return aqui.isAir() && arriba.isAir() && suelo.isFaceSturdy(level, abajo, Direction.UP) && suelo.getFluidState().isEmpty()
+				&& !suelo.is(BlockTags.LEAVES) && !suelo.is(BlockTags.LOGS) && !suelo.is(BlockTags.PLANKS)
+				&& !suelo.is(BlockTags.WOODEN_SLABS);
 	}
 
 	/** El tablón mira hacia la campana (la cara con los papeles hacia ella). */
