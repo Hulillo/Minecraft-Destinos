@@ -198,8 +198,13 @@ final class NombresPolitica {
 		Component d = s.tipo() == Suceso.Tipo.union || s.tipo() == Suceso.Tipo.fin_union
 				? nombreUnion(server, s.reinoA(), s.reinoB())
 				: s.ducado() == Politica.NADIE ? Component.empty() : ducado(server, s.ducado());
-		MutableComponent t = Component.translatableWithFallback("destinos.politica." + s.tipo().name(),
-				RESPALDO.get(s.tipo()), s.anio(), a, b, d);
+		MutableComponent t = s.ayuda() != null && (s.tipo() == Suceso.Tipo.conquista || s.tipo() == Suceso.Tipo.capital)
+				// conquista tras arrasar campamentos en encargos de guerra: sale quién ayudó
+				? Component.translatableWithFallback("destinos.politica." + s.tipo().name() + "_ayuda",
+						s.tipo() == Suceso.Tipo.capital ? "♛ Año %1$s · ¡Con la ayuda de %5$s, el %2$s toma %4$s, la capital del %3$s!"
+								: "⚑ Año %1$s · Con la ayuda de %5$s, el %2$s toma %4$s al %3$s.",
+						s.anio(), a, b, d, Component.literal(s.ayuda()).withStyle(ChatFormatting.GOLD))
+				: Component.translatableWithFallback("destinos.politica." + s.tipo().name(), RESPALDO.get(s.tipo()), s.anio(), a, b, d);
 		return t.withStyle(menor(s.tipo()) ? ChatFormatting.GRAY : ChatFormatting.WHITE);
 	}
 

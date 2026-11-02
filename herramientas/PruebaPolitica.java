@@ -24,6 +24,9 @@ public final class PruebaPolitica {
 				falla("con la misma sal " + sal + " dos simulaciones dan resultados distintos");
 			}
 		}
+		for (int sal : new int[] {184467221, 99, 1999999999, -123456}) {
+			empujon(sal);
+		}
 		System.out.println("OK: política reproducible, reino protegido a salvo y mapa vivo sin caos");
 	}
 
@@ -110,6 +113,44 @@ public final class PruebaPolitica {
 			falla("sal " + sal + ": han desaparecido más de la mitad de los reinos (caos)");
 		}
 		return String.join("\n", registro) + p.cambios();
+	}
+
+	/**
+	 * Encargos de guerra: con Politica.CAMPAMENTOS_CONQUISTA campamentos arrasados en el ducado del frente, el reino
+	 * que los pidió lo toma en el siguiente turno, y la crónica dice quién ayudó.
+	 */
+	private static void empujon(int sal) {
+		Grafo g = grafo(sal);
+		Politica p = new Politica(sal);
+		for (int t = 1; t <= TURNOS; t++) {
+			p.turno(g, s -> {
+			});
+			if (t <= Politica.TURNOS_PROTECCION || p.guerras().isEmpty()) {
+				continue;
+			}
+			Politica.Par par = p.guerras().keySet().iterator().next();
+			long ducado = p.frente(g, par.a(), par.b());
+			if (ducado == Politica.NADIE) {
+				continue;
+			}
+			int n = 0;
+			for (int i = 0; i < Politica.CAMPAMENTOS_CONQUISTA; i++) {
+				n = p.empuja(g, ducado, par.a(), i == 1 ? "Pepe" : "hulio");
+			}
+			if (n != Politica.CAMPAMENTOS_CONQUISTA) {
+				falla("sal " + sal + ": los campamentos arrasados no se suman (" + n + ")");
+			}
+			List<Suceso> sucesos = new ArrayList<>();
+			p.turno(g, sucesos::add);
+			boolean ok = sucesos.stream().anyMatch(s -> (s.tipo() == Suceso.Tipo.conquista || s.tipo() == Suceso.Tipo.capital)
+					&& s.ducado() == ducado && s.reinoA() == par.a() && "hulio, Pepe".equals(s.ayuda()));
+			if (!ok || p.dueno(g.ducado(ducado)) != par.a()) {
+				falla("sal " + sal + ": con " + n + " campamentos arrasados el ducado no cae: " + sucesos);
+			}
+			System.out.println("sal " + sal + ": empujón OK en el turno " + (t + 1) + " (" + sucesos.size() + " sucesos)");
+			return;
+		}
+		falla("sal " + sal + ": no ha habido ninguna guerra con frente para probar los campamentos");
 	}
 
 	private static int cuenta(Politica p, Grafo g, long reino) {

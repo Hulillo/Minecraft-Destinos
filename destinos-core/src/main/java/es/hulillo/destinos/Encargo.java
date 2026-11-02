@@ -19,7 +19,9 @@ final class Encargo {
 		/** Acabar con un campamento de bandidos que aparece al acercarse. */
 		caza,
 		/** Limpiar una mazmorra despertada: aguantar las oleadas y matar al jefe. */
-		mazmorra
+		mazmorra,
+		/** Arrasar un campamento del enemigo en un ducado del frente (solo con el reino del tablón en guerra). */
+		guerra
 	}
 
 	final int id;
@@ -44,6 +46,8 @@ final class Encargo {
 	final List<UUID> bandidos = new ArrayList<>();
 	/** mazmorra: la clave de la mazmorra (chunk de inicio de su estructura). */
 	long mazmorra;
+	/** guerra: el reino enemigo dueño del campamento. */
+	long enemigo = Politica.NADIE;
 
 	Encargo(int id, Tipo tipo, long reino, long ducado, int x, int z, int estrellas, int premio, int rep, long vence, String origen) {
 		this.id = id;
@@ -57,6 +61,11 @@ final class Encargo {
 		this.rep = rep;
 		this.vence = vence;
 		this.origen = origen;
+	}
+
+	/** Lo que completa el título: la mazmorra o el reino enemigo. */
+	long objetivo() {
+		return tipo == Tipo.guerra ? enemigo : mazmorra;
 	}
 
 	boolean deReino() {
@@ -79,6 +88,7 @@ final class Encargo {
 		t.putBoolean("estructura", estructura);
 		t.putBoolean("campamento", campamento);
 		t.putLong("mazmorra", mazmorra);
+		t.putLong("enemigo", enemigo);
 		ListTag l = new ListTag();
 		for (UUID u : bandidos) {
 			l.add(StringTag.valueOf(u.toString()));
@@ -101,6 +111,7 @@ final class Encargo {
 		e.estructura = t.getBooleanOr("estructura", false);
 		e.campamento = t.getBooleanOr("campamento", false);
 		e.mazmorra = t.getLongOr("mazmorra", 0);
+		e.enemigo = t.getLongOr("enemigo", Politica.NADIE);
 		ListTag l = t.getListOrEmpty("bandidos");
 		for (int i = 0; i < l.size(); i++) {
 			try {

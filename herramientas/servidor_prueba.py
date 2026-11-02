@@ -36,6 +36,7 @@ COMANDOS = [
     # encargos: lo que ofrecería hoy un tablón en la zona ya calculada
     "destinoscore encargos 1234 -5678",
     "destinoscore tablones",
+    "execute positioned 196 100 667 run destinoscore encargos guerra",
     "destinoscore mazmorras",
     "destinoscore mazmorras prueba",
     # las capitales de los 9×9 reinos de alrededor: ninguna en el agua (con la altura de verdad); las ricas son
@@ -139,6 +140,12 @@ if cuentas and int(cuentas[-1][0]) > 0 and int(cuentas[-1][1]) == 0:
     sys.exit("se han visto campanas de capitales pero ninguna ha recibido su tablón")
 if "tablón de encargos junto a la campana" not in salida:
     print("AVISO: ninguna campana de pueblo o capital ha recibido su tablón")
+guerra = re.findall(r"Destinos Core: campamento de guerra de prueba · .*", salida)
+print("guerra:", guerra[-1] if guerra else "sin respuesta")
+if not guerra:
+    sys.exit("/destinoscore encargos guerra no ha contestado")
+if "capitán MAL" in guerra[-1] or re.search(r"· 0 soldados|· 0 de cuero", guerra[-1]):
+    sys.exit("el campamento de guerra de prueba no ha salido bien")
 maz = re.findall(r"mazmorras · (\d+) apuntadas", salida)
 print("mazmorras:", (re.findall(r"Destinos Core: mazmorras · .*", salida) or ["sin respuesta"])[-1])
 print("prueba:", (re.findall(r"Destinos Core: mazmorra de prueba · .*", salida) or ["sin respuesta"])[-1])

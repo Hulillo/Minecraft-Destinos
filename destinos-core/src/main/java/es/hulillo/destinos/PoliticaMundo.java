@@ -262,6 +262,44 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		return grafo;
 	}
 
+	/** Guerras abiertas en las que está el reino: el otro bando de cada una. */
+	List<Long> enemigos(long reino) {
+		List<Long> l = new ArrayList<>();
+		for (Politica.Par p : politica.guerras().keySet()) {
+			if (p.tiene(reino)) {
+				l.add(p.otro(reino));
+			}
+		}
+		return l;
+	}
+
+	/** Cuántas guerras abiertas hay y en cuántas se encuentra frente para los encargos de guerra (prueba de CI). */
+	int[] frentes() {
+		int n = 0;
+		int con = 0;
+		for (Politica.Par p : politica.guerras().keySet()) {
+			n++;
+			if (politica.frente(grafo, p.a(), p.b()) != Politica.NADIE) {
+				con++;
+			}
+		}
+		return new int[] {n, con};
+	}
+
+	/** El ducado del enemigo por el que ataca el reino (Politica.frente), o Politica.NADIE. */
+	long frente(long reino, long enemigo) {
+		return politica.frente(grafo, reino, enemigo);
+	}
+
+	/** Un jugador ha arrasado un campamento del enemigo en el ducado: cuántos lleva el reino ahí (0 si ya no hay guerra). */
+	int empuja(MinecraftServer server, long ducado, long reino, String quien) {
+		int n = politica.empuja(grafo, ducado, reino, quien);
+		if (n > 0) {
+			guarda(server);
+		}
+		return n;
+	}
+
 	/** Dueño de hoy de un ducado conocido: un reino, o Politica.SALVAJE (también si no se conoce). */
 	long duenoDe(long ducado) {
 		Grafo.Ducado d = grafo.ducado(ducado);
@@ -439,7 +477,7 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 			return Component.translatableWithFallback("destinos.politica.capital_perdida", "♛ Capital: %s, en manos del %s",
 					nombre, reino(server, dueno)).withStyle(ChatFormatting.RED);
 		}
-		return Component.translatableWithFallback("destinos.politica.capital", "♛ Capital: %s", nombre)
+		return Component.translatableWithFallback("destinos.politica.capital_info", "♛ Capital: %s", nombre)
 				.withStyle(ChatFormatting.GOLD);
 	}
 

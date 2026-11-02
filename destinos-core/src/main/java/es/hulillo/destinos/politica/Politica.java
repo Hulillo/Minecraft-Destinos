@@ -95,6 +95,22 @@ public final class Politica {
 	/** Uniones: dos reinos que van juntos en todo (siguen siendo también aliados). Un reino, como mucho en una. */
 	private final TreeSet<Par> uniones = new TreeSet<>();
 	private final Deque<Suceso> cronica = new ArrayDeque<>();
+	/** Campamentos enemigos arrasados por jugadores en cada ducado del frente (encargos de guerra). */
+	private final Map<Long, Empujon> empujones = new TreeMap<>();
+
+	/** Campamentos arrasados en un mismo ducado para que el reino lo tome seguro en el siguiente turno. */
+	public static final int CAMPAMENTOS_CONQUISTA = 3;
+	/** Turnos que dura un empujón sin rematar antes de olvidarse. */
+	private static final int TURNOS_EMPUJON = 12;
+	/** Fuerza de más en la guerra por cada campamento arrasado que aún no ha rematado nada. */
+	private static final double FUERZA_CAMPAMENTO = 0.15;
+
+	/**
+	 * Lo que han hecho los jugadores en un ducado del frente a favor de un reino: cuántos campamentos del enemigo han
+	 * arrasado, el turno del último y quiénes (para la crónica: "Con la ayuda de hulio…").
+	 */
+	public record Empujon(long reino, int campamentos, int turno, String ayuda) {
+	}
 
 	public Politica(int sal) {
 		this.sal = sal;
@@ -182,6 +198,61 @@ public final class Politica {
 
 	public TreeSet<Par> uniones() {
 		return uniones;
+	}
+
+	public Map<Long, Empujon> empujones() {
+		return empujones;
+	}
+
+	/**
+	 * El ducado del enemigo por el que se ataca: el más fácil de cruzar desde las tierras del reino (el mismo que
+	 * miran las batallas). Si ya hay un empujón del reino en un ducado del enemigo, ese, para que los campamentos se
+	 * sumen. NADIE si no se tocan.
+	 */
+	public long frente(Grafo grafo, long reino, long enemigo) {
+		Mapa mapa = new Mapa(grafo);
+		if (!mapa.vivo(reino) || !mapa.vivo(enemigo)) {
+			return NADIE;
+		}
+		for (Map.Entry<Long, Empujon> en : empujones.entrySet()) {
+			Grafo.Ducado d = grafo.ducado(en.getKey());
+			if (en.getValue().reino() == reino && d != null && dueno(d) == enemigo && toca(mapa, en.getKey(), reino)) {
+				return en.getKey();
+			}
+		}
+		Paso p = pasoMasFacil(mapa, enemigo, reino);
+		return p == null ? NADIE : p.desde();
+	}
+
+	/** Si el ducado tiene algún vecino del reino. */
+	private boolean toca(Mapa mapa, long ducado, long reino) {
+		for (long v : mapa.grafo.vecinos(ducado).keySet()) {
+			Grafo.Ducado d = mapa.grafo.ducado(v);
+			if (d != null && dueno(d) == reino) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Un jugador (quien) ha arrasado un campamento del dueño del ducado ayudando a reino. Devuelve cuántos lleva ese
+	 * reino ahí (con CAMPAMENTOS_CONQUISTA lo toma seguro en el siguiente turno), o 0 si ya no hay guerra entre ellos.
+	 */
+	public int empuja(Grafo grafo, long ducado, long reino, String quien) {
+		Grafo.Ducado d = grafo.ducado(ducado);
+		if (d == null || !guerras.containsKey(Par.de(reino, dueno(d)))) {
+			return 0;
+		}
+		Empujon e = empujones.get(ducado);
+		boolean sigue = e != null && e.reino() == reino;
+		String ayuda = quien;
+		if (sigue) {
+			ayuda = List.of(e.ayuda().split(", ")).contains(quien) ? e.ayuda() : e.ayuda() + ", " + quien;
+		}
+		int n = sigue ? e.campamentos() + 1 : 1;
+		empujones.put(ducado, new Empujon(reino, n, turno, ayuda));
+		return n;
 	}
 
 	/** La unión en la que está el reino, o null. */
@@ -465,7 +536,8 @@ public final class Politica {
 			if (reinos.get(p.a).estabilidad < 30 || reinos.get(p.b).estabilidad < 30) {
 				prob += 0.15;
 			}
-			if (rnd.nextDouble() < prob) {
+			// con un ducado a punto de caer por los campamentos arrasados no se firma la paz hasta tomarlo
+			if (rnd.nextDouble() < prob && decisivo(mapa, p) == null) {
 				guerras.remove(p);
 				// tras la paz, unos años de tregua antes de que la relación vuelva a agriarse
 				relaciones.put(p, 15);
@@ -501,8 +573,16 @@ public final class Politica {
 			if (!mapa.vivo(p.a) || !mapa.vivo(p.b)) {
 				continue;
 			}
-			int fa = fuerza(mapa, p.a, p.b);
-			int fb = fuerza(mapa, p.b, p.a);
+			// con CAMPAMENTOS_CONQUISTA campamentos arrasados por jugadores en un ducado del frente, ese cae seguro
+			// (sin tiradas: así el resto del turno sale igual que sin jugadores)
+			Long decisivo = decisivo(mapa, p);
+			if (decisivo != null) {
+				long gana = empujones.get(decisivo).reino();
+				toma(decisivo, gana, p.otro(gana), mapa, anota, ocupados);
+				continue;
+			}
+			int fa = (int) (fuerza(mapa, p.a, p.b) * (1 + FUERZA_CAMPAMENTO * campamentos(mapa, p.a, p.b)));
+			int fb = (int) (fuerza(mapa, p.b, p.a) * (1 + FUERZA_CAMPAMENTO * campamentos(mapa, p.b, p.a)));
 			// gana el turno uno de los dos, más probable el más fuerte; el otro puede perder un ducado
 			boolean ganaA = rnd.nextDouble() * (fa + fb) < fa;
 			long gana = ganaA ? p.a : p.b;
@@ -510,28 +590,70 @@ public final class Politica {
 			if (protegido(pierde)) {
 				continue;
 			}
-			// el ducado del que pierde más fácil de tomar desde el que gana
+			// el ducado del que pierde más fácil de tomar desde el que gana (o donde los jugadores han ido abriendo paso)
 			Paso paso = pasoMasFacil(mapa, pierde, gana);
 			if (paso == null) {
 				continue;
 			}
 			long objetivo = paso.desde();
 			double mejor = paso.dificultad();
+			for (Map.Entry<Long, Empujon> en : empujones.entrySet()) {
+				Grafo.Ducado d = mapa.grafo.ducado(en.getKey());
+				if (en.getValue().reino() == gana && d != null && dueno(d) == pierde) {
+					objetivo = en.getKey();
+					mejor = Math.min(mejor, 0.2);
+					break;
+				}
+			}
 			// cruzar ríos y cordilleras cuesta: la conquista falla más; una capital resiste más
 			Long deQuien = mapa.grafo.capitalDe(objetivo);
 			boolean capital = deQuien != null && deQuien == pierde;
 			if (rnd.nextDouble() < 0.3 * (1 - 0.6 * mejor) * (capital ? 0.6 : 1)) {
-				conquista(objetivo, gana, mapa, true);
-				reinos.get(pierde).estabilidad -= capital ? 25 : 6;
-				reinos.get(gana).estabilidad += capital ? 6 : 2;
-				ocupados.add(gana);
-				ocupados.add(pierde);
-				anota.accept(new Suceso(capital ? Suceso.Tipo.capital : Suceso.Tipo.conquista, anio(), gana, pierde, objetivo));
-				if (mapa.ducadosDe.get(pierde).isEmpty()) {
-					cae(pierde, mapa);
-					anota.accept(new Suceso(Suceso.Tipo.cae, anio(), pierde, gana, NADIE));
-				}
+				toma(objetivo, gana, pierde, mapa, anota, ocupados);
 			}
+		}
+	}
+
+	/** El ducado del frente de la guerra p con campamentos de sobra arrasados para caer este turno, o null. */
+	private Long decisivo(Mapa mapa, Par p) {
+		for (Map.Entry<Long, Empujon> en : empujones.entrySet()) {
+			Empujon e = en.getValue();
+			Grafo.Ducado d = mapa.grafo.ducado(en.getKey());
+			if (e.campamentos() >= CAMPAMENTOS_CONQUISTA && p.tiene(e.reino()) && d != null && dueno(d) == p.otro(e.reino())
+					&& !protegido(p.otro(e.reino()))) {
+				return en.getKey();
+			}
+		}
+		return null;
+	}
+
+	/** Campamentos arrasados a favor de reino en tierras de enemigo que aún no han rematado nada. */
+	private int campamentos(Mapa mapa, long reino, long enemigo) {
+		int n = 0;
+		for (Map.Entry<Long, Empujon> en : empujones.entrySet()) {
+			Grafo.Ducado d = mapa.grafo.ducado(en.getKey());
+			if (en.getValue().reino() == reino && d != null && dueno(d) == enemigo) {
+				n += en.getValue().campamentos();
+			}
+		}
+		return n;
+	}
+
+	/** El reino gana se queda el ducado objetivo de pierde en la guerra (y pierde puede caer). */
+	private void toma(long objetivo, long gana, long pierde, Mapa mapa, Consumer<Suceso> anota, TreeSet<Long> ocupados) {
+		Long deQuien = mapa.grafo.capitalDe(objetivo);
+		boolean capital = deQuien != null && deQuien == pierde;
+		Empujon e = empujones.remove(objetivo);
+		String ayuda = e != null && e.reino() == gana ? e.ayuda() : null;
+		conquista(objetivo, gana, mapa, true);
+		reinos.get(pierde).estabilidad -= capital ? 25 : 6;
+		reinos.get(gana).estabilidad += capital ? 6 : 2;
+		ocupados.add(gana);
+		ocupados.add(pierde);
+		anota.accept(new Suceso(capital ? Suceso.Tipo.capital : Suceso.Tipo.conquista, anio(), gana, pierde, objetivo, ayuda));
+		if (mapa.ducadosDe.get(pierde).isEmpty()) {
+			cae(pierde, mapa);
+			anota.accept(new Suceso(Suceso.Tipo.cae, anio(), pierde, gana, NADIE));
 		}
 	}
 
@@ -768,6 +890,12 @@ public final class Politica {
 	/** Quita guerras y alianzas de reinos que ya no tienen tierras. */
 	private void limpia(Mapa mapa) {
 		guerras.keySet().removeIf(p -> !mapa.vivo(p.a) || !mapa.vivo(p.b));
+		// los empujones se olvidan si son viejos, si el ducado ya no es del enemigo o si se acabó la guerra
+		empujones.entrySet().removeIf(en -> {
+			Empujon e = en.getValue();
+			Grafo.Ducado d = mapa.grafo.ducado(en.getKey());
+			return d == null || turno - e.turno() > TURNOS_EMPUJON || !guerras.containsKey(Par.de(e.reino(), dueno(d)));
+		});
 		alianzas.removeIf(p -> !mapa.vivo(p.a) || !mapa.vivo(p.b));
 		alianzaDesde.keySet().removeIf(p -> !alianzas.contains(p));
 		uniones.removeIf(p -> !alianzas.contains(p));

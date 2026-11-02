@@ -67,6 +67,10 @@ final class ComandosDestinos {
 					return 1;
 				}))
 				.then(Commands.literal("encargos")
+						.then(Commands.literal("guerra").executes(ctx -> {
+							EncargosMundo.pruebaGuerra(ctx.getSource());
+							return 1;
+						}))
 						.then(Commands.argument("x", IntegerArgumentType.integer())
 								.then(Commands.argument("z", IntegerArgumentType.integer())
 										.executes(ctx -> conPolitica(ctx.getSource(), false, (pol, m) -> EncargosMundo.prueba(ctx.getSource(),

@@ -647,6 +647,10 @@ POLITICA = {
     "capital": ("♛ Año %1$s · ¡El %2$s toma %4$s, la capital del %3$s!", "♛ Year %1$s · The %2$s seizes %4$s, capital of the %3$s!"),
     "union": ("❖ Año %1$s · El %2$s y el %3$s se unen: nace la %4$s.",
               "❖ Year %1$s · The %2$s and the %3$s unite: the %4$s is born."),
+    "conquista_ayuda": ("⚑ Año %1$s · Con la ayuda de %5$s, el %2$s toma %4$s al %3$s.",
+                        "⚑ Year %1$s · With the help of %5$s, the %2$s takes %4$s from the %3$s."),
+    "capital_ayuda": ("♛ Año %1$s · ¡Con la ayuda de %5$s, el %2$s toma %4$s, la capital del %3$s!",
+                      "♛ Year %1$s · With the help of %5$s, the %2$s seizes %4$s, capital of the %3$s!"),
     "fin_union": ("✧ Año %1$s · Se rompe la %4$s: el %2$s y el %3$s vuelven a ir cada uno por su lado.",
                   "✧ Year %1$s · The %4$s breaks apart: the %2$s and the %3$s go their separate ways again."),
 }
@@ -681,7 +685,7 @@ for i, (a, b) in enumerate([("Corona de %s y %s", "Crown of %s and %s"), ("Unió
     L(f"destinos.union.{i}", a, b)
 L("destinos.politica.poder", "Poder %s · unos %s habitantes · %s ducados · comida %s, mineral %s, madera %s",
   "Power %s · about %s inhabitants · %s duchies · food %s, ore %s, timber %s")
-L("destinos.politica.capital", "♛ Capital: %s", "♛ Capital: %s")
+L("destinos.politica.capital_info", "♛ Capital: %s", "♛ Capital: %s")
 L("destinos.politica.capital_perdida", "♛ Capital: %s, en manos del %s", "♛ Capital: %s, held by the %s")
 L("destinos.politica.capital_montana", "%s (en las montañas)", "%s (in the mountains)")
 L("destinos.politica.en_union", "❖ Forma parte de la %s", "❖ Part of the %s")
@@ -758,6 +762,21 @@ ENCARGOS.update({
     "estado.jefe": ("Solo queda el jefe.", "Only the boss is left."),
     "estado.oleada": ("Oleada %s de %s.", "Wave %s of %s."),
     "estado.entra": ("Entra en la mazmorra y aguanta las oleadas.", "Enter the dungeon and hold out against the waves."),
+})
+ENCARGOS.update({
+    "guerra": ("⚔ Arrasa el campamento del %s en %s", "⚔ Raze the %s camp in %s"),
+    "guerra.texto": ("Las tropas del %s han acampado en %s, en el frente. Arrasa el campamento: con %s campamentos arrasados en ese ducado, nuestro ejército lo tomará.",
+                     "Troops of the %s have camped in %s, on the front. Raze the camp: with %s camps razed in that duchy, our army will take it."),
+    "estado.soldados": ("Quedan %s soldados en el campamento.", "%s soldiers left in the camp."),
+    "estado.buscar_guerra": ("Ve a la zona marcada y busca el campamento enemigo.", "Go to the marked area and look for the enemy camp."),
+    "tambores": ("Se oyen tambores de guerra: el campamento enemigo está cerca.", "War drums echo: the enemy camp is close."),
+    "quedan_soldados": ("Quedan %s soldados", "%s soldiers left"),
+    "soldado": ("Soldado del %s", "Soldier of the %s"),
+    "capitan": ("Capitán del %s", "Captain of the %s"),
+    "rep_enemigo": ("El %s no lo olvidará · reputación: %s (-%s)", "The %s won't forget it · reputation: %s (-%s)"),
+    "frente": ("⚔ Campamentos arrasados en %s: %s de %s", "⚔ Camps razed in %s: %s of %s"),
+    "frente_roto": ("⚔ ¡El frente se rompe! En el próximo turno el %s tomará %s.", "⚔ The front breaks! Next turn the %s will take %s."),
+    "sin_guerra": ("La guerra ya ha acabado: el campamento no cambia nada en el frente.", "The war is already over: the camp changes nothing on the front."),
 })
 MAZMORRAS = {
     "illager": ("el bastión de %s", "the stronghold of %s"),
