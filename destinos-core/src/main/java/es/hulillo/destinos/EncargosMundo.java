@@ -332,7 +332,7 @@ final class EncargosMundo {
 				int r = 250 + rnd.nextInt(300);
 				c = enTierra(s.mapa(), ducado, pos.getX() + (int) (Math.cos(a) * r), pos.getZ() + (int) (Math.sin(a) * r));
 			} else {
-				c = puntoDe(s, ducado, rnd);
+				c = puntoDe(s, pos, ducado, rnd);
 			}
 			long mazmorra = 0;
 			int fija = 0;
@@ -395,7 +395,7 @@ final class EncargosMundo {
 		if (ducado == Politica.NADIE) {
 			return null;
 		}
-		int[] c = puntoDe(s, ducado, rnd);
+		int[] c = puntoDe(s, pos, ducado, rnd);
 		double dx = c[0] - pos.getX();
 		double dz = c[1] - pos.getZ();
 		int distancia = (int) Math.sqrt(dx * dx + dz * dz);
@@ -407,21 +407,45 @@ final class EncargosMundo {
 	}
 
 	/**
-	 * Un sitio de tierra del ducado para un encargo de otro tablón: no el corazón pelado (si no, todos los tablones de
-	 * alrededor mandaban al mismo sitio), sino uno al azar de ese tablón y día, entre 100 y 450 bloques del centro.
+	 * Un sitio de tierra del ducado para un encargo de otro tablón, mirado desde el pueblo: se va en línea desde el
+	 * tablón hacia el ducado y, donde se entra en él, se adentra de 80 a 330 bloques con un desvío lateral de hasta
+	 * 250 al azar de ese tablón y día. Así cada pueblo manda a la parte del ducado que le queda de camino y dos
+	 * pueblos no coinciden. Si esa zona aún no está calculada, un punto al azar alrededor del centro.
 	 */
-	private static int[] puntoDe(Sitio s, long ducado, SplittableRandom rnd) {
+	private static int[] puntoDe(Sitio s, BlockPos pos, long ducado, SplittableRandom rnd) {
 		int[] centro = Geo.centroDucado(Grafo.x(ducado), Grafo.z(ducado), s.pol().sal());
-		double a = rnd.nextDouble() * Math.PI * 2;
-		int r = 100 + rnd.nextInt(350);
-		int x = centro[0] + (int) (Math.cos(a) * r);
-		int z = centro[1] + (int) (Math.sin(a) * r);
-		MapaTerreno.Resultado res = s.mapa().consultaSiLista(x, z);
-		if (res != null && !res.oceano() && Grafo.id(res.dcx(), res.dcz()) == ducado) {
-			return new int[] {x, z};
+		int adentro = 80 + rnd.nextInt(250);
+		int lado = rnd.nextInt(501) - 250;
+		double dx = centro[0] - pos.getX();
+		double dz = centro[1] - pos.getZ();
+		double largo = Math.max(1, Math.sqrt(dx * dx + dz * dz));
+		double ux = dx / largo;
+		double uz = dz / largo;
+		// la entrada en el ducado yendo del pueblo a su centro
+		double entrada = -1;
+		for (double t = 0; t <= largo; t += 48) {
+			MapaTerreno.Resultado res = s.mapa().consultaSiLista(pos.getX() + (int) (ux * t), pos.getZ() + (int) (uz * t));
+			if (res == null) {
+				break;
+			}
+			if (Grafo.id(res.dcx(), res.dcz()) == ducado) {
+				entrada = t;
+				break;
+			}
 		}
-		// fuera del ducado o en el agua: hacia el centro
-		return enTierra(s.mapa(), ducado, (x + centro[0]) / 2, (z + centro[1]) / 2);
+		if (entrada >= 0) {
+			double t = Math.min(largo + 200, entrada + adentro);
+			int x = pos.getX() + (int) (ux * t - uz * lado);
+			int z = pos.getZ() + (int) (uz * t + ux * lado);
+			MapaTerreno.Resultado res = s.mapa().consultaSiLista(x, z);
+			if (res != null && !res.oceano() && Grafo.id(res.dcx(), res.dcz()) == ducado) {
+				return new int[] {x, z};
+			}
+			// el desvío se ha salido del ducado o ha caído en el agua: sin desvío
+			return enTierra(s.mapa(), ducado, pos.getX() + (int) (ux * t), pos.getZ() + (int) (uz * t));
+		}
+		double a = rnd.nextDouble() * Math.PI * 2;
+		return enTierra(s.mapa(), ducado, centro[0] + (int) (Math.cos(a) * adentro), centro[1] + (int) (Math.sin(a) * adentro));
 	}
 
 	private static boolean yaOfrecida(List<Oferta> ya, long mazmorra) {
