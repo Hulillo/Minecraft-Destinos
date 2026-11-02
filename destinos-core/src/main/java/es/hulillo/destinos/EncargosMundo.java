@@ -80,6 +80,9 @@ final class EncargosMundo {
 	}
 
 	private final Map<UUID, Jugador> jugadores = new HashMap<>();
+	/** Mazmorra elegida para cada oferta de hoy (tablón, día y hueco), para que no cambie al cargar más mundo. */
+	private final Map<String, Long> fijadas = new HashMap<>();
+	private long diaFijadas = Long.MIN_VALUE;
 	/** Campanas que ya tienen su tablón (o que no lo llevan): no se vuelven a mirar. */
 	final Set<Long> campanas = new HashSet<>();
 	private int siguienteId = 1;
@@ -171,6 +174,14 @@ final class EncargosMundo {
 		t.put("jugadores", js);
 		server.getCommandStorage().set(STORAGE, t);
 		sucio = false;
+	}
+
+	/** Las fijadas solo valen para hoy: al cambiar de día se tiran. */
+	private void diaFijadas(long dia) {
+		if (dia != diaFijadas) {
+			fijadas.clear();
+			diaFijadas = dia;
+		}
 	}
 
 	void ensucia() {
@@ -328,7 +339,17 @@ final class EncargosMundo {
 			int fija = 0;
 			if (tipo == Encargo.Tipo.mazmorra) {
 				// una mazmorra ya apuntada cerca del sitio elegido; si no hay ninguna, se queda en exploración
-				Mazmorra m = MazmorrasMundo.de(server).cercana(c[0], c[1], RADIO_MAZMORRA, maxEstrellas);
+				// la elegida se fija para ese tablón, día y hueco: si no, al cargar chunks nuevos podía salir otra más
+				// cerca entre que lo ves y lo coges (cogías un bastión y te daban una mina)
+				MazmorrasMundo mm = MazmorrasMundo.de(server);
+				EncargosMundo em = de(server);
+				String clave = origen(pos, dia, i);
+				em.diaFijadas(dia);
+				Long elegida = em.fijadas.get(clave);
+				Mazmorra m = elegida != null ? mm.get(elegida) : mm.cercana(c[0], c[1], RADIO_MAZMORRA, maxEstrellas);
+				if (elegida == null && m != null) {
+					em.fijadas.put(clave, m.clave);
+				}
 				if (m == null || yaOfrecida(res, m.clave)) {
 					tipo = Encargo.Tipo.exploracion;
 				} else {

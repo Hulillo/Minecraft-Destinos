@@ -12,7 +12,7 @@ import net.minecraft.client.gui.GuiGraphics;
 public final class BarraMazmorra {
 	private static final int ANCHO = 182;
 	/** Altura de la barra: unas líneas por debajo del borde de arriba. */
-	private static final int Y = 36;
+	private static final int Y = 40;
 	private static PaqueteMazmorra actual;
 	private static long ultima;
 	/** Lo que se ve de la barra, que va detrás del valor de verdad para que baje suave. */

@@ -770,6 +770,18 @@ final class MazmorrasMundo {
 			new Rareza(Items.SADDLE, 1, 1, 4, 1),
 			new Rareza(Items.BOOK, 1, 1, 9, 1),
 			new Rareza(Items.DIAMOND_HORSE_ARMOR, 1, 1, 3, 2),
+			new Rareza(Items.IRON_SWORD, 1, 1, 7, 1),
+			new Rareza(Items.IRON_AXE, 1, 1, 5, 1),
+			new Rareza(Items.BOW, 1, 1, 6, 1),
+			new Rareza(Items.CROSSBOW, 1, 1, 4, 2),
+			new Rareza(Items.IRON_CHESTPLATE, 1, 1, 4, 2),
+			new Rareza(Items.IRON_HELMET, 1, 1, 4, 1),
+			new Rareza(Items.SHIELD, 1, 1, 4, 1),
+			new Rareza(Items.DIAMOND_SWORD, 1, 1, 4, 3),
+			new Rareza(Items.DIAMOND_PICKAXE, 1, 1, 3, 3),
+			new Rareza(Items.DIAMOND_CHESTPLATE, 1, 1, 2, 4),
+			new Rareza(Items.DIAMOND_HELMET, 1, 1, 2, 4),
+			new Rareza(Items.TRIDENT, 1, 1, 1, 4),
 			new Rareza(Items.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE, 1, 1, 6, 2),
 			new Rareza(Items.MUSIC_DISC_OTHERSIDE, 1, 1, 3, 3),
 			new Rareza(Items.MUSIC_DISC_PIGSTEP, 1, 1, 2, 3),
@@ -817,7 +829,8 @@ final class MazmorrasMundo {
 			net.minecraft.world.item.Item item = elegida.item() == Items.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE
 					? ADORNOS.get(r.nextInt(ADORNOS.size())) : elegida.item();
 			ItemStack s = new ItemStack(item, elegida.min() + r.nextInt(elegida.max() - elegida.min() + 1));
-			if (item == Items.BOOK) {
+			if (item == Items.BOOK || s.isDamageableItem()) {
+				// el libro y las armas y armaduras salen encantadas, más cuantas más estrellas
 				s = EnchantmentHelper.enchantItem(r, s, 10 + 6 * m.estrellas, level.registryAccess(), Optional.empty());
 			}
 			l.add(s);
