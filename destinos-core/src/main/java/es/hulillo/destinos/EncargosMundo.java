@@ -332,8 +332,7 @@ final class EncargosMundo {
 				int r = 250 + rnd.nextInt(300);
 				c = enTierra(s.mapa(), ducado, pos.getX() + (int) (Math.cos(a) * r), pos.getZ() + (int) (Math.sin(a) * r));
 			} else {
-				int[] centro = Geo.centroDucado(Grafo.x(ducado), Grafo.z(ducado), sal);
-				c = enTierra(s.mapa(), ducado, centro[0], centro[1]);
+				c = puntoDe(s, ducado, rnd);
 			}
 			long mazmorra = 0;
 			int fija = 0;
@@ -396,8 +395,7 @@ final class EncargosMundo {
 		if (ducado == Politica.NADIE) {
 			return null;
 		}
-		int[] centro = Geo.centroDucado(Grafo.x(ducado), Grafo.z(ducado), s.pol().sal());
-		int[] c = enTierra(s.mapa(), ducado, centro[0], centro[1]);
+		int[] c = puntoDe(s, ducado, rnd);
 		double dx = c[0] - pos.getX();
 		double dz = c[1] - pos.getZ();
 		int distancia = (int) Math.sqrt(dx * dx + dz * dz);
@@ -406,6 +404,24 @@ final class EncargosMundo {
 		int rep = 3 + estrellas;
 		int dias = 3 + distancia / 700;
 		return new Oferta(Encargo.Tipo.guerra, ducado, c[0], c[1], estrellas, premio, rep, dias, 1, enemigo);
+	}
+
+	/**
+	 * Un sitio de tierra del ducado para un encargo de otro tablón: no el corazón pelado (si no, todos los tablones de
+	 * alrededor mandaban al mismo sitio), sino uno al azar de ese tablón y día, entre 100 y 450 bloques del centro.
+	 */
+	private static int[] puntoDe(Sitio s, long ducado, SplittableRandom rnd) {
+		int[] centro = Geo.centroDucado(Grafo.x(ducado), Grafo.z(ducado), s.pol().sal());
+		double a = rnd.nextDouble() * Math.PI * 2;
+		int r = 100 + rnd.nextInt(350);
+		int x = centro[0] + (int) (Math.cos(a) * r);
+		int z = centro[1] + (int) (Math.sin(a) * r);
+		MapaTerreno.Resultado res = s.mapa().consultaSiLista(x, z);
+		if (res != null && !res.oceano() && Grafo.id(res.dcx(), res.dcz()) == ducado) {
+			return new int[] {x, z};
+		}
+		// fuera del ducado o en el agua: hacia el centro
+		return enTierra(s.mapa(), ducado, (x + centro[0]) / 2, (z + centro[1]) / 2);
 	}
 
 	private static boolean yaOfrecida(List<Oferta> ya, long mazmorra) {
