@@ -88,12 +88,14 @@ public final class DestinosCore implements ModInitializer {
 		// datapack cargue); si no, ahí no salen capitales
 		ServerWorldEvents.LOAD.register(DestinosCore::salTemprana);
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+			Vigia.arranca(server);
 			MapaTerreno m = mapa;
 			if (m != null) {
 				guardaSal(server, m.sal());
 			}
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+			Vigia.para();
 			TiemposPiezas.escribe();
 			if (politica != null) {
 				politica.guarda(server);
