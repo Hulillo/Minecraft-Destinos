@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -23,13 +24,11 @@ import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.StructureTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.BossEvent;
 import net.minecraft.world.Container;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.RandomizableContainer;
@@ -43,6 +42,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
@@ -89,7 +89,8 @@ final class MazmorrasMundo {
 	private final Set<Long> despiertas = new HashSet<>();
 	private final Map<Structure, Optional<Mazmorra.Tema>> temas = new HashMap<>();
 	// lo de abajo no se guarda: es de la pelea en curso
-	private final Map<Long, ServerBossEvent> barras = new HashMap<>();
+	/** Quién ve la barra de cada mazmorra. */
+	private final Map<Long, Set<UUID>> barras = new HashMap<>();
 	private final Map<Long, Integer> ausente = new HashMap<>();
 	private final Map<Long, Integer> espera = new HashMap<>();
 	private final Map<Long, BlockPos> ultimaMuerte = new HashMap<>();
@@ -114,9 +115,6 @@ final class MazmorrasMundo {
 	}
 
 	static void olvida() {
-		if (actual != null) {
-			actual.barras.values().forEach(ServerBossEvent::removeAllPlayers);
-		}
 		actual = null;
 	}
 
@@ -307,6 +305,14 @@ final class MazmorrasMundo {
 		return new long[] {ducado, r.salvaje() || r.oceano() ? Politica.NADIE : Grafo.id(r.kx(), r.kz())};
 	}
 
+	/** El ducado de la mazmorra ("Leonledo"), o "tierras sin nombre". */
+	static Component donde(MinecraftServer server, Mazmorra m) {
+		long[] d = dueno(server, m.x(), m.z());
+		PoliticaMundo pol = DestinosCore.politica();
+		return d == null || pol == null ? Component.translatableWithFallback("destinos.mazmorra.sin_nombre", "tierras sin nombre")
+				: pol.nombreDucado(server, d[0]);
+	}
+
 	/** "la cripta de Leonledo". */
 	static Component nombre(MinecraftServer server, Mazmorra m) {
 		long[] d = dueno(server, m.x(), m.z());
@@ -365,19 +371,19 @@ final class MazmorrasMundo {
 			m.salieron = 0;
 			m.vivos.clear();
 			sucio = true;
-			Component nombre = nombre(server, m);
 			for (ServerPlayer p : dentro) {
-				p.connection.send(new ClientboundSetTitleTextPacket(Component.literal("☠ ").append(nombre).withStyle(ChatFormatting.DARK_RED)));
+				// título corto (el nombre largo con el ducado se salía de la pantalla) y el sitio en el subtítulo
+				p.connection.send(new ClientboundSetTitleTextPacket(Component.literal("☠ ").append(corto(m)).withStyle(ChatFormatting.DARK_RED)));
 				p.connection.send(new ClientboundSetSubtitleTextPacket(Component.translatableWithFallback("destinos.mazmorra.despierta",
-						"Algo se mueve en la oscuridad…").withStyle(ChatFormatting.GRAY)));
+						"%s · algo se mueve en la oscuridad…", donde(server, m)).withStyle(ChatFormatting.GRAY)));
 			}
 			EncargosMundo.sonido(server, dentro.get(0), "minecraft:event.raid.horn", 0.8f, 0.7f);
 		}
-		ServerBossEvent barra = barras.computeIfAbsent(m.clave, c -> new ServerBossEvent(Component.empty(),
-				BossEvent.BossBarColor.RED, BossEvent.BossBarOverlay.PROGRESS));
-		for (ServerPlayer p : new ArrayList<>(barra.getPlayers())) {
-			if (!cerca.contains(p)) {
-				barra.removePlayer(p);
+		Set<UUID> conBarra = barras.computeIfAbsent(m.clave, c -> new HashSet<>());
+		for (UUID u : new ArrayList<>(conBarra)) {
+			if (cerca.stream().noneMatch(p -> p.getUUID().equals(u))) {
+				conBarra.remove(u);
+				ocultaBarra(server, u);
 			}
 		}
 		if (cerca.isEmpty()) {
@@ -396,7 +402,7 @@ final class MazmorrasMundo {
 			return;
 		}
 		ausente.remove(m.clave);
-		cerca.forEach(barra::addPlayer);
+		cerca.forEach(p -> conBarra.add(p.getUUID()));
 		if (m.salieron == 0) {
 			int e = espera.getOrDefault(m.clave, 0);
 			if (e > 0) {
@@ -415,7 +421,8 @@ final class MazmorrasMundo {
 		if (m.oleada == JEFE) {
 			poderes(level, m, cerca);
 		}
-		pintaBarra(server, level, m, barra);
+		PaqueteMazmorra barra = barra(server, level, m);
+		cerca.stream().filter(p -> ServerPlayNetworking.canSend(p, PaqueteMazmorra.TIPO)).forEach(p -> ServerPlayNetworking.send(p, barra));
 		if (!m.vivos.isEmpty() || m.salieron == 0) {
 			return;
 		}
@@ -435,18 +442,26 @@ final class MazmorrasMundo {
 		limpia(server, level, m, cerca);
 	}
 
-	private void pintaBarra(MinecraftServer server, ServerLevel level, Mazmorra m, ServerBossEvent barra) {
-		Component nombre = nombre(server, m);
+	private static PaqueteMazmorra barra(MinecraftServer server, ServerLevel level, Mazmorra m) {
 		if (m.oleada == JEFE) {
 			Entity jefe = m.vivos.isEmpty() ? null : level.getEntity(m.vivos.get(0));
-			barra.setName(jefe != null ? jefe.getDisplayName() : nombre);
-			barra.setColor(BossEvent.BossBarColor.PURPLE);
-			barra.setProgress(jefe instanceof LivingEntity l ? Math.max(0, l.getHealth() / l.getMaxHealth()) : 0);
-			return;
+			return new PaqueteMazmorra(true, jefe != null ? jefe.getDisplayName() : corto(m),
+					jefe instanceof LivingEntity l ? Math.max(0, l.getHealth() / l.getMaxHealth()) : 0, true);
 		}
-		barra.setName(Component.translatableWithFallback("destinos.mazmorra.barra", "%s · oleada %s/%s", nombre, m.oleada, OLEADAS));
-		barra.setColor(BossEvent.BossBarColor.RED);
-		barra.setProgress(m.salieron == 0 ? 1 : (float) m.vivos.size() / m.salieron);
+		return new PaqueteMazmorra(true, Component.translatableWithFallback("destinos.mazmorra.barra", "%s · oleada %s/%s", corto(m), m.oleada,
+				OLEADAS), m.salieron == 0 ? 1 : (float) m.vivos.size() / m.salieron, false);
+	}
+
+	/** "La mina maldita": el nombre sin el ducado, para títulos y barras (que no se salgan de la pantalla). */
+	static Component corto(Mazmorra m) {
+		return Component.translatableWithFallback("destinos.mazmorra.corto." + m.tema.name(), "La mazmorra");
+	}
+
+	private static void ocultaBarra(MinecraftServer server, UUID u) {
+		ServerPlayer p = server.getPlayerList().getPlayer(u);
+		if (p != null && ServerPlayNetworking.canSend(p, PaqueteMazmorra.TIPO)) {
+			ServerPlayNetworking.send(p, PaqueteMazmorra.NADA);
+		}
 	}
 
 	private void duerme(MinecraftServer server, Mazmorra m) {
@@ -455,17 +470,17 @@ final class MazmorrasMundo {
 		m.nocturna = false;
 		m.oleada = 0;
 		despiertas.remove(m.clave);
-		quitaBarra(m);
+		quitaBarra(server, m);
 		sucio = true;
 		if (avisa) {
 			avisaCerca(server, m);
 		}
 	}
 
-	private void quitaBarra(Mazmorra m) {
-		ServerBossEvent b = barras.remove(m.clave);
+	private void quitaBarra(MinecraftServer server, Mazmorra m) {
+		Set<UUID> b = barras.remove(m.clave);
 		if (b != null) {
-			b.removeAllPlayers();
+			b.forEach(u -> ocultaBarra(server, u));
 		}
 		ausente.remove(m.clave);
 		espera.remove(m.clave);
@@ -681,7 +696,7 @@ final class MazmorrasMundo {
 		m.nocturna = false;
 		despiertas.remove(m.clave);
 		quitaVivos(level, m);
-		quitaBarra(m);
+		quitaBarra(server, m);
 		sucio = true;
 		BlockPos donde = ultimaMuerte.remove(m.clave);
 		cofre(level, m, donde != null ? donde : cerca.get(0).blockPosition());
@@ -690,7 +705,7 @@ final class MazmorrasMundo {
 			p.connection.send(new ClientboundSetTitleTextPacket(Component.translatableWithFallback("destinos.mazmorra.limpia",
 					"¡Mazmorra limpia!").withStyle(ChatFormatting.GOLD)));
 			p.connection.send(new ClientboundSetSubtitleTextPacket(Component.translatableWithFallback("destinos.mazmorra.cofre",
-					"Ha aparecido un cofre con el botín de %s", nombre)));
+					"Ha aparecido un cofre con el botín")));
 		}
 		EncargosMundo.sonido(server, cerca.get(0), "minecraft:ui.toast.challenge_complete", 0.7f, 0.9f);
 		DestinosCore.LOG.info("Destinos Core: mazmorra limpia en {}, {} ({}, {}★)", m.x(), m.z(), m.estructura, m.estrellas);
@@ -720,17 +735,94 @@ final class MazmorrasMundo {
 		RandomizableContainer.setBlockEntityLootTable(level, level.getRandom(), sitio, m.tema.botin);
 		BlockEntity be = level.getBlockEntity(sitio);
 		if (be instanceof Container c) {
-			int slot = 0;
-			for (ItemStack s : Monedas.pilas(5 + 3 * m.estrellas * m.estrellas)) {
-				// setItem saca antes el botín de la tabla; las monedas van en los huecos que queden
-				while (slot < c.getContainerSize() && !c.getItem(slot).isEmpty()) {
-					slot++;
+			// primero el botín de la tabla, para que las monedas y las rarezas vayan a los huecos que deja
+			if (be instanceof RandomizableContainer rc) {
+				rc.unpackLootTable(null);
+			}
+			List<ItemStack> extra = new ArrayList<>(Monedas.pilas(5 + 3 * m.estrellas * m.estrellas));
+			extra.addAll(rarezas(level, m));
+			RandomSource r = level.getRandom();
+			for (ItemStack s : extra) {
+				List<Integer> huecos = new ArrayList<>();
+				for (int i = 0; i < c.getContainerSize(); i++) {
+					if (c.getItem(i).isEmpty()) {
+						huecos.add(i);
+					}
 				}
-				if (slot < c.getContainerSize()) {
-					c.setItem(slot, s);
+				if (huecos.isEmpty()) {
+					break;
 				}
+				c.setItem(huecos.get(r.nextInt(huecos.size())), s);
 			}
 		}
+	}
+
+	/** Una rareza: qué objeto, cuántos (de min a max), cuánto sale (peso) y desde cuántas estrellas. */
+	private record Rareza(net.minecraft.world.item.Item item, int min, int max, int peso, int estrellas) {
+	}
+
+	private static final List<Rareza> RAREZAS = List.of(
+			new Rareza(Items.DIAMOND, 1, 3, 10, 1),
+			new Rareza(Items.EMERALD, 2, 6, 10, 1),
+			new Rareza(Items.GOLDEN_APPLE, 1, 2, 8, 1),
+			new Rareza(Items.EXPERIENCE_BOTTLE, 4, 10, 8, 1),
+			new Rareza(Items.NAME_TAG, 1, 1, 5, 1),
+			new Rareza(Items.SADDLE, 1, 1, 4, 1),
+			new Rareza(Items.BOOK, 1, 1, 9, 1),
+			new Rareza(Items.DIAMOND_HORSE_ARMOR, 1, 1, 3, 2),
+			new Rareza(Items.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE, 1, 1, 6, 2),
+			new Rareza(Items.MUSIC_DISC_OTHERSIDE, 1, 1, 3, 3),
+			new Rareza(Items.MUSIC_DISC_PIGSTEP, 1, 1, 2, 3),
+			new Rareza(Items.TOTEM_OF_UNDYING, 1, 1, 2, 4),
+			new Rareza(Items.ENCHANTED_GOLDEN_APPLE, 1, 1, 1, 4),
+			new Rareza(Items.NETHERITE_SCRAP, 1, 2, 2, 5),
+			new Rareza(Items.NETHERITE_UPGRADE_SMITHING_TEMPLATE, 1, 1, 1, 5));
+
+	/** Plantillas de adorno de armadura: una al azar cuando sale la de adorno. */
+	private static final List<net.minecraft.world.item.Item> ADORNOS = List.of(Items.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE,
+			Items.VEX_ARMOR_TRIM_SMITHING_TEMPLATE, Items.WILD_ARMOR_TRIM_SMITHING_TEMPLATE, Items.COAST_ARMOR_TRIM_SMITHING_TEMPLATE,
+			Items.DUNE_ARMOR_TRIM_SMITHING_TEMPLATE, Items.WARD_ARMOR_TRIM_SMITHING_TEMPLATE, Items.EYE_ARMOR_TRIM_SMITHING_TEMPLATE,
+			Items.SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE, Items.RIB_ARMOR_TRIM_SMITHING_TEMPLATE, Items.SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE,
+			Items.TIDE_ARMOR_TRIM_SMITHING_TEMPLATE, Items.WAYFINDER_ARMOR_TRIM_SMITHING_TEMPLATE, Items.SHAPER_ARMOR_TRIM_SMITHING_TEMPLATE,
+			Items.RAISER_ARMOR_TRIM_SMITHING_TEMPLATE, Items.HOST_ARMOR_TRIM_SMITHING_TEMPLATE, Items.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE);
+
+	/**
+	 * Las rarezas del cofre: 2 a 4 según las estrellas, sacadas por peso entre las que tocan a esas estrellas. El
+	 * libro sale encantado (más fuerte cuantas más estrellas) y las mazmorras de ahogados pueden dar un corazón del mar.
+	 */
+	private static List<ItemStack> rarezas(ServerLevel level, Mazmorra m) {
+		RandomSource r = level.getRandom();
+		List<Rareza> posibles = new ArrayList<>();
+		for (Rareza x : RAREZAS) {
+			if (m.estrellas >= x.estrellas()) {
+				posibles.add(x);
+			}
+		}
+		if (m.tema == Mazmorra.Tema.ahogados) {
+			posibles.add(new Rareza(Items.HEART_OF_THE_SEA, 1, 1, 4, 1));
+		}
+		int total = posibles.stream().mapToInt(Rareza::peso).sum();
+		List<ItemStack> l = new ArrayList<>();
+		int n = 2 + m.estrellas / 2;
+		for (int i = 0; i < n; i++) {
+			int t = r.nextInt(total);
+			Rareza elegida = posibles.get(0);
+			for (Rareza x : posibles) {
+				t -= x.peso();
+				if (t < 0) {
+					elegida = x;
+					break;
+				}
+			}
+			net.minecraft.world.item.Item item = elegida.item() == Items.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE
+					? ADORNOS.get(r.nextInt(ADORNOS.size())) : elegida.item();
+			ItemStack s = new ItemStack(item, elegida.min() + r.nextInt(elegida.max() - elegida.min() + 1));
+			if (item == Items.BOOK) {
+				s = EnchantmentHelper.enchantItem(r, s, 10 + 6 * m.estrellas, level.registryAccess(), Optional.empty());
+			}
+			l.add(s);
+		}
+		return l;
 	}
 
 	// ------------------------------------------------------------------ de noche

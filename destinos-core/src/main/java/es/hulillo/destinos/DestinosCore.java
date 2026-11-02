@@ -72,6 +72,7 @@ public final class DestinosCore implements ModInitializer {
 		PayloadTypeRegistry.playS2C().register(PaquetePolitica.TIPO, PaquetePolitica.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaqueteTablon.TIPO, PaqueteTablon.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaqueteEncargos.TIPO, PaqueteEncargos.CODEC);
+		PayloadTypeRegistry.playS2C().register(PaqueteMazmorra.TIPO, PaqueteMazmorra.CODEC);
 		PayloadTypeRegistry.playC2S().register(PaqueteAccionEncargo.TIPO, PaqueteAccionEncargo.CODEC);
 		// Fabric ya entrega los paquetes en el hilo del servidor
 		ServerPlayNetworking.registerGlobalReceiver(PaqueteAccionEncargo.TIPO, (paquete, contexto) ->
