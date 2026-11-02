@@ -4,9 +4,11 @@ import dev.diorama.Projection;
 import dev.diorama.bake.TileKey;
 import dev.diorama.render.MapViewport;
 import es.hulillo.destinos.MapaTerreno;
+import es.hulillo.destinos.PaqueteEncargos;
 import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTerritorio;
 import es.hulillo.destinos.cliente.Colores;
+import es.hulillo.destinos.cliente.HudEncargos;
 import es.hulillo.destinos.cliente.TerritoriosCliente;
 import java.lang.reflect.Method;
 import net.minecraft.client.Minecraft;
@@ -161,6 +163,21 @@ public final class CapaDiorama {
 				corona(lienzo, sx, sy, Math.max(2, Math.min(4, Math.round(px / 20))), c.perdida() ? Colores.GRIS : Colores.ORO);
 			}
 		}
+		// los encargos en curso y las mazmorras despertadas, encima de todo
+		int s = Math.max(2, Math.min(3, Math.round(px / 24)));
+		for (PaqueteEncargos.Activo a : HudEncargos.activos()) {
+			int alto = TerritoriosCliente.altura(Math.floorDiv(a.x(), C), Math.floorDiv(a.z(), C));
+			int sx = Math.round(vista.screenX(a.x()));
+			int sy = Math.round(vista.screenY(Projection.v(alto == TerritoriosCliente.SIN_ALTURA ? 64 : alto, a.z())));
+			if (sx < vista.x() || sx >= vista.x() + vista.width() || sy < vista.y() || sy >= vista.y() + vista.height()) {
+				continue;
+			}
+			if (a.icono() == PaqueteEncargos.ROMBO) {
+				icono(lienzo, sx, sy, s, Colores.ORO, ROMBO);
+			} else {
+				icono(lienzo, sx, sy, s, a.icono() == PaqueteEncargos.CALAVERA ? Colores.ORO : 0xF0F0F0, CALAVERA);
+			}
+		}
 		resumen[0] = pintadas;
 		resumen[1] = mar;
 		resumen[2] = sinDatos;
@@ -232,13 +249,22 @@ public final class CapaDiorama {
 	/** Corona de una capital, en píxeles de s×s centrada en (cx, cy), con contorno negro. */
 	private static final String[] CORONA = {"x.x.x", "xxxxx", "xxxxx"};
 	private static void corona(Lienzo lienzo, int cx, int cy, int s, int color) {
-		int x0 = cx - 5 * s / 2;
-		int y0 = cy - 3 * s / 2;
+		icono(lienzo, cx, cy, s, color, CORONA);
+	}
+
+	/** Rombo de un encargo y calavera de una mazmorra despertada. */
+	private static final String[] ROMBO = {"..x..", ".xxx.", "xxxxx", ".xxx.", "..x.."};
+	private static final String[] CALAVERA = {".xxx.", "xxxxx", "x.x.x", "xxxxx", ".x.x."};
+
+	/** Un icono hecho de cuadritos de s×s (las x de la forma), centrado en (cx, cy) y con contorno negro. */
+	private static void icono(Lienzo lienzo, int cx, int cy, int s, int color, String[] forma) {
+		int x0 = cx - forma[0].length() * s / 2;
+		int y0 = cy - forma.length * s / 2;
 		for (int borde = 1; borde >= 0; borde--) {
 			int c = borde == 1 ? 0xff000000 : 0xff << 24 | color;
-			for (int j = 0; j < CORONA.length; j++) {
-				for (int i = 0; i < CORONA[j].length(); i++) {
-					if (CORONA[j].charAt(i) == 'x') {
+			for (int j = 0; j < forma.length; j++) {
+				for (int i = 0; i < forma[j].length(); i++) {
+					if (forma[j].charAt(i) == 'x') {
 						lienzo.rect(x0 + i * s - borde, y0 + j * s - borde, x0 + (i + 1) * s + borde, y0 + (j + 1) * s + borde, c);
 					}
 				}

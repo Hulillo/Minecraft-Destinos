@@ -1,0 +1,8 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:trial_chambers",
+    "minecraft:trail_ruins",
+    {"id": "minecraft:shipwreck_beached", "required": false}
+  ]
+}

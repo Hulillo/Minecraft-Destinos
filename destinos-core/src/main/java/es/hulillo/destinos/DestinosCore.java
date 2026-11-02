@@ -99,6 +99,7 @@ public final class DestinosCore implements ModInitializer {
 				politica.guarda(server);
 			}
 			EncargosMundo.de(server).guarda(server);
+			MazmorrasMundo.de(server).guarda(server);
 		});
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
 			mapa = null;
@@ -108,11 +109,13 @@ public final class DestinosCore implements ModInitializer {
 			CartelesCapital.olvida();
 			TablonesPueblos.olvida();
 			EncargosMundo.olvida();
+			MazmorrasMundo.olvida();
 			mapaEnviado = null;
 			ENVIO.olvidaTodo();
 		});
 		ServerChunkEvents.CHUNK_LOAD.register(CartelesCapital::alCargar);
 		ServerChunkEvents.CHUNK_LOAD.register(TablonesPueblos::alCargar);
+		ServerChunkEvents.CHUNK_LOAD.register(MazmorrasMundo::alCargar);
 		ServerTickEvents.END_SERVER_TICK.register(DestinosCore::tick);
 		LOG.info("Destinos Core listo: fronteras que siguen el terreno y política viva");
 	}
@@ -139,6 +142,7 @@ public final class DestinosCore implements ModInitializer {
 		CartelesCapital.tick(server);
 		TablonesPueblos.tick(server);
 		EncargosMundo.de(server).tick(server);
+		MazmorrasMundo.de(server).tick(server);
 	}
 
 	private static void precarga(MinecraftServer server) {

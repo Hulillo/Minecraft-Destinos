@@ -2,9 +2,11 @@ package es.hulillo.destinos.cliente.journeymap;
 
 import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.MapaTerreno;
+import es.hulillo.destinos.PaqueteEncargos;
 import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTerritorio;
 import es.hulillo.destinos.cliente.Colores;
+import es.hulillo.destinos.cliente.HudEncargos;
 import es.hulillo.destinos.cliente.TerritoriosCliente;
 import java.awt.Rectangle;
 import java.awt.geom.Area;
@@ -55,6 +57,9 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 	/** Coronas de las capitales: solo cambian con el estado político. */
 	private final List<PolygonOverlay> coronas = new ArrayList<>();
 	private boolean coronasSucias;
+	/** Rombos de los encargos en curso y calaveras de las mazmorras despertadas. */
+	private final List<PolygonOverlay> marcas = new ArrayList<>();
+	private boolean marcasSucias = true;
 
 	CapaJourneyMap(IClientAPI api) {
 		this.api = api;
@@ -100,14 +105,20 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 			pendientes.addAll(areas.keySet());
 			frentesSucios = true;
 			coronasSucias = true;
+			marcasSucias = true;
 		} else {
 			quitaTodo();
 		}
 	}
 
+	@Override
+	public void encargos() {
+		marcasSucias = true;
+	}
+
 	private void rehaz() {
 		// apagado: las áreas se siguen juntando, pero no se pinta nada hasta que se encienda
-		if (!TerritoriosCliente.visible() || (pendientes.isEmpty() && !frentesSucios && !coronasSucias)) {
+		if (!TerritoriosCliente.visible() || (pendientes.isEmpty() && !frentesSucios && !coronasSucias && !marcasSucias)) {
 			return;
 		}
 		// los reinos al final, para que su borde quede por encima de los ducados
@@ -121,6 +132,10 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		if (coronasSucias) {
 			coronasSucias = false;
 			redibujaCoronas();
+		}
+		if (marcasSucias) {
+			marcasSucias = false;
+			redibujaMarcas();
 		}
 	}
 
@@ -145,6 +160,36 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 					.setStrokeOpacity(1.0F)
 					.setStrokeWidth(2.0F);
 			muestra(new Area(forma), estilo, coronas, "la corona de una capital");
+		}
+	}
+
+	/** Un rombo dorado por encargo en curso y una calavera por mazmorra despertada (roja si es de noche y sin encargo). */
+	private void redibujaMarcas() {
+		marcas.forEach(api::remove);
+		marcas.clear();
+		for (PaqueteEncargos.Activo a : HudEncargos.activos()) {
+			Area forma;
+			if (a.icono() == PaqueteEncargos.ROMBO) {
+				Path2D r = new Path2D.Double();
+				r.moveTo(a.x(), a.z() - 48);
+				r.lineTo(a.x() + 36, a.z());
+				r.lineTo(a.x(), a.z() + 48);
+				r.lineTo(a.x() - 36, a.z());
+				r.closePath();
+				forma = new Area(r);
+			} else {
+				forma = new Area(new Rectangle(a.x() - 40, a.z() - 48, 80, 72));
+				forma.add(new Area(new Rectangle(a.x() - 24, a.z() + 24, 48, 24)));
+				forma.subtract(new Area(new Rectangle(a.x() - 26, a.z() - 16, 20, 20)));
+				forma.subtract(new Area(new Rectangle(a.x() + 6, a.z() - 16, 20, 20)));
+			}
+			ShapeProperties estilo = new ShapeProperties()
+					.setFillColor(a.icono() == PaqueteEncargos.CALAVERA_NOCHE ? Colores.ROJO : Colores.ORO)
+					.setFillOpacity(0.95F)
+					.setStrokeColor(0x000000)
+					.setStrokeOpacity(1.0F)
+					.setStrokeWidth(2.0F);
+			muestra(forma, estilo, marcas, "la marca de un encargo");
 		}
 	}
 
@@ -348,6 +393,7 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 		capas.clear();
 		frentes.clear();
 		coronas.clear();
+		marcas.clear();
 		pendientes.clear();
 	}
 }

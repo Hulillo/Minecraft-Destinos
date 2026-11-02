@@ -16,8 +16,13 @@ public record PaqueteEncargos(List<Activo> activos) implements CustomPacketPaylo
 	public static final StreamCodec<RegistryFriendlyByteBuf, PaqueteEncargos> CODEC =
 			CustomPacketPayload.codec(PaqueteEncargos::escribe, PaqueteEncargos::lee);
 
-	/** Un encargo en curso: su título, el sitio (x, z) y la hora del mundo a la que vence. */
-	public record Activo(Component titulo, int x, int z, long vence) {
+	/** Iconos: un encargo cualquiera, uno de mazmorra y una mazmorra despertada sola de noche (sin encargo). */
+	public static final int ROMBO = 0;
+	public static final int CALAVERA = 1;
+	public static final int CALAVERA_NOCHE = 2;
+
+	/** Un encargo en curso: su título, el sitio (x, z), la hora del mundo a la que vence y su icono. */
+	public record Activo(Component titulo, int x, int z, long vence, int icono) {
 	}
 
 	private void escribe(RegistryFriendlyByteBuf buf) {
@@ -27,6 +32,7 @@ public record PaqueteEncargos(List<Activo> activos) implements CustomPacketPaylo
 			buf.writeVarInt(a.x());
 			buf.writeVarInt(a.z());
 			buf.writeVarLong(a.vence());
+			buf.writeVarInt(a.icono());
 		}
 	}
 
@@ -37,7 +43,7 @@ public record PaqueteEncargos(List<Activo> activos) implements CustomPacketPaylo
 		}
 		List<Activo> l = new ArrayList<>(n);
 		for (int i = 0; i < n; i++) {
-			l.add(new Activo(ComponentSerialization.TRUSTED_STREAM_CODEC.decode(buf), buf.readVarInt(), buf.readVarInt(), buf.readVarLong()));
+			l.add(new Activo(ComponentSerialization.TRUSTED_STREAM_CODEC.decode(buf), buf.readVarInt(), buf.readVarInt(), buf.readVarLong(), buf.readVarInt()));
 		}
 		return new PaqueteEncargos(l);
 	}

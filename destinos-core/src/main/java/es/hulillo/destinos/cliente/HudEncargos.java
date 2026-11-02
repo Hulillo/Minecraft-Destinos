@@ -18,10 +18,17 @@ public final class HudEncargos {
 
 	public static void recibe(PaqueteEncargos p) {
 		activos = p.activos();
+		TerritoriosCliente.avisaEncargos();
 	}
 
 	public static void borra() {
 		activos = List.of();
+		TerritoriosCliente.avisaEncargos();
+	}
+
+	/** Lo que hay que marcar en los mapas: los encargos en curso y las mazmorras despertadas de cerca. */
+	public static List<PaqueteEncargos.Activo> activos() {
+		return activos;
 	}
 
 	public static void pinta(GuiGraphics g, DeltaTracker dt) {
@@ -45,7 +52,9 @@ public final class HudEncargos {
 		int d = (int) Math.round(Math.sqrt(dx * dx + dz * dz));
 		int rumbo = Math.floorMod((int) Math.round(Math.atan2(dz, dx) / (Math.PI / 4)), 8);
 		long dias = Math.max(0, (a.vence() - mc.level.getDayTime() + 23999) / 24000);
-		MutableComponent t = Component.literal("◆ ").withColor(0xE8B84A).append(a.titulo());
+		MutableComponent t = a.icono() == PaqueteEncargos.ROMBO ? Component.literal("◆ ").withColor(0xE8B84A)
+				: Component.literal("☠ ").withColor(a.icono() == PaqueteEncargos.CALAVERA ? 0xE8B84A : 0xE05050);
+		t.append(a.titulo());
 		t.append(Component.literal(" · ").withColor(0x9E9E9E));
 		t.append(Component.translatableWithFallback("destinos.encargo.hud", "%s m %s · %s d", d,
 				Component.translatableWithFallback("destinos.rumbo." + RUMBOS[rumbo], RUMBOS[rumbo].toUpperCase()), dias).withColor(0xD0D0D0));
