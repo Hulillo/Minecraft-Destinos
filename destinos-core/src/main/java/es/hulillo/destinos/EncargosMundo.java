@@ -303,6 +303,10 @@ final class EncargosMundo {
 			}
 			List<Long> lista = anillos.get(saltos);
 			long ducado = lista.get(rnd.nextInt(lista.size()));
+			// el mismo encargo dos veces en el tablón no: se prueba con otro ducado (o el mismo, si no hay más)
+			for (int intento = 0; intento < 6 && repetido(res, tipo, ducado, saltos); intento++) {
+				ducado = lista.get(rnd.nextInt(lista.size()));
+			}
 			int[] c;
 			if (saltos == 0) {
 				// en el mismo ducado: a unos cientos de bloques del tablón
@@ -326,6 +330,11 @@ final class EncargosMundo {
 			res.add(new Oferta(tipo, ducado, c[0], c[1], estrellas, premio, rep, dias, saltos));
 		}
 		return res;
+	}
+
+	/** Si ya hay en el tablón un encargo igual (lejos del tablón, mismo tipo y ducado). */
+	private static boolean repetido(List<Oferta> ya, Encargo.Tipo tipo, long ducado, int saltos) {
+		return saltos > 0 && ya.stream().anyMatch(o -> o.tipo() == tipo && o.ducado() == ducado);
 	}
 
 	/** Ducados a 0, 1, 2… saltos por tierra del de partida (los que se conocen). */

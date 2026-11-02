@@ -11,10 +11,11 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.StructureTags;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
-import net.minecraft.world.level.block.entity.BellBlockEntity;
-import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.core.SectionPos;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.levelgen.structure.Structure;
 
 /**
@@ -34,9 +35,22 @@ final class TablonesPueblos {
 		if (level.dimension() != Level.OVERWORLD) {
 			return;
 		}
-		for (BlockEntity be : chunk.getBlockEntities().values()) {
-			if (be instanceof BellBlockEntity && PENDIENTES.size() < MAX_PENDIENTES) {
-				PENDIENTES.add(be.getBlockPos());
+		// se miran los bloques y no los datos de bloque: en un chunk recién generado aún no están creados
+		LevelChunkSection[] secciones = chunk.getSections();
+		for (int i = 0; i < secciones.length; i++) {
+			LevelChunkSection s = secciones[i];
+			if (s.hasOnlyAir() || !s.maybeHas(b -> b.is(Blocks.BELL))) {
+				continue;
+			}
+			int y0 = SectionPos.sectionToBlockCoord(chunk.getSectionYFromSectionIndex(i));
+			for (int y = 0; y < 16; y++) {
+				for (int z = 0; z < 16; z++) {
+					for (int x = 0; x < 16; x++) {
+						if (s.getBlockState(x, y, z).is(Blocks.BELL) && PENDIENTES.size() < MAX_PENDIENTES) {
+							PENDIENTES.add(new BlockPos(chunk.getPos().getMinBlockX() + x, y0 + y, chunk.getPos().getMinBlockZ() + z));
+						}
+					}
+				}
 			}
 		}
 	}
