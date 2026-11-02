@@ -2,6 +2,8 @@ package es.hulillo.destinos;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Map;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.Registries;
@@ -19,6 +21,9 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructurePiece;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
+import net.minecraft.world.level.ChunkPos;
 
 /**
  * Pone el tablón de encargos junto a la campana de cada pueblo y de cada capital. Las campanas se ven al cargar sus
@@ -111,16 +116,44 @@ final class TablonesPueblos {
 		}
 	}
 
-	/** Si la campana está dentro de un pueblo o de una capital. */
+	/**
+	 * Si la campana está dentro de un pueblo o de una capital. Solo mira chunks ya cargados: getStructureWithPieceAt
+	 * carga (o genera) el chunk de inicio de cada estructura que pase por aquí, que puede estar lejos, y eso desde el
+	 * hilo del servidor puede dejarlo esperando a la generación. Si el inicio no está cargado, basta con que el chunk de
+	 * la campana sea de un pueblo o de una capital.
+	 */
 	private static boolean dePueblo(ServerLevel level, BlockPos p) {
-		if (level.structureManager().getStructureWithPieceAt(p, StructureTags.VILLAGE).isValid()) {
-			return true;
+		LevelChunk aqui = level.getChunkSource().getChunkNow(SectionPos.blockToSectionCoord(p.getX()), SectionPos.blockToSectionCoord(p.getZ()));
+		if (aqui == null) {
+			return false;
 		}
 		if (capital == null) {
 			capital = level.registryAccess().lookupOrThrow(Registries.STRUCTURE)
 					.getValue(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "capital"));
 		}
-		return capital != null && level.structureManager().getStructureWithPieceAt(p, capital).isValid();
+		var estructuras = level.registryAccess().lookupOrThrow(Registries.STRUCTURE);
+		for (Map.Entry<Structure, LongSet> ref : aqui.getAllReferences().entrySet()) {
+			Structure s = ref.getKey();
+			boolean vale = s == capital || estructuras.wrapAsHolder(s).is(StructureTags.VILLAGE);
+			if (!vale) {
+				continue;
+			}
+			for (long inicio : ref.getValue()) {
+				LevelChunk c = level.getChunkSource().getChunkNow(ChunkPos.getX(inicio), ChunkPos.getZ(inicio));
+				if (c == null) {
+					return true; // sin cargar: no se mira pieza a pieza
+				}
+				StructureStart st = c.getStartForStructure(s);
+				if (st != null && st.isValid()) {
+					for (StructurePiece pieza : st.getPieces()) {
+						if (pieza.getBoundingBox().isInside(p)) {
+							return true;
+						}
+					}
+				}
+			}
+		}
+		return false;
 	}
 
 	/**
