@@ -8,7 +8,9 @@ RUN = os.path.join(RAIZ, "run")
 os.makedirs(RUN, exist_ok=True)
 open(os.path.join(RUN, "eula.txt"), "w").write("eula=true\n")
 open(os.path.join(RUN, "server.properties"), "w").write(
-    "online-mode=false\nlevel-seed=184467221\nspawn-protection=0\nsync-chunk-writes=false\n")
+    "online-mode=false\nlevel-seed=184467221\nspawn-protection=0\nsync-chunk-writes=false\n"
+    # sin jugadores el servidor se pausa a los 60 s y deja de hacer ticks (los tablones se ponen en un tick)
+    "pause-when-empty-seconds=-1\n")
 
 # La zona se calcula en segundo plano: se repite geo/territorio hasta que #tlisto sea 1
 ESPERA = ["scoreboard players set #vx dr.calc 1234", "scoreboard players set #vz dr.calc -5678",
@@ -129,6 +131,10 @@ if "plaza mayor de la capital" not in salida:
 if not re.search(r"Destinos Core: tablón en .*: [1-9]\d* encargos", salida):
     print("\n".join(l.rstrip() for l in lineas if "tablón" in l or "encargo" in l.lower())[-3000:])
     sys.exit("el tablón de prueba no ha ofrecido ningún encargo")
+cuentas = re.findall(r"tablones · \d+ chunks mirados · (\d+) campanas vistas · (\d+) tablones puestos", salida)
+if cuentas and int(cuentas[-1][0]) > 0 and int(cuentas[-1][1]) == 0:
+    print("\n".join(l.rstrip() for l in lineas if "tabl" in l or "campana" in l)[-3000:])
+    sys.exit("se han visto campanas de capitales pero ninguna ha recibido su tablón")
 if "tablón de encargos junto a la campana" not in salida:
     print("AVISO: ninguna campana de pueblo o capital ha recibido su tablón")
 if not ok_terr:
