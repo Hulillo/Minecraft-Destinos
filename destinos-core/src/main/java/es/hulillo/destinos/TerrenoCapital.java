@@ -1,5 +1,13 @@
 package es.hulillo.destinos;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
 import net.minecraft.world.level.NoiseColumn;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
@@ -40,9 +48,38 @@ final class TerrenoCapital {
 		java.util.Arrays.fill(alto, SIN_CALCULAR);
 		int m = Math.min(n, Math.ceilDiv(nucleo, PASO));
 		int ladoNucleo = 2 * m + 1;
-		java.util.stream.IntStream.range(0, ladoNucleo * ladoNucleo).parallel()
-				.forEach(k -> calcula((n - m) + k / ladoNucleo, (n - m) + k % ladoNucleo));
+		// en un pool propio y no con parallel(): el común (ForkJoin) lo comparten otros mods y, al esperar, un hilo
+		// suyo puede ponerse a hacer tareas ajenas que esperan a su vez al servidor (riesgo de dejarlo todo colgado)
+		int total = ladoNucleo * ladoNucleo;
+		int trozos = Math.min(HILOS, total);
+		List<Callable<Void>> tareas = new ArrayList<>(trozos);
+		for (int t = 0; t < trozos; t++) {
+			int desde = t;
+			tareas.add(() -> {
+				for (int k = desde; k < total; k += trozos) {
+					calcula((n - m) + k / ladoNucleo, (n - m) + k % ladoNucleo);
+				}
+				return null;
+			});
+		}
+		try {
+			for (Future<Void> f : POOL.invokeAll(tareas)) {
+				f.get();
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException("terreno de la capital interrumpido", e);
+		} catch (ExecutionException e) {
+			throw e.getCause() instanceof RuntimeException r ? r : new IllegalStateException(e.getCause());
+		}
 	}
+
+	private static final int HILOS = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 1));
+	private static final ExecutorService POOL = Executors.newFixedThreadPool(HILOS, r -> {
+		Thread t = new Thread(r, "Destinos Core - terreno capital");
+		t.setDaemon(true);
+		return t;
+	});
 
 	/** Lee la columna del generador en el punto (i, j) de la rejilla. */
 	private void calcula(int i, int j) {
