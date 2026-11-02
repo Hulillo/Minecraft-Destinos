@@ -47,6 +47,12 @@ final class NombresPolitica {
 			Map.entry(Suceso.Tipo.capital, "♛ Año %1$s · ¡El %2$s toma %4$s, la capital del %3$s!"),
 			Map.entry(Suceso.Tipo.union, "❖ Año %1$s · El %2$s y el %3$s se unen: nace la %4$s."),
 			Map.entry(Suceso.Tipo.fin_union, "✧ Año %1$s · Se rompe la %4$s: el %2$s y el %3$s vuelven a ir cada uno por su lado."));
+	/** Los mismos sucesos cuando han ayudado jugadores (%5$s: quiénes). */
+	private static final Map<Suceso.Tipo, String> RESPALDO_AYUDA = Map.of(
+			Suceso.Tipo.conquista, "⚑ Año %1$s · Con la ayuda de %5$s, el %2$s toma %4$s al %3$s.",
+			Suceso.Tipo.capital, "♛ Año %1$s · ¡Con la ayuda de %5$s, el %2$s toma %4$s, la capital del %3$s!",
+			Suceso.Tipo.paz, "☮ Año %1$s · Gracias a la embajada de %5$s, el %2$s y el %3$s firman la paz.",
+			Suceso.Tipo.alianza, "✦ Año %1$s · Gracias a la embajada de %5$s, el %2$s y el %3$s sellan una alianza.");
 
 	/** Quién manda hoy en un ducado: el reino (kx, kz), o el reino de origen si es tierra salvaje. */
 	record Dueno(int kx, int kz, boolean salvaje) {
@@ -198,12 +204,11 @@ final class NombresPolitica {
 		Component d = s.tipo() == Suceso.Tipo.union || s.tipo() == Suceso.Tipo.fin_union
 				? nombreUnion(server, s.reinoA(), s.reinoB())
 				: s.ducado() == Politica.NADIE ? Component.empty() : ducado(server, s.ducado());
-		MutableComponent t = s.ayuda() != null && (s.tipo() == Suceso.Tipo.conquista || s.tipo() == Suceso.Tipo.capital)
-				// conquista tras arrasar campamentos en encargos de guerra: sale quién ayudó
-				? Component.translatableWithFallback("destinos.politica." + s.tipo().name() + "_ayuda",
-						s.tipo() == Suceso.Tipo.capital ? "♛ Año %1$s · ¡Con la ayuda de %5$s, el %2$s toma %4$s, la capital del %3$s!"
-								: "⚑ Año %1$s · Con la ayuda de %5$s, el %2$s toma %4$s al %3$s.",
-						s.anio(), a, b, d, Component.literal(s.ayuda()).withStyle(ChatFormatting.GOLD))
+		String ayuda = s.ayuda() != null ? RESPALDO_AYUDA.get(s.tipo()) : null;
+		MutableComponent t = ayuda != null
+				// sucesos en los que han ayudado jugadores (campamentos arrasados, cartas entregadas): sale quién
+				? Component.translatableWithFallback("destinos.politica." + s.tipo().name() + "_ayuda", ayuda, s.anio(), a, b, d,
+						Component.literal(s.ayuda()).withStyle(ChatFormatting.GOLD))
 				: Component.translatableWithFallback("destinos.politica." + s.tipo().name(), RESPALDO.get(s.tipo()), s.anio(), a, b, d);
 		return t.withStyle(menor(s.tipo()) ? ChatFormatting.GRAY : ChatFormatting.WHITE);
 	}

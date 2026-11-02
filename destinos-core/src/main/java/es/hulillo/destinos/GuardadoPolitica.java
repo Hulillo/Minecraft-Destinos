@@ -86,6 +86,13 @@ final class GuardadoPolitica {
 			empujones.add(c);
 		});
 		t.put("empujones", empujones);
+		ListTag embajadas = new ListTag();
+		p.embajadas().forEach((par, ayuda) -> {
+			CompoundTag c = par(par);
+			c.putString("ayuda", ayuda);
+			embajadas.add(c);
+		});
+		t.put("embajadas", embajadas);
 		return t;
 	}
 
@@ -141,6 +148,11 @@ final class GuardadoPolitica {
 			CompoundTag c = empujones.getCompoundOrEmpty(i);
 			p.empujones().put(c.getLongOr("ducado", 0), new Politica.Empujon(c.getLongOr("reino", Politica.NADIE),
 					c.getIntOr("campamentos", 1), c.getIntOr("turno", 0), c.getStringOr("ayuda", "?")));
+		}
+		ListTag embajadas = t.getListOrEmpty("embajadas");
+		for (int i = 0; i < embajadas.size(); i++) {
+			CompoundTag c = embajadas.getCompoundOrEmpty(i);
+			p.embajadas().put(Politica.Par.de(c.getLongOr("a", 0), c.getLongOr("b", 0)), c.getStringOr("ayuda", "?"));
 		}
 		return new Cargado(p, t.getLongOr("siguiente", 0), t.getIntOr("ticks_turno", 0));
 	}

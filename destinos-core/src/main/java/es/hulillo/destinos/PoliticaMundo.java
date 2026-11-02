@@ -318,6 +318,49 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		return nombres.reino(server, reino);
 	}
 
+	/** La capital del reino si se conoce y sigue siendo suya; si no, null. */
+	MapaTerreno.Capital capitalViva(long reino) {
+		MapaTerreno.Capital c = capitales.get(reino);
+		return c == null || politica.capitalPerdida(grafo, reino) ? null : c;
+	}
+
+	/** Reinos que tocan las tierras del reino. */
+	java.util.TreeSet<Long> vecinos(long reino) {
+		return politica.vecinosDe(grafo, reino);
+	}
+
+	Politica.Carta carta(long a, long b) {
+		return politica.carta(a, b);
+	}
+
+	/** Un jugador ha entregado una carta del reino a al b (Politica.embajada). */
+	Politica.Carta embajada(MinecraftServer server, long a, long b, String quien) {
+		Politica.Carta c = politica.embajada(a, b, quien);
+		if (c != Politica.Carta.nada) {
+			guarda(server);
+		}
+		return c;
+	}
+
+	boolean enGuerra(long a, long b) {
+		return politica.guerras().containsKey(Politica.Par.de(a, b));
+	}
+
+	/**
+	 * La capital conocida a menos de r bloques de (x, z) y quién manda hoy en ella: {dueño, x, z}, o null. El dueño
+	 * puede ser Politica.SALVAJE si ha quedado sin señor.
+	 */
+	long[] capitalCerca(int x, int z, int r) {
+		for (MapaTerreno.Capital c : capitales.values()) {
+			long dx = c.x() - x;
+			long dz = c.z() - z;
+			if (dx * dx + dz * dz < (long) r * r) {
+				return new long[] {duenoDe(Grafo.id(c.dcx(), c.dcz())), c.x(), c.z()};
+			}
+		}
+		return null;
+	}
+
 	/** Si (x, z) está a menos de r bloques de alguna capital conocida. */
 	boolean cercaDeCapital(int x, int z, int r) {
 		for (MapaTerreno.Capital c : capitales.values()) {

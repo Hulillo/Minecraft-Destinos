@@ -100,6 +100,7 @@ final class EncargosMundo {
 
 	static void olvida() {
 		actual = null;
+		Embajadas.olvida();
 		explorables = null;
 	}
 
@@ -375,7 +376,48 @@ final class EncargosMundo {
 		if (guerra != null) {
 			res.add(guerra);
 		}
+		Oferta carta = ofertaEmbajada(s, pos, rnd, dia, maxEstrellas);
+		if (carta != null) {
+			res.add(carta);
+		}
 		return res;
+	}
+
+	/**
+	 * El encargo de embajada, solo en los tablones de las capitales: llevar una carta a la capital de un reino en
+	 * guerra con el del tablón (de paz) o de un vecino con el que no hay alianza (de alianza). Cada día, uno.
+	 */
+	private static Oferta ofertaEmbajada(Sitio s, BlockPos pos, SplittableRandom rnd, long dia, int maxEstrellas) {
+		if (!s.capital() || s.reino() == Politica.NADIE) {
+			return null;
+		}
+		List<Long> destinos = new ArrayList<>();
+		for (long b : s.pol().enemigos(s.reino())) {
+			if (s.pol().capitalViva(b) != null) {
+				destinos.add(b);
+			}
+		}
+		if (destinos.isEmpty()) {
+			for (long b : s.pol().vecinos(s.reino())) {
+				if (s.pol().carta(s.reino(), b) == Politica.Carta.alianza && s.pol().capitalViva(b) != null) {
+					destinos.add(b);
+				}
+			}
+		}
+		if (destinos.isEmpty()) {
+			return null;
+		}
+		long b = destinos.get((int) Math.floorMod(dia * 31 + rnd.nextInt(1000), destinos.size()));
+		MapaTerreno.Capital c = s.pol().capitalViva(b);
+		boolean guerra = s.pol().enGuerra(s.reino(), b);
+		double dx = c.x() - pos.getX();
+		double dz = c.z() - pos.getZ();
+		int distancia = (int) Math.sqrt(dx * dx + dz * dz);
+		int estrellas = Math.max(1, Math.min(maxEstrellas, 2 + (guerra ? 1 : 0) + (distancia > 4000 ? 1 : 0)));
+		int premio = 10 + 3 * estrellas * estrellas + distancia / 120;
+		int rep = 4 + estrellas;
+		int dias = 3 + distancia / 600;
+		return new Oferta(Encargo.Tipo.embajada, Grafo.id(c.dcx(), c.dcz()), c.x(), c.z(), estrellas, premio, rep, dias, 2, b);
 	}
 
 	/**
@@ -542,8 +584,11 @@ final class EncargosMundo {
 		Oferta o = ofertas.get(indice);
 		Encargo e = new Encargo(siguienteId++, o.tipo(), s.reino(), o.ducado(), o.x(), o.z(), o.estrellas(), o.premio(), o.rep(),
 				server.overworld().getDayTime() + (long) o.dias() * DIA, origen);
-		if (e.tipo == Encargo.Tipo.guerra) {
+		if (e.tipo == Encargo.Tipo.guerra || e.tipo == Encargo.Tipo.embajada) {
 			e.enemigo = o.objetivo();
+		}
+		if (e.tipo == Encargo.Tipo.embajada) {
+			Embajadas.da(p, Embajadas.carta(s.pol().nombreReino(server, e.reino), s.pol().nombreReino(server, e.enemigo), e.id));
 		}
 		if (e.tipo == Encargo.Tipo.mazmorra) {
 			e.mazmorra = o.objetivo();
@@ -623,6 +668,9 @@ final class EncargosMundo {
 		if (e.deReino()) {
 			sumaRep(p, e.reino, -1);
 		}
+		if (e.tipo == Encargo.Tipo.embajada) {
+			Embajadas.quita(p, e.id);
+		}
 		sucio = true;
 		PoliticaMundo pol = DestinosCore.politica();
 		if (pol != null) {
@@ -645,6 +693,7 @@ final class EncargosMundo {
 		}
 		ServerLevel level = server.overworld();
 		long ahora = level.getDayTime();
+		Embajadas.tick(server, this, pol);
 		for (ServerPlayer p : server.getPlayerList().getPlayers()) {
 			Jugador j = jugadores.get(p.getUUID());
 			if (j == null || j.activos.isEmpty()) {
@@ -664,7 +713,9 @@ final class EncargosMundo {
 				double dx = e.x + 0.5 - p.getX();
 				double dz = e.z + 0.5 - p.getZ();
 				double d2 = dx * dx + dz * dz;
-				if (e.tipo == Encargo.Tipo.exploracion) {
+				if (e.tipo == Encargo.Tipo.embajada) {
+					cambia |= embajada(server, pol, level, p, j, e, d2);
+				} else if (e.tipo == Encargo.Tipo.exploracion) {
 					if (!e.estructura && d2 < 300 * 300 && server.getTickCount() % 100 == 0 && buscaEstructura(level, e)) {
 						p.displayClientMessage(Component.translatableWithFallback("destinos.encargo.avistada",
 								"A lo lejos se ve algo: el encargo te lleva hasta allí.").withStyle(ChatFormatting.YELLOW), true);
@@ -694,6 +745,37 @@ final class EncargosMundo {
 		if (sucio && server.getTickCount() % 600 == 0) {
 			guarda(server);
 		}
+	}
+
+	/**
+	 * Una embajada en marcha: una vez por el camino salen cazarrecompensas (lejos aún del destino) y, al llegar a la
+	 * plaza de la capital con la carta encima, se entrega. Devuelve si ha cambiado algo.
+	 */
+	private boolean embajada(MinecraftServer server, PoliticaMundo pol, ServerLevel level, ServerPlayer p, Jugador j, Encargo e, double d2) {
+		if (!e.emboscada && d2 > 350 * 350 && (d2 < 700 * 700 || level.getRandom().nextInt(240) == 0)) {
+			int n = Embajadas.emboscada(level, p, e.estrellas);
+			if (n > 0) {
+				e.emboscada = true;
+				sucio = true;
+				p.displayClientMessage(Component.translatableWithFallback("destinos.embajada.emboscada",
+						"¡Cazarrecompensas! Alguien no quiere que esa carta llegue.").withStyle(ChatFormatting.RED), true);
+				sonido(server, p, "minecraft:event.raid.horn", 0.5f, 1.3f);
+			}
+			return false;
+		}
+		if (d2 > 24 * 24) {
+			return false;
+		}
+		if (!Embajadas.tiene(p, e.id)) {
+			if (server.getTickCount() % 200 == 0) {
+				p.displayClientMessage(Component.translatableWithFallback("destinos.embajada.sin_carta",
+						"Te falta la carta sellada: sin ella no te recibirán.").withStyle(ChatFormatting.RED), true);
+			}
+			return false;
+		}
+		Embajadas.quita(p, e.id);
+		cumple(server, pol, p, j, e);
+		return true;
 	}
 
 	private void monta(MinecraftServer server, PoliticaMundo pol, ServerLevel level, ServerPlayer p, Encargo e) {
@@ -739,6 +821,42 @@ final class EncargosMundo {
 		if (e.tipo == Encargo.Tipo.guerra) {
 			cumpleGuerra(server, pol, p, e);
 		}
+		if (e.tipo == Encargo.Tipo.embajada) {
+			cumpleEmbajada(server, pol, p, e);
+		}
+	}
+
+	/** Tras entregar la carta: el otro reino también te lo agradece, y la paz o la alianza llegan el siguiente turno. */
+	private void cumpleEmbajada(MinecraftServer server, PoliticaMundo pol, ServerPlayer p, Encargo e) {
+		int sube = 2 + e.estrellas / 2;
+		int v = sumaRep(p, e.enemigo, sube);
+		p.sendSystemMessage(Component.translatableWithFallback("destinos.embajada.rep", "El %s te recibe con respeto · reputación: %s (+%s)",
+				pol.nombreReino(server, e.enemigo), v, sube).withStyle(ChatFormatting.DARK_AQUA));
+		Politica.Carta c = e.deReino() ? pol.embajada(server, e.reino, e.enemigo, p.getScoreboardName()) : Politica.Carta.nada;
+		if (c == Politica.Carta.nada) {
+			p.sendSystemMessage(Component.translatableWithFallback("destinos.embajada.tarde",
+					"La carta llega tarde: las cosas entre los dos reinos ya han cambiado.").withStyle(ChatFormatting.GRAY));
+			return;
+		}
+		p.sendSystemMessage(Component.translatableWithFallback("destinos.embajada." + c.name(),
+				c == Politica.Carta.paz ? "✉ La carta está entregada: en el próximo turno el %s y el %s firmarán la paz."
+						: "✉ La carta está entregada: en el próximo turno el %s y el %s sellarán una alianza.",
+				pol.nombreReino(server, e.reino), pol.nombreReino(server, e.enemigo)).withStyle(ChatFormatting.GOLD));
+		sonido(server, p, "minecraft:block.bell.use", 0.8f, 1);
+	}
+
+	/** Si el jugador lleva una carta de un reino que está en guerra con este (los guardias no le dejan pasar). */
+	boolean cartaDeEnemigo(ServerPlayer p, long reino, PoliticaMundo pol) {
+		Jugador j = jugadores.get(p.getUUID());
+		if (j == null) {
+			return false;
+		}
+		for (Encargo e : j.activos) {
+			if (e.tipo == Encargo.Tipo.embajada && e.enemigo == reino && e.deReino() && pol.enGuerra(e.reino, reino)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** Tras arrasar un campamento del enemigo: te odian un poco más allí y el frente se mueve (Politica.empuja). */
@@ -815,6 +933,9 @@ final class EncargosMundo {
 
 	private void falla(MinecraftServer server, PoliticaMundo pol, ServerPlayer p, Jugador j, Encargo e) {
 		j.activos.remove(e);
+		if (e.tipo == Encargo.Tipo.embajada) {
+			Embajadas.quita(p, e.id);
+		}
 		sucio = true;
 		MutableComponent t = Component.translatableWithFallback("destinos.encargo.vencido", "✘ Se acabó el plazo: %s",
 				titulo(server, pol, e.tipo, e.ducado, e.objetivo()));
@@ -828,6 +949,10 @@ final class EncargosMundo {
 
 	/** Al morir algo: los bandidos de los campamentos cuentan, y matar aldeanos o gólems baja la reputación. */
 	void alMorir(MinecraftServer server, LivingEntity muerto, DamageSource fuente) {
+		if (muerto.getTags().contains(Embajadas.GUARDIA)) {
+			Embajadas.alMorir(muerto);
+			return;
+		}
 		if (muerto.getTags().contains(MazmorrasMundo.TAG)) {
 			MazmorrasMundo.de(server).alMorir(muerto);
 			return;
@@ -888,6 +1013,9 @@ final class EncargosMundo {
 			return Component.translatableWithFallback("destinos.encargo.guerra", "⚔ Arrasa el campamento del %s en %s",
 					pol.nombreReino(server, objetivo), d);
 		}
+		if (tipo == Encargo.Tipo.embajada) {
+			return Component.translatableWithFallback("destinos.encargo.embajada", "✉ Lleva la carta al %s", pol.nombreReino(server, objetivo));
+		}
 		return tipo == Encargo.Tipo.caza
 				? Component.translatableWithFallback("destinos.encargo.caza", "Bandidos en %s", d)
 				: Component.translatableWithFallback("destinos.encargo.exploracion", "Explora %s", d);
@@ -901,6 +1029,11 @@ final class EncargosMundo {
 					"Algo se ha despertado en %s. Entra, aguanta las oleadas y acaba con lo que las manda.", n);
 		}
 		Component d = pol.nombreDucado(server, ducado);
+		if (tipo == Encargo.Tipo.embajada) {
+			return Component.translatableWithFallback("destinos.encargo.embajada.texto",
+					"Lleva la carta sellada de nuestro rey hasta la plaza de la capital del %s, en %s. Si hay guerra, es una carta de paz; si no, de alianza. Por el camino habrá quien quiera quitártela.",
+					pol.nombreReino(server, objetivo), d);
+		}
 		if (tipo == Encargo.Tipo.guerra) {
 			return Component.translatableWithFallback("destinos.encargo.guerra.texto",
 					"Las tropas del %s han acampado en %s, en el frente. Arrasa el campamento: con %s campamentos arrasados en ese ducado, nuestro ejército lo tomará.",
@@ -924,6 +1057,9 @@ final class EncargosMundo {
 			return m != null && m.oleada > 0
 					? Component.translatableWithFallback("destinos.encargo.estado.oleada", "Oleada %s de %s.", m.oleada, MazmorrasMundo.OLEADAS)
 					: Component.translatableWithFallback("destinos.encargo.estado.entra", "Entra en la mazmorra y aguanta las oleadas.");
+		}
+		if (e.tipo == Encargo.Tipo.embajada) {
+			return Component.translatableWithFallback("destinos.encargo.estado.carta", "Lleva la carta sellada a la plaza de su capital.");
 		}
 		if (e.tipo == Encargo.Tipo.guerra) {
 			return e.campamento

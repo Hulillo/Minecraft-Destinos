@@ -112,6 +112,9 @@ public final class Politica {
 	public record Empujon(long reino, int campamentos, int turno, String ayuda) {
 	}
 
+	/** Cartas entregadas por jugadores (encargos de embajada): en el siguiente turno, paz o alianza seguras. */
+	private final Map<Par, String> embajadas = new TreeMap<>();
+
 	public Politica(int sal) {
 		this.sal = sal;
 	}
@@ -202,6 +205,40 @@ public final class Politica {
 
 	public Map<Long, Empujon> empujones() {
 		return empujones;
+	}
+
+	public Map<Par, String> embajadas() {
+		return embajadas;
+	}
+
+	/** Lo que traerá una carta entre los dos reinos: paz si están en guerra, alianza si no lo son ya, o nada. */
+	public enum Carta {
+		paz, alianza, nada
+	}
+
+	public Carta carta(long a, long b) {
+		Par p = Par.de(a, b);
+		if (a == b || reinos.get(a) == null || reinos.get(b) == null || reinos.get(a).caido || reinos.get(b).caido) {
+			return Carta.nada;
+		}
+		if (guerras.containsKey(p)) {
+			return Carta.paz;
+		}
+		return alianzas.contains(p) ? Carta.nada : Carta.alianza;
+	}
+
+	/**
+	 * Un jugador (quien) ha entregado una carta del reino a al b: en el siguiente turno firman la paz (si están en
+	 * guerra) o sellan una alianza. Devuelve lo que traerá.
+	 */
+	public Carta embajada(long a, long b, String quien) {
+		Carta c = carta(a, b);
+		if (c != Carta.nada) {
+			Par p = Par.de(a, b);
+			String ya = embajadas.get(p);
+			embajadas.put(p, ya == null || List.of(ya.split(", ")).contains(quien) ? (ya == null ? quien : ya) : ya + ", " + quien);
+		}
+		return c;
 	}
 
 	/**
@@ -399,6 +436,7 @@ public final class Politica {
 		relaciones(mapa, rnd);
 		estabilidad(mapa);
 		paces(mapa, rnd, anota, ocupados);
+		embajadas(mapa, anota, ocupados);
 		batallas(mapa, rnd, anota, ocupados);
 		declaraciones(mapa, rnd, anota, ocupados);
 		alianzas(mapa, rnd, anota);
@@ -537,7 +575,7 @@ public final class Politica {
 				prob += 0.15;
 			}
 			// con un ducado a punto de caer por los campamentos arrasados no se firma la paz hasta tomarlo
-			if (rnd.nextDouble() < prob && decisivo(mapa, p) == null) {
+			if (rnd.nextDouble() < prob && decisivo(mapa, p) == null && !embajadas.containsKey(p)) {
 				guerras.remove(p);
 				// tras la paz, unos años de tregua antes de que la relación vuelva a agriarse
 				relaciones.put(p, 15);
@@ -546,6 +584,30 @@ public final class Politica {
 				anota.accept(new Suceso(Suceso.Tipo.paz, anio(), p.a, p.b, NADIE));
 			}
 		}
+	}
+
+	/** Las cartas entregadas por jugadores el turno anterior: paz o alianza, sin tiradas. */
+	private void embajadas(Mapa mapa, Consumer<Suceso> anota, TreeSet<Long> ocupados) {
+		for (Map.Entry<Par, String> en : embajadas.entrySet()) {
+			Par p = en.getKey();
+			if (!mapa.vivo(p.a) || !mapa.vivo(p.b)) {
+				continue;
+			}
+			if (guerras.containsKey(p)) {
+				guerras.remove(p);
+				relaciones.put(p, Math.max(relacion(p.a, p.b), 25));
+				ocupados.add(p.a);
+				ocupados.add(p.b);
+				anota.accept(new Suceso(Suceso.Tipo.paz, anio(), p.a, p.b, NADIE, en.getValue()));
+			} else if (!alianzas.contains(p)) {
+				alianzas.add(p);
+				alianzaDesde.put(p, turno);
+				// que no se rompa en el mismo turno (se rompen por debajo de 20)
+				relaciones.put(p, Math.max(relacion(p.a, p.b), 45));
+				anota.accept(new Suceso(Suceso.Tipo.alianza, anio(), p.a, p.b, NADIE, en.getValue()));
+			}
+		}
+		embajadas.clear();
 	}
 
 	/**
