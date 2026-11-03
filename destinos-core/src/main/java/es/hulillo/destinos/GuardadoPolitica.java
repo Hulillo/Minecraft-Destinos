@@ -69,9 +69,30 @@ final class GuardadoPolitica {
 			c.putLong("a", s.reinoA());
 			c.putLong("b", s.reinoB());
 			c.putLong("ducado", s.ducado());
+			if (s.ayuda() != null) {
+				c.putString("ayuda", s.ayuda());
+			}
 			cronica.add(c);
 		}
 		t.put("cronica", cronica);
+		ListTag empujones = new ListTag();
+		p.empujones().forEach((d, e) -> {
+			CompoundTag c = new CompoundTag();
+			c.putLong("ducado", d);
+			c.putLong("reino", e.reino());
+			c.putInt("campamentos", e.campamentos());
+			c.putInt("turno", e.turno());
+			c.putString("ayuda", e.ayuda());
+			empujones.add(c);
+		});
+		t.put("empujones", empujones);
+		ListTag embajadas = new ListTag();
+		p.embajadas().forEach((par, ayuda) -> {
+			CompoundTag c = par(par);
+			c.putString("ayuda", ayuda);
+			embajadas.add(c);
+		});
+		t.put("embajadas", embajadas);
 		return t;
 	}
 
@@ -116,10 +137,22 @@ final class GuardadoPolitica {
 			CompoundTag c = cronica.getCompoundOrEmpty(i);
 			try {
 				p.cronica().addLast(new Suceso(Suceso.Tipo.valueOf(c.getStringOr("tipo", "")), c.getIntOr("anio", 1),
-						c.getLongOr("a", Politica.NADIE), c.getLongOr("b", Politica.NADIE), c.getLongOr("ducado", Politica.NADIE)));
+						c.getLongOr("a", Politica.NADIE), c.getLongOr("b", Politica.NADIE), c.getLongOr("ducado", Politica.NADIE),
+						c.getString("ayuda").orElse(null)));
 			} catch (IllegalArgumentException e) {
 				// suceso de otra versión: se salta
 			}
+		}
+		ListTag empujones = t.getListOrEmpty("empujones");
+		for (int i = 0; i < empujones.size(); i++) {
+			CompoundTag c = empujones.getCompoundOrEmpty(i);
+			p.empujones().put(c.getLongOr("ducado", 0), new Politica.Empujon(c.getLongOr("reino", Politica.NADIE),
+					c.getIntOr("campamentos", 1), c.getIntOr("turno", 0), c.getStringOr("ayuda", "?")));
+		}
+		ListTag embajadas = t.getListOrEmpty("embajadas");
+		for (int i = 0; i < embajadas.size(); i++) {
+			CompoundTag c = embajadas.getCompoundOrEmpty(i);
+			p.embajadas().put(Politica.Par.de(c.getLongOr("a", 0), c.getLongOr("b", 0)), c.getStringOr("ayuda", "?"));
 		}
 		return new Cargado(p, t.getLongOr("siguiente", 0), t.getIntOr("ticks_turno", 0));
 	}

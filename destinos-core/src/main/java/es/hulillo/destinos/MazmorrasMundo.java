@@ -234,15 +234,33 @@ final class MazmorrasMundo {
 	 * como mucho maxEstrellas. Null si no hay.
 	 */
 	Mazmorra cercana(int x, int z, int r, int maxEstrellas) {
+		return cercana(x, z, r, maxEstrellas, false);
+	}
+
+	/** La más cercana que no sea mina (para el encargo de mazmorra que se guarda aparte en cada tablón). */
+	Mazmorra cercanaSinMina(int x, int z, int r, int maxEstrellas) {
+		return cercana(x, z, r, maxEstrellas, true);
+	}
+
+	private Mazmorra cercana(int x, int z, int r, int maxEstrellas, boolean sinMinas) {
 		Mazmorra mejor = null;
-		long mejorD = (long) r * r;
+		long mejorD = Long.MAX_VALUE;
 		for (Mazmorra m : conocidas.values()) {
-			if (m.estrellas > maxEstrellas || m.estado == Mazmorra.Estado.limpia || m.oleada > 0) {
+			if (m.estrellas > maxEstrellas || m.estado == Mazmorra.Estado.limpia || m.oleada > 0
+					|| (sinMinas && m.tema == Mazmorra.Tema.mina)) {
 				continue;
 			}
 			long dx = m.x() - x;
 			long dz = m.z() - z;
 			long d = dx * dx + dz * dz;
+			if (d >= (long) r * r) {
+				continue;
+			}
+			// las minas están por todas partes: cuentan como si estuvieran al doble de lejos, para que salgan también
+			// templos, criptas, bastiones… y solo ganen si no hay otra cosa cerca
+			if (m.tema == Mazmorra.Tema.mina) {
+				d *= 4;
+			}
 			if (d < mejorD) {
 				mejorD = d;
 				mejor = m;
@@ -597,6 +615,8 @@ final class MazmorrasMundo {
 		b.finalizeSpawn(level, level.getCurrentDifficultyAt(p), EntitySpawnReason.EVENT, null);
 		b.setPersistenceRequired();
 		b.addTag(TAG);
+		// todos brillan, para verlos a través de la roca (en las minas y cuevas no se sabía por dónde venían)
+		b.setGlowingTag(true);
 		if (m.estrellas >= 3) {
 			b.setItemSlot(EquipmentSlot.HEAD, new ItemStack(m.estrellas >= 5 ? Items.IRON_HELMET : Items.CHAINMAIL_HELMET));
 		}

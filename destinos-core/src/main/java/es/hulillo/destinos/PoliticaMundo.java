@@ -262,6 +262,44 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		return grafo;
 	}
 
+	/** Guerras abiertas en las que está el reino: el otro bando de cada una. */
+	List<Long> enemigos(long reino) {
+		List<Long> l = new ArrayList<>();
+		for (Politica.Par p : politica.guerras().keySet()) {
+			if (p.tiene(reino)) {
+				l.add(p.otro(reino));
+			}
+		}
+		return l;
+	}
+
+	/** Cuántas guerras abiertas hay y en cuántas se encuentra frente para los encargos de guerra (prueba de CI). */
+	int[] frentes() {
+		int n = 0;
+		int con = 0;
+		for (Politica.Par p : politica.guerras().keySet()) {
+			n++;
+			if (politica.frente(grafo, p.a(), p.b()) != Politica.NADIE) {
+				con++;
+			}
+		}
+		return new int[] {n, con};
+	}
+
+	/** El ducado del enemigo por el que ataca el reino (Politica.frente), o Politica.NADIE. */
+	long frente(long reino, long enemigo) {
+		return politica.frente(grafo, reino, enemigo);
+	}
+
+	/** Un jugador ha arrasado un campamento del enemigo en el ducado: cuántos lleva el reino ahí (0 si ya no hay guerra). */
+	int empuja(MinecraftServer server, long ducado, long reino, String quien) {
+		int n = politica.empuja(grafo, ducado, reino, quien);
+		if (n > 0) {
+			guarda(server);
+		}
+		return n;
+	}
+
 	/** Dueño de hoy de un ducado conocido: un reino, o Politica.SALVAJE (también si no se conoce). */
 	long duenoDe(long ducado) {
 		Grafo.Ducado d = grafo.ducado(ducado);
@@ -278,6 +316,49 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	Component nombreReino(MinecraftServer server, long reino) {
 		nombres.aseguraReino(server, reino);
 		return nombres.reino(server, reino);
+	}
+
+	/** La capital del reino si se conoce y sigue siendo suya; si no, null. */
+	MapaTerreno.Capital capitalViva(long reino) {
+		MapaTerreno.Capital c = capitales.get(reino);
+		return c == null || politica.capitalPerdida(grafo, reino) ? null : c;
+	}
+
+	/** Reinos que tocan las tierras del reino. */
+	java.util.TreeSet<Long> vecinos(long reino) {
+		return politica.vecinosDe(grafo, reino);
+	}
+
+	Politica.Carta carta(long a, long b) {
+		return politica.carta(a, b);
+	}
+
+	/** Un jugador ha entregado una carta del reino a al b (Politica.embajada). */
+	Politica.Carta embajada(MinecraftServer server, long a, long b, String quien) {
+		Politica.Carta c = politica.embajada(a, b, quien);
+		if (c != Politica.Carta.nada) {
+			guarda(server);
+		}
+		return c;
+	}
+
+	boolean enGuerra(long a, long b) {
+		return politica.guerras().containsKey(Politica.Par.de(a, b));
+	}
+
+	/**
+	 * La capital conocida a menos de r bloques de (x, z) y quién manda hoy en ella: {dueño, x, z}, o null. El dueño
+	 * puede ser Politica.SALVAJE si ha quedado sin señor.
+	 */
+	long[] capitalCerca(int x, int z, int r) {
+		for (MapaTerreno.Capital c : capitales.values()) {
+			long dx = c.x() - x;
+			long dz = c.z() - z;
+			if (dx * dx + dz * dz < (long) r * r) {
+				return new long[] {duenoDe(Grafo.id(c.dcx(), c.dcz())), c.x(), c.z()};
+			}
+		}
+		return null;
 	}
 
 	/** Si (x, z) está a menos de r bloques de alguna capital conocida. */
@@ -439,7 +520,7 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 			return Component.translatableWithFallback("destinos.politica.capital_perdida", "♛ Capital: %s, en manos del %s",
 					nombre, reino(server, dueno)).withStyle(ChatFormatting.RED);
 		}
-		return Component.translatableWithFallback("destinos.politica.capital", "♛ Capital: %s", nombre)
+		return Component.translatableWithFallback("destinos.politica.capital_info", "♛ Capital: %s", nombre)
 				.withStyle(ChatFormatting.GOLD);
 	}
 

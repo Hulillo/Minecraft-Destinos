@@ -22,11 +22,12 @@ final class Mazmorra {
 	/** De qué va la mazmorra (sale del nombre de la estructura): qué bichos salen, qué jefe y qué botín. */
 	enum Tema {
 		illager(l(EntityType.VINDICATOR, EntityType.PILLAGER), EntityType.VINDICATOR, BuiltInLootTables.WOODLAND_MANSION,
-				"mansion", "illager", "outpost", "fort", "keep", "castle", "manor", "hideout", "bastion", "barrack"),
+				"mansion", "illager", "outpost", "fort", "keep", "castle", "manor", "hideout", "bastion", "barrack", "citadel", "bandit",
+					"raider", "pillager", "watchtower"),
 		ahogados(l(EntityType.DROWNED), EntityType.DROWNED, BuiltInLootTables.UNDERWATER_RUIN_BIG,
-				"ocean", "drown", "sunken", "underwater", "shipwreck", "reef", "lighthouse"),
+				"ocean", "drown", "sunken", "underwater", "shipwreck", "reef", "lighthouse", "monument", "atlantis"),
 		desierto(l(EntityType.HUSK, EntityType.SKELETON), EntityType.HUSK, BuiltInLootTables.DESERT_PYRAMID,
-				"desert", "pyramid", "sand", "dune", "badlands", "mesa"),
+				"desert", "pyramid", "sand", "dune", "badlands", "mesa", "ziggurat", "oasis"),
 		jungla(l(EntityType.SPIDER, EntityType.SKELETON, EntityType.CAVE_SPIDER), EntityType.SKELETON,
 				BuiltInLootTables.JUNGLE_TEMPLE, "jungle", "temple"),
 		hielo(l(EntityType.STRAY, EntityType.ZOMBIE), EntityType.STRAY, BuiltInLootTables.IGLOO_CHEST,
@@ -39,7 +40,8 @@ final class Mazmorra {
 				BuiltInLootTables.ABANDONED_MINESHAFT, "mineshaft", "mine", "quarry", "cave"),
 		cripta(l(EntityType.ZOMBIE, EntityType.SKELETON), EntityType.WITHER_SKELETON, BuiltInLootTables.SIMPLE_DUNGEON,
 				"crypt", "catacomb", "tomb", "grave", "necro", "undead", "ossuary", "mausoleum", "dungeon", "lair", "ruin",
-				"tower", "stronghold", "labyrinth", "maze", "vault", "trial", "sanctum", "shrine");
+				"tower", "stronghold", "labyrinth", "maze", "vault", "trial", "sanctum", "shrine", "barrow", "chapel", "abbey",
+					"monastery", "ruins", "altar", "spire", "dungeon");
 
 		final List<EntityType<? extends Mob>> bichos;
 		final EntityType<? extends Mob> jefe;

@@ -2,8 +2,30 @@ plugins {
 	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
 }
 
-// En la CI se añade el número de compilación (0.3.0+build.57) para distinguir un jar de otro
-version = System.getenv("GITHUB_RUN_NUMBER") ? "${project.version}+build.${System.getenv("GITHUB_RUN_NUMBER")}" : project.version
+// Para distinguir un jar de otro: en la CI se añade el número de compilación (0.5.3+build.263); al compilar en local,
+// la rama y el commit (0.5.3+embajada.53edf17). Sin git, la versión tal cual.
+def git(String... args) {
+	try {
+		def p = (["git"] + args.toList()).execute(null, rootDir)
+		def out = p.text.trim()
+		return p.waitFor() == 0 && out ? out : null
+	} catch (Exception e) {
+		return null
+	}
+}
+if (System.getenv("GITHUB_RUN_NUMBER")) {
+	version = "${project.version}+build.${System.getenv("GITHUB_RUN_NUMBER")}"
+} else {
+	def rama = git("rev-parse", "--abbrev-ref", "HEAD")
+	def commit = git("rev-parse", "--short", "HEAD")
+	if (rama && commit) {
+		// solo letras, números y puntos en la parte de build (destinos-core/embajada → embajada)
+		def corta = rama.tokenize("/").last().replaceAll("[^A-Za-z0-9]", "")
+		version = "${project.version}+${corta}.${commit}"
+	} else {
+		version = project.version
+	}
+}
 group = project.group
 
 base {

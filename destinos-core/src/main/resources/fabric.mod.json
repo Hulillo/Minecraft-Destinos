@@ -3,7 +3,7 @@
 	"id": "destinos_core",
 	"version": "${version}",
 	"name": "Destinos Core",
-	"description": "Reinos y ducados RNG cuyas fronteras siguen montañas, ríos y costas. Trae dentro el datapack Destinos: Reinos. / RNG kingdoms and duchies whose borders follow mountains, rivers and coasts.",
+	"description": "Reinos y ducados RNG cuyas fronteras siguen montañas, ríos y costas, con política viva (guerras, alianzas, conquistas), capitales con castillo y encargos en los tablones de los pueblos: exploración, bandidos, mazmorras despertadas, campamentos de guerra que mueven el frente y embajadas que traen la paz. Trae dentro el datapack Destinos: Reinos. / RNG kingdoms and duchies with living politics, walled capitals and village quest boards: exploration, bandits, awakened dungeons, war camps that move the front and embassies that bring peace.",
 	"authors": ["Hulillo"],
 	"license": "MIT",
 	"environment": "*",

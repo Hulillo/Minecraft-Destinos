@@ -647,6 +647,14 @@ POLITICA = {
     "capital": ("♛ Año %1$s · ¡El %2$s toma %4$s, la capital del %3$s!", "♛ Year %1$s · The %2$s seizes %4$s, capital of the %3$s!"),
     "union": ("❖ Año %1$s · El %2$s y el %3$s se unen: nace la %4$s.",
               "❖ Year %1$s · The %2$s and the %3$s unite: the %4$s is born."),
+    "conquista_ayuda": ("⚑ Año %1$s · Con la ayuda de %5$s, el %2$s toma %4$s al %3$s.",
+                        "⚑ Year %1$s · With the help of %5$s, the %2$s takes %4$s from the %3$s."),
+    "capital_ayuda": ("♛ Año %1$s · ¡Con la ayuda de %5$s, el %2$s toma %4$s, la capital del %3$s!",
+                      "♛ Year %1$s · With the help of %5$s, the %2$s seizes %4$s, capital of the %3$s!"),
+    "paz_ayuda": ("☮ Año %1$s · Gracias a la embajada de %5$s, el %2$s y el %3$s firman la paz.",
+                  "☮ Year %1$s · Thanks to the embassy of %5$s, the %2$s and the %3$s make peace."),
+    "alianza_ayuda": ("✦ Año %1$s · Gracias a la embajada de %5$s, el %2$s y el %3$s sellan una alianza.",
+                      "✦ Year %1$s · Thanks to the embassy of %5$s, the %2$s and the %3$s seal an alliance."),
     "fin_union": ("✧ Año %1$s · Se rompe la %4$s: el %2$s y el %3$s vuelven a ir cada uno por su lado.",
                   "✧ Year %1$s · The %4$s breaks apart: the %2$s and the %3$s go their separate ways again."),
 }
@@ -681,7 +689,7 @@ for i, (a, b) in enumerate([("Corona de %s y %s", "Crown of %s and %s"), ("Unió
     L(f"destinos.union.{i}", a, b)
 L("destinos.politica.poder", "Poder %s · unos %s habitantes · %s ducados · comida %s, mineral %s, madera %s",
   "Power %s · about %s inhabitants · %s duchies · food %s, ore %s, timber %s")
-L("destinos.politica.capital", "♛ Capital: %s", "♛ Capital: %s")
+L("destinos.politica.capital_info", "♛ Capital: %s", "♛ Capital: %s")
 L("destinos.politica.capital_perdida", "♛ Capital: %s, en manos del %s", "♛ Capital: %s, held by the %s")
 L("destinos.politica.capital_montana", "%s (en las montañas)", "%s (in the mountains)")
 L("destinos.politica.en_union", "❖ Forma parte de la %s", "❖ Part of the %s")
@@ -759,6 +767,43 @@ ENCARGOS.update({
     "estado.oleada": ("Oleada %s de %s.", "Wave %s of %s."),
     "estado.entra": ("Entra en la mazmorra y aguanta las oleadas.", "Enter the dungeon and hold out against the waves."),
 })
+ENCARGOS.update({
+    "guerra": ("⚔ Arrasa el campamento del %s en %s", "⚔ Raze the %s camp in %s"),
+    "guerra.texto": ("Las tropas del %s han acampado en %s, en el frente. Arrasa el campamento: con %s campamentos arrasados en ese ducado, nuestro ejército lo tomará.",
+                     "Troops of the %s have camped in %s, on the front. Raze the camp: with %s camps razed in that duchy, our army will take it."),
+    "estado.soldados": ("Quedan %s soldados en el campamento.", "%s soldiers left in the camp."),
+    "estado.buscar_guerra": ("Ve a la zona marcada y busca el campamento enemigo.", "Go to the marked area and look for the enemy camp."),
+    "tambores": ("Se oyen tambores de guerra: el campamento enemigo está cerca.", "War drums echo: the enemy camp is close."),
+    "quedan_soldados": ("Quedan %s soldados", "%s soldiers left"),
+    "soldado": ("Soldado del %s", "Soldier of the %s"),
+    "capitan": ("Capitán del %s", "Captain of the %s"),
+    "rep_enemigo": ("El %s no lo olvidará · reputación: %s (-%s)", "The %s won't forget it · reputation: %s (-%s)"),
+    "frente": ("⚔ Campamentos arrasados en %s: %s de %s", "⚔ Camps razed in %s: %s of %s"),
+    "frente_roto": ("⚔ ¡El frente se rompe! En el próximo turno el %s tomará %s.", "⚔ The front breaks! Next turn the %s will take %s."),
+    "sin_guerra": ("La guerra ya ha acabado: el campamento no cambia nada en el frente.", "The war is already over: the camp changes nothing on the front."),
+})
+ENCARGOS.update({
+    "embajada": ("✉ Lleva la carta al %s", "✉ Carry the letter to the %s"),
+    "embajada.texto": ("Lleva la carta sellada de nuestro rey hasta la plaza de la capital del %s, en %s. Si hay guerra, es una carta de paz; si no, de alianza. Por el camino habrá quien quiera quitártela.",
+                       "Carry our king's sealed letter to the square of the capital of the %s, in %s. If there is war, it is a letter of peace; if not, of alliance. Some will try to take it from you on the way."),
+    "estado.carta": ("Lleva la carta sellada a la plaza de su capital.", "Take the sealed letter to the square of their capital."),
+    "estado.trono": ("Lleva la carta sellada al rey, al salón del trono de su castillo.", "Take the sealed letter to the king, in the throne room of their castle."),
+})
+EMBAJADA = {
+    "carta": ("✉ Carta sellada del %s al %s", "✉ Sealed letter from the %s to the %s"),
+    "cazador": ("Cazarrecompensas", "Bounty hunter"),
+    "guardia": ("Guardia del %s", "Guard of the %s"),
+    "guardias": ("¡Guardias! En el %s no te quieren por aquí.", "Guards! The %s doesn't want you around here."),
+    "guardias_guerra": ("¡Guardias! El %s está en guerra con quien te manda.", "Guards! The %s is at war with whoever sent you."),
+    "emboscada": ("¡Cazarrecompensas! Alguien no quiere que esa carta llegue.", "Bounty hunters! Someone doesn't want that letter to arrive."),
+    "al_trono": ("Aquí te dirán que la carta es para el rey: búscalo en el salón del trono del castillo.",
+                 "Here they'll tell you the letter is for the king: find him in the castle's throne room."),
+    "sin_carta": ("Te falta la carta sellada: sin ella no te recibirán.", "You're missing the sealed letter: without it they won't receive you."),
+    "rep": ("El %s te recibe con respeto · reputación: %s (+%s)", "The %s receives you with respect · reputation: %s (+%s)"),
+    "tarde": ("La carta llega tarde: las cosas entre los dos reinos ya han cambiado.", "The letter arrives too late: things between the two kingdoms have already changed."),
+    "paz": ("✉ La carta está entregada: en el próximo turno el %s y el %s firmarán la paz.", "✉ The letter is delivered: next turn the %s and the %s will make peace."),
+    "alianza": ("✉ La carta está entregada: en el próximo turno el %s y el %s sellarán una alianza.", "✉ The letter is delivered: next turn the %s and the %s will seal an alliance."),
+}
 MAZMORRAS = {
     "illager": ("el bastión de %s", "the stronghold of %s"),
     "ahogados": ("las ruinas ahogadas de %s", "the drowned ruins of %s"),
@@ -799,6 +844,7 @@ MAZMORRAS = {
     "rep": ("El %s te lo agradece · reputación: %s (+%s)", "The %s thanks you · reputation: %s (+%s)"),
 }
 for k, (a, b) in MAZMORRAS.items(): L(f"destinos.mazmorra.{k}", a, b)
+for k, (a, b) in EMBAJADA.items(): L(f"destinos.embajada.{k}", a, b)
 for k, (a, b) in ENCARGOS.items(): L(f"destinos.encargo.{k}", a, b)
 L("destinos.moneda.cobre", "%s cobre", "%s copper")
 L("destinos.moneda.plata", "%s plata", "%s silver")

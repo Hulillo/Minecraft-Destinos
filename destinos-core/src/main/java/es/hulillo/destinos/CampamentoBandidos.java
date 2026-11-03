@@ -5,6 +5,9 @@ import java.util.List;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.RandomizableContainer;
@@ -13,10 +16,16 @@ import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.DyeColor;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.component.DyedItemColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -59,6 +68,101 @@ final class CampamentoBandidos {
 			}
 		}
 		return new Montado(c.getX(), c.getZ(), bandidos);
+	}
+
+	/**
+	 * El campamento de un encargo de guerra: el del ejército enemigo en el frente. Tiendas de lana del color de su
+	 * reino, un estandarte junto a la hoguera, armas apoyadas, soldados con armadura de cuero teñida de su color y un
+	 * capitán con el estandarte en la cabeza (como los de las incursiones).
+	 */
+	static Montado montaGuerra(ServerLevel level, int x, int z, int estrellas, int rgb, Component reino) {
+		DyeColor tinte = DyeColor.byId(AdornoCapital.tinte(rgb));
+		BlockState lana = bloque(tinte, "wool", Blocks.RED_WOOL).defaultBlockState();
+		BlockPos c = seco(level, x, z);
+		level.setBlock(c, Blocks.CAMPFIRE.defaultBlockState(), 3);
+		BlockPos capitania = suelo(level, c.getX() + 5, c.getZ());
+		tienda(level, capitania, lana);
+		tienda(level, suelo(level, c.getX() - 5, c.getZ() + 1), lana);
+		tienda(level, suelo(level, c.getX() + 1, c.getZ() - 6), Blocks.WHITE_WOOL.defaultBlockState());
+		if (libre(level, capitania)) {
+			level.setBlock(capitania, Blocks.CHEST.defaultBlockState().setValue(HorizontalDirectionalBlock.FACING, Direction.NORTH), 3);
+			RandomizableContainer.setBlockEntityLootTable(level, level.getRandom(), capitania, BuiltInLootTables.PILLAGER_OUTPOST);
+		}
+		// el estandarte del reino junto a la hoguera y otro a la entrada de la tienda del capitán
+		pon(level, suelo(level, c.getX() + 2, c.getZ() + 2), bloque(tinte, "banner", Blocks.RED_BANNER).defaultBlockState()
+				.setValue(BlockStateProperties.ROTATION_16, 4));
+		pon(level, suelo(level, c.getX() + 3, c.getZ() - 2), bloque(tinte, "banner", Blocks.RED_BANNER).defaultBlockState()
+				.setValue(BlockStateProperties.ROTATION_16, 4));
+		pon(level, suelo(level, c.getX() - 2, c.getZ() - 3), Blocks.FLETCHING_TABLE.defaultBlockState());
+		pon(level, suelo(level, c.getX() - 3, c.getZ() - 3), Blocks.GRINDSTONE.defaultBlockState()
+				.setValue(BlockStateProperties.ATTACH_FACE, net.minecraft.world.level.block.state.properties.AttachFace.FLOOR));
+		pon(level, suelo(level, c.getX() - 2, c.getZ() + 3), Blocks.BARREL.defaultBlockState());
+		pon(level, suelo(level, c.getX() - 1, c.getZ() + 3), Blocks.HAY_BLOCK.defaultBlockState());
+		int n = 3 + estrellas;
+		List<UUID> soldados = new ArrayList<>();
+		Entity capitan = soldado(level, suelo(level, c.getX() + 3, c.getZ()), 0, estrellas, true, rgb, tinte, reino);
+		if (capitan != null) {
+			soldados.add(capitan.getUUID());
+		}
+		for (int i = 0; i < n; i++) {
+			double a = i * Math.PI * 2 / n;
+			BlockPos p = suelo(level, c.getX() + (int) Math.round(Math.cos(a) * 3), c.getZ() + (int) Math.round(Math.sin(a) * 3));
+			Entity e = soldado(level, p, i, estrellas, false, rgb, tinte, reino);
+			if (e != null) {
+				soldados.add(e.getUUID());
+			}
+		}
+		return new Montado(c.getX(), c.getZ(), soldados);
+	}
+
+	private static Entity soldado(ServerLevel level, BlockPos p, int i, int estrellas, boolean capitan, int rgb, DyeColor tinte,
+			Component reino) {
+		Mob m = (capitan || i % 2 == 0 ? EntityType.VINDICATOR : EntityType.PILLAGER).create(level, EntitySpawnReason.EVENT);
+		if (m == null) {
+			return null;
+		}
+		m.snapTo(p.getX() + 0.5, p.getY(), p.getZ() + 0.5, level.getRandom().nextFloat() * 360, 0);
+		m.finalizeSpawn(level, level.getCurrentDifficultyAt(p), EntitySpawnReason.EVENT, null);
+		m.setPersistenceRequired();
+		m.addTag(EncargosMundo.BANDIDO);
+		m.setCustomName(capitan ? Component.translatableWithFallback("destinos.encargo.capitan", "Capitán del %s", reino)
+				: Component.translatableWithFallback("destinos.encargo.soldado", "Soldado del %s", reino));
+		if (capitan) {
+			// el capitán, con el estandarte en la cabeza, peto de hierro y más vida
+			Item estandarte = BuiltInRegistries.ITEM.getValue(Identifier.withDefaultNamespace(tinte.getName() + "_banner"));
+			m.setItemSlot(EquipmentSlot.HEAD, new ItemStack(estandarte));
+			m.setItemSlot(EquipmentSlot.CHEST, new ItemStack(estrellas >= 4 ? Items.DIAMOND_CHESTPLATE : Items.IRON_CHESTPLATE));
+			m.setItemSlot(EquipmentSlot.LEGS, cuero(Items.LEATHER_LEGGINGS, rgb));
+			m.setItemSlot(EquipmentSlot.FEET, cuero(Items.LEATHER_BOOTS, rgb));
+			m.setDropChance(EquipmentSlot.HEAD, 1);
+			var vida = m.getAttribute(Attributes.MAX_HEALTH);
+			if (vida != null) {
+				vida.setBaseValue(30 + 8 * estrellas);
+				m.setHealth(m.getMaxHealth());
+			}
+		} else {
+			m.setItemSlot(EquipmentSlot.HEAD, estrellas >= 4 ? new ItemStack(Items.IRON_HELMET) : cuero(Items.LEATHER_HELMET, rgb));
+			m.setItemSlot(EquipmentSlot.CHEST, estrellas >= 5 ? new ItemStack(Items.CHAINMAIL_CHESTPLATE) : cuero(Items.LEATHER_CHESTPLATE, rgb));
+			m.setItemSlot(EquipmentSlot.LEGS, cuero(Items.LEATHER_LEGGINGS, rgb));
+			m.setItemSlot(EquipmentSlot.FEET, cuero(Items.LEATHER_BOOTS, rgb));
+		}
+		for (EquipmentSlot slot : new EquipmentSlot[] {EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+			m.setDropChance(slot, 0.08f);
+		}
+		level.addFreshEntityWithPassengers(m);
+		return m;
+	}
+
+	/** Una pieza de cuero teñida del color del reino. */
+	private static ItemStack cuero(Item pieza, int rgb) {
+		ItemStack s = new ItemStack(pieza);
+		s.set(DataComponents.DYED_COLOR, new DyedItemColor(rgb));
+		return s;
+	}
+
+	private static Block bloque(DyeColor tinte, String tipo, Block sinColor) {
+		Block b = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace(tinte.getName() + "_" + tipo));
+		return b == Blocks.AIR ? sinColor : b;
 	}
 
 	private static Entity bandido(ServerLevel level, BlockPos p, int i, int estrellas, boolean jefe) {
