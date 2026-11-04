@@ -8,7 +8,7 @@ import java.util.Map;
 import net.minecraft.network.chat.Component;
 
 /**
- * Los modos del mapa político (teclas 1 a 8): cómo se colorea cada casilla y qué leyenda lleva cada uno. Todos
+ * Los modos del mapa político (teclas 1 a 9): cómo se colorea cada casilla y qué leyenda lleva cada uno. Todos
  * los colores van en ARGB.
  */
 enum ModoMapa {
@@ -19,7 +19,8 @@ enum ModoMapa {
 	CULTURA("cultura", "Cultura"),
 	SEGURIDAD("seguridad", "Seguridad"),
 	FAUNA("fauna", "Fauna"),
-	RELIEVE("relieve", "Relieve");
+	RELIEVE("relieve", "Relieve"),
+	BIOMAS("biomas", "Biomas");
 
 	static final int PERGAMINO = 0xFFE3D3AE;
 	static final int NIEBLA = 0xFFCDBB92;
@@ -86,7 +87,7 @@ enum ModoMapa {
 
 	/** Si en este modo las fronteras entre reinos van marcadas fuerte (si no, como una linde de ducado). */
 	boolean fronteras() {
-		return this != RELIEVE && this != FAUNA;
+		return this != RELIEVE && this != FAUNA && this != BIOMAS;
 	}
 
 	/** Color de la casilla (i, j) de la zona en este modo. */
@@ -125,6 +126,8 @@ enum ModoMapa {
 				int p = FichasCliente.peligro(d.dcx(), d.dcz());
 				return p < 0 ? SIN_DATOS : PELIGRO[Math.min(3, p)];
 			}
+			case BIOMAS:
+				return bioma(z.bioma(i, j), z.familia(i, j));
 			case FAUNA:
 				return HABITAT[Math.min(HABITAT.length - 1, z.familia(i, j))];
 			default:
@@ -224,6 +227,34 @@ enum ModoMapa {
 			}
 		}
 		return l;
+	}
+
+	/**
+	 * Color de un bioma: el de su familia (bosque, taiga…) un poco más claro u oscuro y con un toque de otro tono según
+	 * el nombre, para que dos biomas de la misma familia se distingan pero se vea que son parientes.
+	 */
+	static int bioma(String id, int familia) {
+		int base = HABITAT[Math.max(0, Math.min(HABITAT.length - 1, familia))];
+		if (id.isEmpty()) {
+			return base;
+		}
+		int h = id.hashCode() * 0x9E3779B1;
+		double t = ((h >>> 24) / 255.0 - 0.5) * 0.7;
+		int c = t >= 0 ? mezcla(base, 0xFFFFFFFF, t) : mezcla(base, 0xFF000000, -t);
+		return mezcla(c, TONOS[Math.floorMod(h >> 8, TONOS.length)], 0.22);
+	}
+
+	private static final int[] TONOS = {0xFFC0392B, 0xFFE67E22, 0xFFF1C40F, 0xFF27AE60, 0xFF16A085, 0xFF2980B9, 0xFF8E44AD, 0xFF7F5539};
+
+	/** Nombre de un bioma por su id ("minecraft:dark_forest"), traducido si el juego o su mod lo traen. */
+	static Component nombreBioma(String id) {
+		int dos = id.indexOf(':');
+		String ns = dos < 0 ? "minecraft" : id.substring(0, dos);
+		String ruta = id.substring(dos + 1);
+		// si el mod no trae traducción, el nombre a partir del id: "dark_forest" → "Dark forest"
+		String crudo = ruta.substring(ruta.lastIndexOf('/') + 1).replace('_', ' ');
+		String respaldo = crudo.isEmpty() ? id : Character.toUpperCase(crudo.charAt(0)) + crudo.substring(1);
+		return Component.translatableWithFallback("biome." + ns + "." + ruta.replace('/', '.'), respaldo);
 	}
 
 	/** Nombre de la familia de bioma (PaqueteTerritorio.familia). */

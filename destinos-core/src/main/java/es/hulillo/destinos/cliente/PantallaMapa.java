@@ -129,6 +129,7 @@ public final class PantallaMapa extends Screen {
 	private List<Trazo> grabando;
 	/** La leyenda del modo, ya traducida y medida. */
 	private ModoMapa leyendaModo;
+	private int leyendaCuenta;
 	private List<Object[]> leyendaMuestras = List.of();
 	/** Los rótulos del relieve ya preparados para pintar: texto, ancho y color. */
 	private List<Object[]> rotulosListos = List.of();
@@ -289,7 +290,7 @@ public final class PantallaMapa extends Screen {
 	}
 
 	/** Los iconos de los modos, en el orden de ModoMapa. */
-	private static final String[] ICONOS = {"♛", "✦", "⚔", "◆", "✿", "☠", "❀", "▲"};
+	private static final String[] ICONOS = {"♛", "✦", "⚔", "◆", "✿", "☠", "❀", "▲", "♣"};
 
 	private void pintaBotones(GuiGraphics g, int mx, int my) {
 		for (Boton b : botones) {
@@ -795,6 +796,15 @@ public final class PantallaMapa extends Screen {
 					}
 					if (nivel != nivel(z, ox + i, oz + j - 1, i, j - 1)) {
 						bordes.add(1, i, j, CURVA_NIVEL);
+					}
+				} else if (modo == ModoMapa.BIOMAS) {
+					// raya fina donde cambia el bioma
+					String b = z.bioma(i, j);
+					if (i > 0 && !z.bioma(i - 1, j).equals(b)) {
+						bordes.add(0, i, j, HABITAT);
+					}
+					if (j > 0 && !z.bioma(i, j - 1).equals(b)) {
+						bordes.add(1, i, j, HABITAT);
 					}
 				} else if (modo == ModoMapa.FAUNA && !d.oceano()) {
 					int f = z.familia(i, j);
@@ -1810,21 +1820,56 @@ public final class PantallaMapa extends Screen {
 	private void leyenda(GuiGraphics g) {
 		int x = x0;
 		int y = y1 + 7;
+		if (modo == ModoMapa.BIOMAS && ++leyendaCuenta % 30 == 0) {
+			// la de Biomas son los que más se ven en pantalla, así que se rehace cada medio segundo o así
+			leyendaModo = null;
+		}
 		if (leyendaModo != modo) {
 			leyendaModo = modo;
-			leyendaMuestras = new ArrayList<>();
+			leyendaMuestras = modo == ModoMapa.BIOMAS ? leyendaBiomas() : new ArrayList<>();
 			for (Object[] m : modo.leyenda()) {
 				Component c = (Component) m[1];
 				leyendaMuestras.add(new Object[] {m[0], c.getVisualOrderText(), font.width(c)});
 			}
 		}
 		for (Object[] m : leyendaMuestras) {
+			if (x + 11 + (Integer) m[2] > x1) {
+				break;
+			}
 			x = muestra(g, x, y, (Integer) m[0], (FormattedCharSequence) m[1], (Integer) m[2]);
 		}
-		Component ayuda = Component.translatableWithFallback("destinos.mapa.ayuda", "Arrastra · rueda: zoom · 1-8: modos · espacio: a ti · clic: fijar · clic der.: marca");
+		Component ayuda = Component.translatableWithFallback("destinos.mapa.ayuda", "Arrastra · rueda: zoom · 1-9: modos · espacio: a ti · clic: fijar · clic der.: marca");
 		if (x + font.width(ayuda) < x1) {
 			g.drawString(font, ayuda, x1 - font.width(ayuda), y, TEXTO_SUAVE, false);
 		}
+	}
+
+	/** Los biomas que más casillas ocupan en lo que se ve, de más a menos (los que quepan en la leyenda). */
+	private List<Object[]> leyendaBiomas() {
+		Map<String, int[]> cuenta = new HashMap<>();
+		for (Pintura p : pinturas.values()) {
+			if (!visible(p)) {
+				continue;
+			}
+			for (int j = 0; j < NUCLEO; j++) {
+				for (int i = 0; i < NUCLEO; i++) {
+					String b = p.zona.bioma(i, j);
+					if (!b.isEmpty()) {
+						int[] c = cuenta.computeIfAbsent(b, k -> new int[] {0, 0});
+						c[0]++;
+						c[1] = p.zona.familia(i, j);
+					}
+				}
+			}
+		}
+		List<Map.Entry<String, int[]>> orden = new ArrayList<>(cuenta.entrySet());
+		orden.sort((a, b) -> Integer.compare(b.getValue()[0], a.getValue()[0]));
+		List<Object[]> r = new ArrayList<>();
+		for (int k = 0; k < Math.min(8, orden.size()); k++) {
+			Component c = ModoMapa.nombreBioma(orden.get(k).getKey());
+			r.add(new Object[] {ModoMapa.bioma(orden.get(k).getKey(), orden.get(k).getValue()[1]), c.getVisualOrderText(), font.width(c)});
+		}
+		return r;
 	}
 
 	private int muestra(GuiGraphics g, int x, int y, int color, FormattedCharSequence texto, int ancho) {
@@ -2110,6 +2155,7 @@ public final class PantallaMapa extends Screen {
 					lineas.add(Component.translatableWithFallback("destinos.mapa.pista_bichos", "Ojo con: %s", m).withStyle(ChatFormatting.RED));
 				}
 			}
+			case BIOMAS -> terreno(lineas, d, tx, tz);
 			case RELIEVE -> {
 				terreno(lineas, d, tx, tz);
 				int h = TerritoriosCliente.altura(tx, tz);
@@ -2141,13 +2187,7 @@ public final class PantallaMapa extends Screen {
 		String b = z.bioma(i, j);
 		Component nombre;
 		if (!b.isEmpty()) {
-			int dos = b.indexOf(':');
-			String ns = dos < 0 ? "minecraft" : b.substring(0, dos);
-			String ruta = b.substring(dos + 1);
-			// si el mod no trae traducción, el nombre a partir del id: "dark_forest" → "Dark forest"
-			String crudo = ruta.substring(ruta.lastIndexOf('/') + 1).replace('_', ' ');
-			String respaldo = crudo.isEmpty() ? b : Character.toUpperCase(crudo.charAt(0)) + crudo.substring(1);
-			nombre = Component.translatableWithFallback("biome." + ns + "." + ruta.replace('/', '.'), respaldo);
+			nombre = ModoMapa.nombreBioma(b);
 		} else if (!d.oceano()) {
 			nombre = ModoMapa.terreno(z.familia(i, j));
 		} else {
