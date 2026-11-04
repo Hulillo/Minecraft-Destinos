@@ -776,7 +776,6 @@ public final class PantallaMapa extends Screen {
 		}
 		return true;
 	}
-	}
 
 	/**
 	 * De cerca (4 px por casilla o más), cada zona es una imagen de 48×48 (un píxel por casilla) que la tarjeta gráfica
