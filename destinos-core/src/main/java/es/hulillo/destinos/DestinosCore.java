@@ -42,6 +42,8 @@ public final class DestinosCore implements ModInitializer {
 	});
 
 	private static volatile MapaTerreno mapa;
+	/** Zonas que se mandan como mucho cada vez que el mapa político las pide (unos 8 KB cada una). */
+	private static final int ZONAS_POR_PETICION = 96;
 	private static final EnvioTerritorios ENVIO = new EnvioTerritorios();
 	/** Mapa para el que se mandaron las zonas: si cambia (otra sal), se manda todo otra vez. */
 	private static MapaTerreno mapaEnviado;
@@ -73,10 +75,14 @@ public final class DestinosCore implements ModInitializer {
 		PayloadTypeRegistry.playS2C().register(PaqueteTablon.TIPO, PaqueteTablon.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaqueteEncargos.TIPO, PaqueteEncargos.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaqueteMazmorra.TIPO, PaqueteMazmorra.CODEC);
+		PayloadTypeRegistry.playS2C().register(PaqueteFichas.TIPO, PaqueteFichas.CODEC);
 		PayloadTypeRegistry.playC2S().register(PaqueteAccionEncargo.TIPO, PaqueteAccionEncargo.CODEC);
+		PayloadTypeRegistry.playC2S().register(PaquetePedirMapa.TIPO, PaquetePedirMapa.CODEC);
 		// Fabric ya entrega los paquetes en el hilo del servidor
 		ServerPlayNetworking.registerGlobalReceiver(PaqueteAccionEncargo.TIPO, (paquete, contexto) ->
 				EncargosMundo.accion(contexto.player(), paquete));
+		ServerPlayNetworking.registerGlobalReceiver(PaquetePedirMapa.TIPO, (paquete, contexto) ->
+				pideMapa(contexto.server(), contexto.player(), paquete.fichas()));
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
 				EncargosMundo.de(server).envia(server, handler.getPlayer()));
 		ServerLivingEntityEvents.AFTER_DEATH.register((muerto, fuente) -> {
@@ -171,6 +177,26 @@ public final class DestinosCore implements ModInitializer {
 				m.precargaLejos(p.getBlockX(), p.getBlockZ());
 				ENVIO.envia(m, pol, deAhora, p);
 			}
+		}
+	}
+
+	/**
+	 * Alguien ha abierto el mapa político: le van todas las zonas calculadas que no tenga (por tandas, el cliente
+	 * vuelve a pedir mientras siga abierto) y, si las pide, las fichas de reinos y ducados.
+	 */
+	private static void pideMapa(MinecraftServer server, ServerPlayer p, boolean fichas) {
+		MapaTerreno m = mapa(server);
+		PoliticaMundo pol = politica;
+		if (m == null || pol == null) {
+			return;
+		}
+		if (m != mapaEnviado) {
+			ENVIO.olvidaTodo();
+			mapaEnviado = m;
+		}
+		ENVIO.enviaTodas(m, pol, p, ZONAS_POR_PETICION);
+		if (fichas && ServerPlayNetworking.canSend(p, PaqueteFichas.TIPO)) {
+			ServerPlayNetworking.send(p, pol.fichas(server, p, EncargosMundo.de(server)));
 		}
 	}
 

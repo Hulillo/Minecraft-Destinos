@@ -43,6 +43,35 @@ final class EnvioTerritorios {
 		}
 	}
 
+	/**
+	 * Para el mapa político: todas las zonas ya calculadas que el jugador aún no tiene (no solo las de alrededor),
+	 * hasta maximo de una vez. Devuelve cuántas quedan por mandar.
+	 */
+	int enviaTodas(MapaTerreno mapa, PaqueteTerritorio.Politica politica, ServerPlayer jugador, int maximo) {
+		if (!ServerPlayNetworking.canSend(jugador, PaqueteTerritorio.TIPO)) {
+			return 0;
+		}
+		Set<Long> ya = enviadas.computeIfAbsent(jugador.getUUID(), k -> new HashSet<>());
+		int mandadas = 0;
+		int quedan = 0;
+		for (long clave : mapa.ventanasListas()) {
+			if (ya.contains(clave)) {
+				continue;
+			}
+			if (mandadas >= maximo) {
+				quedan++;
+				continue;
+			}
+			MapaTerreno.Zona zona = mapa.zonaSiLista(Geo.claveX(clave), Geo.claveZ(clave));
+			if (zona != null) {
+				ServerPlayNetworking.send(jugador, PaqueteTerritorio.de(zona, mapa.sal(), politica));
+				ya.add(clave);
+				mandadas++;
+			}
+		}
+		return quedan;
+	}
+
 	void olvida(UUID jugador) {
 		enviadas.remove(jugador);
 		conPolitica.remove(jugador);

@@ -621,7 +621,7 @@ L("destinos.primer_reino", "Entras por primera vez en el Reino de %s, bajo el es
   "You enter the Kingdom of %s for the first time, under the banner of House %s.")
 L("destinos.gobierna", "Gobierna %s · Fama: %s", "Ruled by %s · Known for: %s")
 L("destinos.info_reino", "Casa %s · Cultura %s · Reino %s", "House %s · %s culture · %s realm")
-L("key.destinos_core.mapa_politico", "Mapa político (reinos en el mapa)", "Political map (kingdoms on the map)")
+L("key.destinos_core.mapa_politico", "Mapa político", "Political map")
 L("key.category.destinos_core.destinos", "Destinos", "Destinos")
 L("destinos.mapa_politico.on", "Mapa político: activado", "Political map: on")
 L("destinos.mapa_politico.off", "Mapa político: desactivado", "Political map: off")
@@ -845,6 +845,43 @@ MAZMORRAS = {
 }
 for k, (a, b) in MAZMORRAS.items(): L(f"destinos.mazmorra.{k}", a, b)
 for k, (a, b) in EMBAJADA.items(): L(f"destinos.embajada.{k}", a, b)
+
+MAPA = {
+    "titulo": ("Mapa político", "Political map"),
+    "cerrar": ("Cerrar", "Close"),
+    "capa_si": ("Colores en tus mapas: sí", "Colours on your maps: on"),
+    "capa_no": ("Colores en tus mapas: no", "Colours on your maps: off"),
+    "anio": ("Año %s · turno %s · %s reinos conocidos", "Year %s · turn %s · %s known kingdoms"),
+    "vacio": ("Aún no hay mapa: el servidor está calculando los territorios de alrededor…", "No map yet: the server is working out the lands around you…"),
+    "leyenda.capital": ("♛ Capital", "♛ Capital"),
+    "leyenda.frente": ("Frente de guerra", "War front"),
+    "leyenda.salvaje": ("Tierras salvajes", "Wildlands"),
+    "leyenda.reciente": ("Cambió de dueño", "Changed hands"),
+    "leyenda.niebla": ("Sin explorar", "Unexplored"),
+    "ayuda": ("Arrastra · rueda: zoom · espacio: a ti · clic: fijar ficha", "Drag · wheel: zoom · space: to you · click: pin card"),
+    "cargando": ("Cargando fichas…", "Loading…"),
+    "sin_ficha": ("Pasa el ratón por un reino para ver su ficha, o haz clic para dejarla fija.", "Hover over a kingdom to see its card, or click to pin it."),
+    "fijada": ("(ficha fija: clic fuera para soltarla)", "(pinned: click elsewhere to unpin)"),
+    "poder": ("Poder %s · puesto %s de %s", "Power %s · rank %s of %s"),
+    "gente": ("Unos %s habitantes · %s ducados", "About %s people · %s duchies"),
+    "estabilidad": ("Estabilidad %s/100", "Stability %s/100"),
+    "capital": ("♛ Capital: %s", "♛ Capital: %s"),
+    "capital_perdida": ("♛ Capital perdida: %s", "♛ Capital lost: %s"),
+    "vasallo": ("Vasallo del %s", "Vassal of the %s"),
+    "guerras": ("⚔ En guerra con %s", "⚔ At war with %s"),
+    "aliados": ("✦ Aliado del %s", "✦ Allied with %s"),
+    "en_paz": ("En paz y sin alianzas", "At peace, no alliances"),
+    "rep": ("Tu reputación: %s", "Your reputation: %s"),
+    "rep_buena": ("Tu reputación: %s (te aprecian)", "Your reputation: %s (they like you)"),
+    "rep_mala": ("Tu reputación: %s (sus guardias van a por ti)", "Your reputation: %s (their guards are after you)"),
+    "mar": ("Mar abierto", "Open sea"),
+    "aguas": ("Aguas del %s", "Waters of the %s"),
+    "ducado_desconocido": ("Ducado sin nombre todavía", "Duchy not named yet"),
+    "salvaje": ("Tierras salvajes: aquí no manda nadie", "Wildlands: nobody rules here"),
+    "pista_poder": ("Poder %s · puesto %s", "Power %s · rank %s"),
+    "pista_reciente": ("Acaba de cambiar de dueño", "Just changed hands"),
+}
+for k, (a, b) in MAPA.items(): L(f"destinos.mapa.{k}", a, b)
 for k, (a, b) in ENCARGOS.items(): L(f"destinos.encargo.{k}", a, b)
 L("destinos.moneda.cobre", "%s cobre", "%s copper")
 L("destinos.moneda.plata", "%s plata", "%s silver")

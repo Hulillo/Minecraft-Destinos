@@ -256,6 +256,62 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		return nombres.reino(server, reino);
 	}
 
+	// ------------------------------------------------------------------ mapa político
+
+	/**
+	 * Las fichas del mapa político para un jugador: cada reino vivo con su poder y relaciones, y el nombre de cada
+	 * ducado conocido. Pide los registros que falten al datapack (una vez por partida cada uno). p puede ser null
+	 * (prueba de la CI): entonces la reputación sale 0.
+	 */
+	PaqueteFichas fichas(MinecraftServer server, ServerPlayer p, EncargosMundo encargos) {
+		record Fila(long reino, Politica.Resumen resumen) {
+		}
+		List<Fila> filas = new ArrayList<>();
+		for (long r : politica.reinosVivos(grafo)) {
+			filas.add(new Fila(r, politica.resumen(grafo, r)));
+		}
+		filas.sort((a, b) -> Integer.compare(b.resumen().poder(), a.resumen().poder()));
+		List<PaqueteFichas.Reino> reinos = new ArrayList<>(filas.size());
+		for (int i = 0; i < filas.size(); i++) {
+			long id = filas.get(i).reino();
+			Politica.Resumen res = filas.get(i).resumen();
+			Politica.Reino e = politica.reinos().get(id);
+			Component capital = Component.empty();
+			boolean perdida = false;
+			MapaTerreno.Capital c = capitales.get(id);
+			if (c != null) {
+				long ducado = Grafo.id(c.dcx(), c.dcz());
+				capital = nombreDucado(server, ducado);
+				perdida = politica.capitalPerdida(grafo, id);
+			}
+			List<int[]> guerras = new ArrayList<>();
+			List<int[]> aliados = new ArrayList<>();
+			for (Politica.Par par : politica.guerras().keySet()) {
+				if (par.tiene(id)) {
+					guerras.add(celda(par.otro(id)));
+				}
+			}
+			for (Politica.Par par : politica.alianzas()) {
+				if (par.tiene(id)) {
+					aliados.add(celda(par.otro(id)));
+				}
+			}
+			int[] senor = e != null && e.senor != Politica.NADIE ? celda(e.senor) : null;
+			reinos.add(new PaqueteFichas.Reino(Grafo.x(id), Grafo.z(id), nombreReino(server, id), res.poder(),
+					NombresPolitica.redondea(res.habitantes()), res.ducados(), e == null ? 60 : e.estabilidad, i + 1, capital, perdida,
+					senor, guerras, aliados, p == null ? 0 : encargos.rep(p, id)));
+		}
+		List<PaqueteFichas.Nombre> ducados = new ArrayList<>(grafo.ducados().size());
+		for (long id : grafo.ducados().keySet()) {
+			ducados.add(new PaqueteFichas.Nombre(Grafo.x(id), Grafo.z(id), nombreDucado(server, id)));
+		}
+		return new PaqueteFichas(Estaciones.anio(server.overworld()), politica.turno(), reinos, ducados);
+	}
+
+	private static int[] celda(long id) {
+		return new int[] {Grafo.x(id), Grafo.z(id)};
+	}
+
 	// ------------------------------------------------------------------ para los encargos
 
 	Grafo grafo() {
