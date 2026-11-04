@@ -758,6 +758,9 @@ ENCARGOS = {
     "pantalla.ninguno": ("No llevas ningún encargo.", "You carry no jobs."),
     "pantalla.vacio": ("Hoy no hay nada clavado en el tablón.", "Nothing is pinned to the board today."),
     "hud": ("%s m %s · %s d", "%s m %s · %s d"),
+    "hud_arriba": ("▲ %s m arriba", "▲ %s m up"),
+    "hud_abajo": ("▼ %s m abajo", "▼ %s m down"),
+    "hud_nivel": ("● a tu altura", "● at your level"),
 }
 ENCARGOS.update({
     "mazmorra": ("Limpia %s", "Clear %s"),

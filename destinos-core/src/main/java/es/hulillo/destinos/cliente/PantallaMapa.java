@@ -8,10 +8,11 @@ import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTerritorio;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.KeyMapping;
@@ -55,6 +56,10 @@ public final class PantallaMapa extends Screen {
 	/** Cada cuánto se piden más zonas al servidor mientras el mapa está abierto, y cada cuánto las fichas. */
 	private static final int PIDE_ZONAS = 40;
 	private static final int PIDE_FICHAS = 200;
+	/** Por debajo de estos píxeles por casilla se pinta de lejos, a bloques de casillas. */
+	private static final double LEJOS = 2;
+	/** De lejos, más o menos cuántos cuadritos como mucho caben en el mapa (cada uno es un fill). */
+	private static final double CUADROS_LEJOS = 20000;
 	/** Ancho de la columna de modos, a la izquierda. */
 	private static final int COLUMNA = 74;
 	/** Cada cuánto, como mucho, se vuelven a buscar los accidentes del relieve (son caros). */
@@ -69,8 +74,8 @@ public final class PantallaMapa extends Screen {
 	private static String buscado = "";
 
 	private final KeyMapping tecla;
-	/** Cómo se pinta cada zona (se rehace si llegan zonas nuevas, porque cambian las fronteras de los bordes). */
-	private final Map<PaqueteTerritorio, Pintura> pinturas = new IdentityHashMap<>();
+	/** Cómo se pinta cada zona, por su clave (wx, wz); se rehace la zona que llega nueva y sus vecinas (por los bordes). */
+	private final Map<Long, Pintura> pinturas = new HashMap<>();
 	private final Map<Long, double[]> centros = new HashMap<>();
 	private int zonasPintadas = -1;
 	private int turnoPintado = Integer.MIN_VALUE;
@@ -93,8 +98,44 @@ public final class PantallaMapa extends Screen {
 	private boolean arrastra;
 	private double arrastrado;
 
-	/** Una zona ya preparada: tiras de casillas del mismo color y trozos de frontera. */
-	private record Pintura(int ox, int oz, int[] tiras, int[] bordes) {
+	/**
+	 * Una zona ya preparada: tiras de casillas del mismo color, trozos de frontera, lo que aporta al centro de cada
+	 * reino y, para de lejos, tiras de bloques de k×k casillas con las fronteras ya puestas (se guardan para el k de turno).
+	 */
+	private static final class Pintura {
+		final PaqueteTerritorio zona;
+		final int ox;
+		final int oz;
+		final int[] tiras;
+		final int[] bordes;
+		final Map<Long, double[]> centros;
+		int lejosK = -1;
+		int[] lejos;
+
+		Pintura(PaqueteTerritorio zona, int[] tiras, int[] bordes, Map<Long, double[]> centros) {
+			this.zona = zona;
+			this.ox = zona.wx() * NUCLEO;
+			this.oz = zona.wz() * NUCLEO;
+			this.tiras = tiras;
+			this.bordes = bordes;
+			this.centros = centros;
+		}
+
+		int ox() {
+			return ox;
+		}
+
+		int oz() {
+			return oz;
+		}
+
+		int[] tiras() {
+			return tiras;
+		}
+
+		int[] bordes() {
+			return bordes;
+		}
 	}
 
 	/** Al desconectarse: la próxima vez el mapa se abre otra vez sobre el jugador. */
@@ -399,20 +440,57 @@ public final class PantallaMapa extends Screen {
 		// el fondo lo pone render (oscuro y sin desenfoque, para que el mapa se lea bien)
 	}
 
-	/** Rehace las pinturas si han llegado zonas o ha pasado un turno (cambian colores y fronteras). */
+	/**
+	 * Pone al día las pinturas. Si cambia el turno o el modo se rehace todo; si no, solo las zonas que han llegado (o
+	 * se han renovado) y sus vecinas, que es donde cambian las fronteras de los bordes.
+	 */
 	private void prepara() {
-		int n = TerritoriosCliente.zonas();
 		int turno = FichasCliente.turno();
-		if (n == zonasPintadas && turno == turnoPintado && modo == modoPintado && pinturas.size() == n) {
-			return;
-		}
-		zonasPintadas = n;
+		java.util.Collection<PaqueteTerritorio> zonas = TerritoriosCliente.zonasRecibidas();
+		boolean todo = turno != turnoPintado || modo != modoPintado || pinturas.size() > zonas.size();
 		turnoPintado = turno;
 		modoPintado = modo;
-		pinturas.clear();
+		if (todo) {
+			pinturas.clear();
+		}
+		Set<Long> rehacer = new HashSet<>();
+		for (PaqueteTerritorio z : zonas) {
+			Pintura p = pinturas.get(Geo.clave(z.wx(), z.wz()));
+			if (p == null || p.zona != z) {
+				rehacer.add(Geo.clave(z.wx(), z.wz()));
+				if (!todo) {
+					for (int dz = -1; dz <= 1; dz++) {
+						for (int dx = -1; dx <= 1; dx++) {
+							if (pinturas.containsKey(Geo.clave(z.wx() + dx, z.wz() + dz))) {
+								rehacer.add(Geo.clave(z.wx() + dx, z.wz() + dz));
+							}
+						}
+					}
+				}
+			}
+		}
+		if (rehacer.isEmpty()) {
+			return;
+		}
+		Map<Long, PaqueteTerritorio> porClave = new HashMap<>();
+		for (PaqueteTerritorio z : zonas) {
+			porClave.put(Geo.clave(z.wx(), z.wz()), z);
+		}
+		for (long k : rehacer) {
+			PaqueteTerritorio z = porClave.get(k);
+			if (z != null) {
+				pinturas.put(k, pinta(z));
+			}
+		}
+		zonasPintadas = pinturas.size();
 		centros.clear();
-		for (PaqueteTerritorio z : TerritoriosCliente.zonasRecibidas()) {
-			pinturas.put(z, pinta(z));
+		for (Pintura p : pinturas.values()) {
+			for (Map.Entry<Long, double[]> e : p.centros.entrySet()) {
+				double[] a = centros.computeIfAbsent(e.getKey(), x -> new double[3]);
+				a[0] += e.getValue()[0];
+				a[1] += e.getValue()[1];
+				a[2] += e.getValue()[2];
+			}
 		}
 	}
 
@@ -438,6 +516,7 @@ public final class PantallaMapa extends Screen {
 		int oz = z.wz() * NUCLEO;
 		List<Integer> tiras = new ArrayList<>();
 		List<Integer> bordes = new ArrayList<>();
+		Map<Long, double[]> centros = new HashMap<>();
 		for (int j = 0; j < NUCLEO; j++) {
 			int desde = 0;
 			int c = modo.color(z, 0, j);
@@ -479,12 +558,13 @@ public final class PantallaMapa extends Screen {
 				}
 			}
 		}
-		return new Pintura(ox, oz, tiras.stream().mapToInt(Integer::intValue).toArray(), bordes.stream().mapToInt(Integer::intValue).toArray());
+		return new Pintura(z, tiras.stream().mapToInt(Integer::intValue).toArray(), bordes.stream().mapToInt(Integer::intValue).toArray(),
+				centros);
 	}
 
 	private void pintaZonas(GuiGraphics g) {
 		double s = escala * CASILLA;
-		if (s < 1) {
+		if (s < LEJOS) {
 			pintaLejos(g, s);
 			return;
 		}
@@ -538,40 +618,75 @@ public final class PantallaMapa extends Screen {
 	}
 
 	/**
-	 * Muy alejado (menos de un píxel por casilla): un píxel por cada bloque de k×k casillas, con el color de la casilla
-	 * de en medio, y en negro (o rojo, si hay guerra) donde cambia de reino respecto al de la izquierda o el de arriba.
+	 * De lejos: un cuadrito por cada bloque de k×k casillas, con el color de la casilla de en medio y en negro (o rojo,
+	 * si hay guerra) donde cambia de reino respecto al de la izquierda o el de arriba. Los cuadritos seguidos del mismo
+	 * color van en una sola tira, y las tiras se guardan por zona mientras no cambie k, así que arrastrar no recalcula nada.
 	 */
 	private void pintaLejos(GuiGraphics g, double s) {
-		int k = (int) Math.ceil(1 / s);
-		for (PaqueteTerritorio z : pinturas.keySet()) {
-			int ox = z.wx() * NUCLEO;
-			int oz = z.wz() * NUCLEO;
+		// el tamaño del cuadrito crece si el mapa es grande, para no pasar de CUADROS_LEJOS fills
+		double lado = Math.max(2, Math.sqrt((double) (x1 - x0) * (y1 - y0) / CUADROS_LEJOS));
+		int k = 1;
+		while (k * s < lado && k < NUCLEO) {
+			k *= 2;
+		}
+		for (Pintura p : pinturas.values()) {
+			int ox = p.ox();
+			int oz = p.oz();
 			if (pantallaX((double) (ox + NUCLEO) * CASILLA) < x0 || pantallaX((double) ox * CASILLA) > x1
 					|| pantallaY((double) (oz + NUCLEO) * CASILLA) < y0 || pantallaY((double) oz * CASILLA) > y1) {
 				continue;
 			}
-			for (int bj = 0; bj < NUCLEO; bj += k) {
-				int ya = pantallaY((double) (oz + bj) * CASILLA);
-				int yb = Math.max(ya + 1, pantallaY((double) (oz + Math.min(NUCLEO, bj + k)) * CASILLA));
-				int mj = Math.min(NUCLEO - 1, bj + k / 2);
-				for (int bi = 0; bi < NUCLEO; bi += k) {
-					int xa = pantallaX((double) (ox + bi) * CASILLA);
-					int xb = Math.max(xa + 1, pantallaX((double) (ox + Math.min(NUCLEO, bi + k)) * CASILLA));
-					int mi = Math.min(NUCLEO - 1, bi + k / 2);
-					PaqueteTerritorio.Ducado d = z.ducado(mi, mj);
-					int color = modo.color(z, mi, mj);
-					int izq = bi >= k ? linde(d, z.ducado(Math.min(NUCLEO - 1, bi - k + k / 2), mj)) : 0;
-					int arr = bj >= k ? linde(d, z.ducado(Math.min(NUCLEO - 1, bi + k / 2), Math.min(NUCLEO - 1, bj - k + k / 2))) : 0;
-					int l = Math.max(izq, arr);
-					if (l == 4) {
-						color = FRENTE;
-					} else if (l == 3) {
-						color = FRONTERA;
-					}
-					g.fill(xa, ya, xb, yb, color);
-				}
+			if (p.lejosK != k) {
+				p.lejos = lejos(p.zona, k);
+				p.lejosK = k;
+			}
+			int[] t = p.lejos;
+			for (int q = 0; q < t.length; q += 4) {
+				int ya = pantallaY((double) (oz + t[q]) * CASILLA);
+				int yb = Math.max(ya + 1, pantallaY((double) (oz + Math.min(NUCLEO, t[q] + k)) * CASILLA));
+				int xa = pantallaX((double) (ox + t[q + 1]) * CASILLA);
+				int xb = Math.max(xa + 1, pantallaX((double) (ox + t[q + 2]) * CASILLA));
+				g.fill(xa, ya, xb, yb, t[q + 3]);
 			}
 		}
+	}
+
+	/** Las tiras de una zona vista de lejos, a bloques de k×k casillas: fila, desde, hasta (casillas) y color. */
+	private static int[] lejos(PaqueteTerritorio z, int k) {
+		List<Integer> l = new ArrayList<>();
+		for (int bj = 0; bj < NUCLEO; bj += k) {
+			int mj = Math.min(NUCLEO - 1, bj + k / 2);
+			int desde = 0;
+			int c = 0;
+			for (int bi = 0; bi < NUCLEO; bi += k) {
+				int mi = Math.min(NUCLEO - 1, bi + k / 2);
+				PaqueteTerritorio.Ducado d = z.ducado(mi, mj);
+				int color = modo.color(z, mi, mj);
+				int izq = bi >= k ? linde(d, z.ducado(Math.min(NUCLEO - 1, bi - k + k / 2), mj)) : 0;
+				int arr = bj >= k ? linde(d, z.ducado(mi, Math.min(NUCLEO - 1, bj - k + k / 2))) : 0;
+				int m = Math.max(izq, arr);
+				if (m == 4) {
+					color = FRENTE;
+				} else if (m == 3) {
+					color = FRONTERA;
+				}
+				if (bi == 0) {
+					c = color;
+				} else if (color != c) {
+					l.add(bj);
+					l.add(desde);
+					l.add(bi);
+					l.add(c);
+					desde = bi;
+					c = color;
+				}
+			}
+			l.add(bj);
+			l.add(desde);
+			l.add(NUCLEO);
+			l.add(c);
+		}
+		return l.stream().mapToInt(Integer::intValue).toArray();
 	}
 
 	/** Líneas curvas entre capitales: verde las alianzas, rojo las guerras y oro del vasallo a su señor. */

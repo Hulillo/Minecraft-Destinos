@@ -21,8 +21,17 @@ public record PaqueteEncargos(List<Activo> activos) implements CustomPacketPaylo
 	public static final int CALAVERA = 1;
 	public static final int CALAVERA_NOCHE = 2;
 
-	/** Un encargo en curso: su título, el sitio (x, z), la hora del mundo a la que vence y su icono. */
-	public record Activo(Component titulo, int x, int z, long vence, int icono) {
+	/** Para y0/y1 cuando no se sabe a qué altura está el sitio (los encargos que no son de mazmorra). */
+	public static final int SIN_ALTURA = Integer.MIN_VALUE;
+
+	/**
+	 * Un encargo en curso: su título, el sitio (x, z), la hora del mundo a la que vence, su icono y, en las mazmorras,
+	 * de qué altura a qué altura va (y0, y1), para saber si hay que subir o bajar.
+	 */
+	public record Activo(Component titulo, int x, int z, long vence, int icono, int y0, int y1) {
+		public Activo(Component titulo, int x, int z, long vence, int icono) {
+			this(titulo, x, z, vence, icono, SIN_ALTURA, SIN_ALTURA);
+		}
 	}
 
 	private void escribe(RegistryFriendlyByteBuf buf) {
@@ -33,6 +42,8 @@ public record PaqueteEncargos(List<Activo> activos) implements CustomPacketPaylo
 			buf.writeVarInt(a.z());
 			buf.writeVarLong(a.vence());
 			buf.writeVarInt(a.icono());
+			buf.writeInt(a.y0());
+			buf.writeInt(a.y1());
 		}
 	}
 
@@ -43,7 +54,8 @@ public record PaqueteEncargos(List<Activo> activos) implements CustomPacketPaylo
 		}
 		List<Activo> l = new ArrayList<>(n);
 		for (int i = 0; i < n; i++) {
-			l.add(new Activo(ComponentSerialization.TRUSTED_STREAM_CODEC.decode(buf), buf.readVarInt(), buf.readVarInt(), buf.readVarLong(), buf.readVarInt()));
+			l.add(new Activo(ComponentSerialization.TRUSTED_STREAM_CODEC.decode(buf), buf.readVarInt(), buf.readVarInt(), buf.readVarLong(), buf.readVarInt(),
+					buf.readInt(), buf.readInt()));
 		}
 		return new PaqueteEncargos(l);
 	}
