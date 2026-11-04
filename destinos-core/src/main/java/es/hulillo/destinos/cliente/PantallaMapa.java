@@ -129,8 +129,15 @@ public final class PantallaMapa extends Screen {
 	private final List<int[]> raros = new ArrayList<>();
 	private int rarosVersion = -1;
 	/** El nombre de cada reino en mayúsculas, ya medido (se rehace al llegar fichas). */
-	private final Map<Long, FormattedCharSequence> nombres = new HashMap<>();
-	private final Map<Long, Integer> anchos = new HashMap<>();
+	/** El nombre de cada reino partido en dos: "REINO DE" (pequeño, arriba) y "SALINTELIA" (grande); arriba puede ir vacío. */
+	private record Rotulo(FormattedCharSequence arriba, int anchoArriba, FormattedCharSequence abajo, int anchoAbajo) {
+	}
+
+	private final Map<Long, Rotulo> nombres = new HashMap<>();
+	/** Dónde va el nombre de cada reino (lo más metido en sus tierras), y el que se está calculando en otro hilo. */
+	private Map<Long, float[]> polos = Map.of();
+	private CompletableFuture<Map<Long, float[]>> haciendoPolos;
+	private boolean polosViejos = true;
 	private int nombresVersion = -1;
 	private List<FormattedCharSequence> pistaLineas;
 	private int pistaAncho;
@@ -618,6 +625,7 @@ public final class PantallaMapa extends Screen {
 			}
 		}
 		zonasPintadas = pinturas.size();
+		polosViejos = true;
 		// el lienzo de lejos solo se rehace si lo que ha cambiado cae dentro de él
 		LienzoMapa.Hecho h = lienzoHecho;
 		if (todo || h == null) {
@@ -1327,17 +1335,41 @@ public final class PantallaMapa extends Screen {
 		}
 	}
 
-	/** El nombre de cada reino en el centro de sus tierras conocidas, si cabe. */
+	/**
+	 * El nombre de cada reino en lo más metido de sus tierras conocidas (lejos de fronteras y costas), en dos líneas
+	 * ("REINO DE" pequeño encima del nombre) y tan grande como quepa.
+	 */
 	private void pintaNombres(GuiGraphics g) {
 		if (nombresVersion != FichasCliente.version()) {
 			nombresVersion = FichasCliente.version();
 			nombres.clear();
-			anchos.clear();
 			for (PaqueteFichas.Reino r : FichasCliente.reinos()) {
-				Component t = Component.literal(r.nombre().getString().toUpperCase(Locale.ROOT));
-				nombres.put(Geo.clave(r.kx(), r.kz()), t.getVisualOrderText());
-				anchos.put(Geo.clave(r.kx(), r.kz()), font.width(t));
+				String t = r.nombre().getString().toUpperCase(Locale.ROOT);
+				// "REINO DE SALINTELIA" → "REINO DE" + "SALINTELIA" (y en inglés "KINGDOM OF" + ...)
+				int corte = Math.max(t.indexOf(" DE "), t.indexOf(" OF "));
+				String arriba = corte > 0 ? t.substring(0, corte + 3) : "";
+				String abajo = corte > 0 ? t.substring(corte + 4) : t;
+				nombres.put(Geo.clave(r.kx(), r.kz()), new Rotulo(Component.literal(arriba).getVisualOrderText(), font.width(arriba),
+						Component.literal(abajo).getVisualOrderText(), font.width(abajo)));
 			}
+		}
+		if (haciendoPolos != null && haciendoPolos.isDone()) {
+			Map<Long, float[]> r = haciendoPolos.getNow(null);
+			if (r != null) {
+				polos = r;
+			}
+			haciendoPolos = null;
+		}
+		if (polosViejos && haciendoPolos == null) {
+			polosViejos = false;
+			Map<Long, LienzoMapa.Datos> zonas = new HashMap<>();
+			for (Map.Entry<Long, Pintura> e : pinturas.entrySet()) {
+				zonas.put(e.getKey(), e.getValue().datos);
+			}
+			haciendoPolos = CompletableFuture.supplyAsync(() -> LienzoMapa.polos(zonas)).exceptionally(e -> {
+				DestinosCore.LOG.warn("Destinos Core: no se pudo colocar los nombres del mapa", e);
+				return null;
+			});
 		}
 		double s = escala * CASILLA;
 		// los reinos grandes primero, que son los que se quedan el sitio si dos nombres chocan
@@ -1345,42 +1377,60 @@ public final class PantallaMapa extends Screen {
 		orden.sort((a, b) -> Double.compare(b.getValue()[2], a.getValue()[2]));
 		for (Map.Entry<Long, double[]> e : orden) {
 			double[] c = e.getValue();
-			FormattedCharSequence sinColor = nombres.get(e.getKey());
-			if (sinColor == null || c[2] == 0) {
+			Rotulo n = nombres.get(e.getKey());
+			if (n == null || c[2] == 0) {
 				continue;
 			}
-			int w = anchos.get(e.getKey());
-			// que las tierras del reino ocupen al menos el doble del nombre; y si sobra sitio, el nombre más grande, como
-			// en los atlas (hasta el triple)
-			double area = c[2] * s * s;
-			if (area < w * 9 * 2.0) {
-				continue;
-			}
-			float x = (float) (cx() + (c[0] / c[2] * CASILLA - vistaX) * escala);
-			float y = (float) (cy() + (c[1] / c[2] * CASILLA - vistaZ) * escala) + 6;
-			// el tamaño más grande que quepa en sus tierras y no pise otro nombre; si ni a tamaño normal cabe, no sale
+			// el sitio: lo más metido de sus tierras; si aún no se sabe, el centro
+			float[] polo = polos.get(e.getKey());
+			double px = polo != null ? polo[0] : c[0] / c[2];
+			double pz = polo != null ? polo[1] : c[1] / c[2];
+			// cuánto sitio hay alrededor en píxeles (como un círculo; sin polo, a ojo por el área)
+			double radio = (polo != null ? polo[2] : Math.sqrt(c[2]) / 2) * s;
+			int w = n.anchoAbajo();
+			float x = (float) (cx() + (px * CASILLA - vistaX) * escala);
+			float y = (float) (cy() + (pz * CASILLA - vistaZ) * escala);
+			// el tamaño más grande que quepa: el nombre puede salirse algo del círculo por los lados (los reinos son
+			// alargados), pero no mucho, y no puede pisar otro nombre
 			float f = 0;
-			for (float t : new float[] {3, 2, 1.5f, 1}) {
-				if ((t == 1 || area >= w * t * 9 * t * 3.0) && w * t <= (c[4] - c[3]) * s * 1.1
-						&& libre((int) (x - w * t / 2) - 2, (int) y - 2, (int) (x + w * t / 2) + 2, (int) (y + 9 * t) + 2)) {
+			float fa = 0;
+			int alto = 0;
+			for (float t : new float[] {3, 2.5f, 2, 1.5f, 1}) {
+				float ta = n.anchoArriba() == 0 ? 0 : Math.max(1, t * 0.55f);
+				int h = (int) (9 * t + (ta > 0 ? 9 * ta + 1 : 0));
+				boolean cabe = w * t / 2 <= radio * 2.2 && h / 2.0 <= radio * 1.3;
+				if ((cabe || t == 1 && w / 2.0 <= radio * 4) && libre((int) (x - Math.max(w * t, n.anchoArriba() * ta) / 2) - 2,
+						(int) (y - h / 2f) - 2, (int) (x + Math.max(w * t, n.anchoArriba() * ta) / 2) + 2, (int) (y + h / 2f) + 2)) {
 					f = t;
+					fa = ta;
+					alto = h;
 					break;
 				}
 			}
 			if (f == 0) {
 				continue;
 			}
-			g.pose().pushMatrix();
-			g.pose().translate(x, y);
-			g.pose().scale(f, f);
-			// un halo de pergamino alrededor para que se lea encima de fronteras y colores
-			int ox = -w / 2;
-			for (int[] d : HALO) {
-				g.drawString(font, sinColor, ox + d[0], d[1], HALO_COLOR, false);
+			float arriba = y - alto / 2f;
+			if (fa > 0) {
+				rotulo(g, n.arriba(), n.anchoArriba(), x, arriba, fa);
+				arriba += 9 * fa + 1;
 			}
-			g.drawString(font, sinColor, ox, 0, TINTA, false);
-			g.pose().popMatrix();
+			rotulo(g, n.abajo(), w, x, arriba, f);
 		}
+	}
+
+	/** Un texto centrado en x, con la parte de arriba en y, a la escala f y con halo de pergamino. */
+	private void rotulo(GuiGraphics g, FormattedCharSequence t, int w, float x, float y, float f) {
+		g.pose().pushMatrix();
+		g.pose().translate(x, y);
+		g.pose().scale(f, f);
+		// un halo de pergamino alrededor para que se lea encima de fronteras y colores
+		int ox = -w / 2;
+		for (int[] d : HALO) {
+			g.drawString(font, t, ox + d[0], d[1], HALO_COLOR, false);
+		}
+		g.drawString(font, t, ox, 0, TINTA, false);
+		g.pose().popMatrix();
 	}
 
 	private static final int[][] HALO = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
@@ -1726,6 +1776,7 @@ public final class PantallaMapa extends Screen {
 				}
 			}
 			case FAUNA -> {
+				terreno(lineas, d, tx, tz);
 				PaqueteFichas.Nombre f = d.oceano() ? null : FichasCliente.fichaDucado(d.dcx(), d.dcz());
 				if (f != null && !f.animales().isEmpty()) {
 					MutableComponent a = Component.empty();
@@ -1750,6 +1801,7 @@ public final class PantallaMapa extends Screen {
 				}
 			}
 			case RELIEVE -> {
+				terreno(lineas, d, tx, tz);
 				int h = TerritoriosCliente.altura(tx, tz);
 				if (h != TerritoriosCliente.SIN_ALTURA) {
 					lineas.add(Component.translatableWithFallback(d.oceano() ? "destinos.mapa.pista_fondo" : "destinos.mapa.pista_altura",
@@ -1762,6 +1814,15 @@ public final class PantallaMapa extends Screen {
 			}
 			default -> {
 			}
+		}
+	}
+
+	/** El tipo de terreno de la casilla (la familia de su bioma), para Fauna y Relieve. */
+	private static void terreno(List<Component> lineas, PaqueteTerritorio.Ducado d, int tx, int tz) {
+		PaqueteTerritorio z = TerritoriosCliente.zona(tx, tz);
+		if (z != null && !d.oceano()) {
+			lineas.add(Component.translatableWithFallback("destinos.mapa.pista_terreno", "Terreno: %s",
+					ModoMapa.terreno(z.familia(tx - z.wx() * NUCLEO, tz - z.wz() * NUCLEO))).withStyle(ChatFormatting.DARK_GREEN));
 		}
 	}
 

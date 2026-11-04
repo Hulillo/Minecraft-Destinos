@@ -2,6 +2,7 @@ package es.hulillo.destinos.cliente;
 
 import es.hulillo.destinos.Geo;
 import es.hulillo.destinos.MapaTerreno;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -122,5 +123,92 @@ final class LienzoMapa {
 			return 4;
 		}
 		return 3;
+	}
+	/**
+	 * El mejor sitio para el nombre de cada reino: la casilla de sus tierras más alejada de cualquier borde (otro reino,
+	 * el mar, tierras salvajes o lo que aún no se ha explorado). Da, por reino, {x, z, distancia} en casillas del mundo
+	 * (x y z al centro de la casilla). Es una distancia de chaflán 3-4 en dos pasadas sobre todo lo conocido.
+	 */
+	static Map<Long, float[]> polos(Map<Long, Datos> zonas) {
+		Map<Long, float[]> polos = new HashMap<>();
+		if (zonas.isEmpty()) {
+			return polos;
+		}
+		int wx0 = Integer.MAX_VALUE;
+		int wz0 = Integer.MAX_VALUE;
+		int wx1 = Integer.MIN_VALUE;
+		int wz1 = Integer.MIN_VALUE;
+		for (long k : zonas.keySet()) {
+			wx0 = Math.min(wx0, Geo.claveX(k));
+			wx1 = Math.max(wx1, Geo.claveX(k));
+			wz0 = Math.min(wz0, Geo.claveZ(k));
+			wz1 = Math.max(wz1, Geo.claveZ(k));
+		}
+		int ancho = (wx1 - wx0 + 1) * N;
+		int alto = (wz1 - wz0 + 1) * N;
+		// dueño de cada casilla; las que no son de ningún reino (mar, salvajes, sin explorar) son borde
+		long[] dueno = new long[ancho * alto];
+		java.util.Arrays.fill(dueno, Long.MIN_VALUE);
+		for (Map.Entry<Long, Datos> e : zonas.entrySet()) {
+			int bx = (Geo.claveX(e.getKey()) - wx0) * N;
+			int bz = (Geo.claveZ(e.getKey()) - wz0) * N;
+			Datos d = e.getValue();
+			for (int j = 0; j < N; j++) {
+				for (int i = 0; i < N; i++) {
+					int c = i + j * N;
+					if ((d.marcas[c] & (Datos.OCEANO | Datos.SALVAJE)) == 0) {
+						dueno[bx + i + (bz + j) * ancho] = d.dueno[c];
+					}
+				}
+			}
+		}
+		int[] dist = new int[ancho * alto];
+		for (int y = 0; y < alto; y++) {
+			for (int x = 0; x < ancho; x++) {
+				int c = x + y * ancho;
+				long k = dueno[c];
+				if (k == Long.MIN_VALUE) {
+					continue;
+				}
+				int m = Integer.MAX_VALUE / 2;
+				m = Math.min(m, x > 0 && dueno[c - 1] == k ? dist[c - 1] + 3 : 3);
+				m = Math.min(m, y > 0 && dueno[c - ancho] == k ? dist[c - ancho] + 3 : 3);
+				m = Math.min(m, x > 0 && y > 0 && dueno[c - ancho - 1] == k ? dist[c - ancho - 1] + 4 : 3);
+				m = Math.min(m, x < ancho - 1 && y > 0 && dueno[c - ancho + 1] == k ? dist[c - ancho + 1] + 4 : 3);
+				// el borde del mapa conocido también es borde
+				if (x == 0 || y == 0 || x == ancho - 1 || y == alto - 1) {
+					m = 3;
+				}
+				dist[c] = m;
+			}
+		}
+		for (int y = alto - 1; y >= 0; y--) {
+			for (int x = ancho - 1; x >= 0; x--) {
+				int c = x + y * ancho;
+				long k = dueno[c];
+				if (k == Long.MIN_VALUE) {
+					continue;
+				}
+				int m = dist[c];
+				if (x < ancho - 1) {
+					m = Math.min(m, dueno[c + 1] == k ? dist[c + 1] + 3 : 3);
+				}
+				if (y < alto - 1) {
+					m = Math.min(m, dueno[c + ancho] == k ? dist[c + ancho] + 3 : 3);
+					if (x < ancho - 1) {
+						m = Math.min(m, dueno[c + ancho + 1] == k ? dist[c + ancho + 1] + 4 : 3);
+					}
+					if (x > 0) {
+						m = Math.min(m, dueno[c + ancho - 1] == k ? dist[c + ancho - 1] + 4 : 3);
+					}
+				}
+				dist[c] = m;
+				float[] p = polos.get(k);
+				if (p == null || m > p[2] * 3) {
+					polos.put(k, new float[] {wx0 * N + x + 0.5f, wz0 * N + y + 0.5f, m / 3f});
+				}
+			}
+		}
+		return polos;
 	}
 }

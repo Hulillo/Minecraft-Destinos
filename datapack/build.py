@@ -929,6 +929,20 @@ MAPA = {
     "pista_altura": ("Altura: y=%s", "Height: y=%s"),
     "pista_fondo": ("Fondo a y=%s", "Seabed at y=%s"),
     "pista_rio": ("Pasa un río", "A river runs here"),
+    "pista_terreno": ("Terreno: %s", "Terrain: %s"),
+    "terreno.campo": ("Campo abierto", "Open country"),
+    "terreno.mar": ("Mar", "Sea"),
+    "terreno.ribera": ("Ribera", "Riverside"),
+    "terreno.nieve": ("Nieve", "Snow"),
+    "terreno.badlands": ("Tierras baldías", "Badlands"),
+    "terreno.desierto": ("Desierto", "Desert"),
+    "terreno.jungla": ("Jungla", "Jungle"),
+    "terreno.sabana": ("Sabana", "Savanna"),
+    "terreno.pantano": ("Pantano", "Swamp"),
+    "terreno.taiga": ("Taiga", "Taiga"),
+    "terreno.montana": ("Montaña", "Mountains"),
+    "terreno.bosque": ("Bosque", "Forest"),
+    "terreno.llanura": ("Llanura", "Plains"),
 }
 for k, (a, b) in MAPA.items(): L(f"destinos.mapa.{k}", a, b)
 for k, (a, b) in ENCARGOS.items(): L(f"destinos.encargo.{k}", a, b)

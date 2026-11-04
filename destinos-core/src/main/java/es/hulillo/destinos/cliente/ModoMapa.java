@@ -226,6 +226,15 @@ enum ModoMapa {
 		return l;
 	}
 
+	/** Nombre de la familia de bioma (PaqueteTerritorio.familia). */
+	static Component terreno(int familia) {
+		String[][] n = {{"campo", "Campo abierto"}, {"mar", "Mar"}, {"ribera", "Ribera"}, {"nieve", "Nieve"}, {"badlands", "Tierras baldías"},
+			{"desierto", "Desierto"}, {"jungla", "Jungla"}, {"sabana", "Sabana"}, {"pantano", "Pantano"}, {"taiga", "Taiga"},
+			{"montana", "Montaña"}, {"bosque", "Bosque"}, {"llanura", "Llanura"}};
+		String[] e = n[Math.max(0, Math.min(n.length - 1, familia))];
+		return Component.translatableWithFallback("destinos.mapa.terreno." + e[0], e[1]);
+	}
+
 	private static Component t(String clave, String respaldo) {
 		return Component.translatableWithFallback("destinos.mapa.leyenda." + clave, respaldo);
 	}
