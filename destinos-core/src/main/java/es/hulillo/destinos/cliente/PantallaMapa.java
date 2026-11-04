@@ -1,5 +1,7 @@
 package es.hulillo.destinos.cliente;
 
+import com.mojang.blaze3d.platform.NativeImage;
+import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.Geo;
 import es.hulillo.destinos.MapaTerreno;
 import es.hulillo.destinos.PaqueteFichas;
@@ -25,8 +27,12 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
 import org.lwjgl.glfw.GLFW;
 
@@ -59,7 +65,9 @@ public final class PantallaMapa extends Screen {
 	private static final int PIDE_ZONAS = 40;
 	private static final int PIDE_FICHAS = 200;
 	/** Por debajo de estos píxeles por casilla se pinta de lejos, a bloques de casillas. */
-	private static final double LEJOS = 2;
+	private static final double LEJOS = 1;
+	/** Desde estos píxeles por casilla las lindes van como rayas encima de la imagen de la zona. */
+	private static final double CERCA = 4;
 	/** De lejos, más o menos cuántos cuadritos como mucho caben en el mapa (cada uno es un fill). */
 	private static final double CUADROS_LEJOS = 12000;
 	/** Ancho de la columna de modos, a la izquierda. */
@@ -135,19 +143,33 @@ public final class PantallaMapa extends Screen {
 		final PaqueteTerritorio zona;
 		final int ox;
 		final int oz;
-		final int[] tiras;
 		final int[] bordes;
 		final Map<Long, double[]> centros;
 		int lejosK = -1;
 		int[] lejos;
+		/** La zona hecha imagen (un píxel por casilla): sin fronteras, y con las de reino y frentes pintadas. */
+		Identifier imagen;
+		Identifier imagenConFronteras;
 
-		Pintura(PaqueteTerritorio zona, int[] tiras, int[] bordes, Map<Long, double[]> centros) {
+		Pintura(PaqueteTerritorio zona, int[] bordes, Map<Long, double[]> centros) {
 			this.zona = zona;
 			this.ox = zona.wx() * NUCLEO;
 			this.oz = zona.wz() * NUCLEO;
-			this.tiras = tiras;
 			this.bordes = bordes;
 			this.centros = centros;
+		}
+
+		/** Suelta las imágenes de la tarjeta gráfica. */
+		void suelta() {
+			TextureManager t = Minecraft.getInstance().getTextureManager();
+			if (imagen != null) {
+				t.release(imagen);
+				imagen = null;
+			}
+			if (imagenConFronteras != null) {
+				t.release(imagenConFronteras);
+				imagenConFronteras = null;
+			}
 		}
 
 		int ox() {
@@ -156,10 +178,6 @@ public final class PantallaMapa extends Screen {
 
 		int oz() {
 			return oz;
-		}
-
-		int[] tiras() {
-			return tiras;
 		}
 
 		int[] bordes() {
@@ -482,6 +500,7 @@ public final class PantallaMapa extends Screen {
 		cambiosPintados = cambios;
 		modoPintado = modo;
 		if (todo) {
+			pinturas.values().forEach(Pintura::suelta);
 			pinturas.clear();
 		}
 		Set<Long> rehacer = null;
@@ -513,7 +532,10 @@ public final class PantallaMapa extends Screen {
 		for (long k : rehacer) {
 			PaqueteTerritorio z = porClave.get(k);
 			if (z != null) {
-				pinturas.put(k, pinta(z));
+				Pintura vieja = pinturas.put(k, pinta(z));
+				if (vieja != null) {
+					vieja.suelta();
+				}
 			}
 		}
 		zonasPintadas = pinturas.size();
@@ -573,61 +595,111 @@ public final class PantallaMapa extends Screen {
 				}
 			}
 		}
-		return new Pintura(z, tiras(z, 1, false), bordes.toArray(), centros);
+		return new Pintura(z, bordes.toArray(), centros);
 	}
 
+	/**
+	 * Como hace JourneyMap: cada zona es una imagen de 48×48 (un píxel por casilla) que la tarjeta gráfica estira, así
+	 * que cuesta un solo dibujo por zona se vea como se vea. De cerca (4 px por casilla o más) la imagen va sin fronteras
+	 * y las lindes se pintan encima como rayas finas; a media distancia, las fronteras de reino y los frentes van ya
+	 * dentro de la imagen; y muy de lejos (menos de un píxel por casilla), a bloques, para que no parpadeen.
+	 */
 	private void pintaZonas(GuiGraphics g) {
 		double s = escala * CASILLA;
-		// de lejos, o si caben tantas casillas que pintarlas una a una sería un montón de fills (en Relieve y Fauna
-		// cada casilla tiene su color y no se juntan en tiras)
-		double casillas = (double) (x1 - x0) * (y1 - y0) / (s * s);
-		if (s < LEJOS || casillas > CUADROS_LEJOS) {
+		if (s < LEJOS) {
 			pintaLejos(g, s);
 			return;
 		}
+		boolean cerca = s >= CERCA;
 		for (Pintura p : pinturas.values()) {
 			if (!visible(p)) {
 				continue;
 			}
-			int[] t = p.tiras();
-			for (int k = 0; k < t.length; k += 4) {
-				int ya = pantallaY((double) (p.oz() + t[k]) * CASILLA);
-				int yb = pantallaY((double) (p.oz() + t[k] + 1) * CASILLA);
-				int xa = pantallaX((double) (p.ox() + t[k + 1]) * CASILLA);
-				int xb = pantallaX((double) (p.ox() + t[k + 2]) * CASILLA);
-				if (xb > xa && yb > ya) {
-					g.fill(xa, ya, xb, yb, t[k + 3]);
-				}
-			}
-			int[] b = p.bordes();
-			for (int k = 0; k < b.length; k += 4) {
-				int tipo = b[k + 3];
-				if (tipo == 1 && s < 6) {
-					continue;
-				}
-				int grosor = tipo >= 3 && s >= 12 ? 2 : 1;
-				if (tipo == 4) {
-					grosor++;
-				}
-				int color = switch (tipo) {
-					case 1 -> LINDE;
-					case 2 -> COSTA;
-					case 4 -> FRENTE;
-					default -> FRONTERA;
-				};
-				int i = p.ox() + b[k + 1];
-				int j = p.oz() + b[k + 2];
-				int xa = pantallaX((double) i * CASILLA);
-				int ya = pantallaY((double) j * CASILLA);
-				if (b[k] == 0) {
-					int yb = pantallaY((double) (j + 1) * CASILLA);
-					g.fill(xa - grosor / 2, ya, xa - grosor / 2 + grosor, Math.max(yb, ya + 1), color);
-				} else {
-					int xb = pantallaX((double) (i + 1) * CASILLA);
-					g.fill(xa, ya - grosor / 2, Math.max(xb, xa + 1), ya - grosor / 2 + grosor, color);
-				}
+			int xa = pantallaX((double) p.ox() * CASILLA);
+			int ya = pantallaY((double) p.oz() * CASILLA);
+			int xb = pantallaX((double) (p.ox() + NUCLEO) * CASILLA);
+			int yb = pantallaY((double) (p.oz() + NUCLEO) * CASILLA);
+			Identifier img = imagen(p, !cerca);
+			g.blit(RenderPipelines.GUI_TEXTURED, img, xa, ya, 0, 0, xb - xa, yb - ya, NUCLEO, NUCLEO, NUCLEO, NUCLEO);
+			if (cerca) {
+				pintaBordes(g, p, s);
 			}
 		}
+	}
+
+	private static int imagenes;
+
+	/** La imagen de la zona (se hace la primera vez que se pinta). */
+	private static Identifier imagen(Pintura p, boolean conFronteras) {
+		Identifier id = conFronteras ? p.imagenConFronteras : p.imagen;
+		if (id != null) {
+			return id;
+		}
+		NativeImage img = new NativeImage(NUCLEO, NUCLEO, false);
+		int[] t = tiras(p.zona, 1, conFronteras);
+		for (int q = 0; q < t.length; q += 4) {
+			for (int i = t[q + 1]; i < t[q + 2]; i++) {
+				img.setPixel(i, t[q], t[q + 3]);
+			}
+		}
+		id = Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "mapa/zona_" + (imagenes++));
+		DynamicTexture tex = new DynamicTexture(id::toString, img);
+		tex.upload();
+		Minecraft.getInstance().getTextureManager().register(id, tex);
+		if (conFronteras) {
+			p.imagenConFronteras = id;
+		} else {
+			p.imagen = id;
+		}
+		return id;
+	}
+
+	/** Las lindes de la zona como rayas encima de la imagen (solo de cerca). */
+	private void pintaBordes(GuiGraphics g, Pintura p, double s) {
+		int[] b = p.bordes();
+		for (int k = 0; k < b.length; k += 4) {
+			int tipo = b[k + 3];
+			if (tipo == 1 && s < 6) {
+				continue;
+			}
+			int grosor = tipo >= 3 && s >= 12 ? 2 : 1;
+			if (tipo == 4) {
+				grosor++;
+			}
+			int color = switch (tipo) {
+				case 1 -> LINDE;
+				case 2 -> COSTA;
+				case 4 -> FRENTE;
+				default -> FRONTERA;
+			};
+			int i = p.ox() + b[k + 1];
+			int j = p.oz() + b[k + 2];
+			int xa = pantallaX((double) i * CASILLA);
+			int ya = pantallaY((double) j * CASILLA);
+			if (ya > y1 || xa > x1) {
+				continue;
+			}
+			if (b[k] == 0) {
+				int yb = pantallaY((double) (j + 1) * CASILLA);
+				if (xa < x0 - 2 || yb < y0) {
+					continue;
+				}
+				g.fill(xa - grosor / 2, ya, xa - grosor / 2 + grosor, Math.max(yb, ya + 1), color);
+			} else {
+				int xb = pantallaX((double) (i + 1) * CASILLA);
+				if (xb < x0 || ya < y0 - 2) {
+					continue;
+				}
+				g.fill(xa, ya - grosor / 2, Math.max(xb, xa + 1), ya - grosor / 2 + grosor, color);
+			}
+		}
+	}
+
+	@Override
+	public void removed() {
+		pinturas.values().forEach(Pintura::suelta);
+		pinturas.clear();
+		super.removed();
 	}
 
 	/**
@@ -637,7 +709,7 @@ public final class PantallaMapa extends Screen {
 	 */
 	private void pintaLejos(GuiGraphics g, double s) {
 		// el tamaño del cuadrito crece si el mapa es grande, para no pasar de CUADROS_LEJOS fills
-		double lado = Math.max(s < LEJOS ? 2 : 0, Math.sqrt((double) (x1 - x0) * (y1 - y0) / CUADROS_LEJOS));
+		double lado = Math.max(2, Math.sqrt((double) (x1 - x0) * (y1 - y0) / CUADROS_LEJOS));
 		int k = 1;
 		while (k * s < lado && k < NUCLEO) {
 			k *= 2;
