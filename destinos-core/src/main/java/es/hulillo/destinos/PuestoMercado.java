@@ -56,9 +56,9 @@ final class PuestoMercado {
 			o.pon(u, 3, -2, tela);
 		}
 		// el mostrador: barriles a los lados y una tabla en medio con lo que se vende encima
-		o.pon(-1, 1, -1, Blocks.BARREL);
+		o.tonel(-1, 1, -1);
 		o.pon(0, 1, -1, Obra.losa(p.maderaLosa, true));
-		o.pon(1, 1, -1, Blocks.BARREL);
+		o.tonel(1, 1, -1);
 		Block[][] generos = {
 				{Blocks.CAKE, Blocks.FLOWER_POT, Blocks.DECORATED_POT},
 				{Blocks.DECORATED_POT, Blocks.CANDLE, Blocks.DECORATED_POT},
@@ -68,8 +68,8 @@ final class PuestoMercado {
 			o.pon(u, 2, -1, u == 0 && g[1] == Blocks.CANDLE ? Obra.velas(3) : g[u + 1].defaultBlockState());
 		}
 		// detrás, la trastienda: cajas, un saco de heno y un farol colgado del toldo
-		o.pon(-1, 1, 1, Blocks.BARREL);
-		o.pon(-1, 2, 1, Blocks.BARREL);
+		o.tonel(-1, 1, 1);
+		o.tonel(-1, 2, 1);
 		o.pon(0, 1, 1, Obra.mira(Blocks.CHEST, Direction.NORTH));
 		o.pon(1, 1, 1, Blocks.HAY_BLOCK);
 		o.pon(0, 3, 0, Obra.farolColgado());
@@ -87,7 +87,7 @@ final class PuestoMercado {
 		}
 		// el mostrador, lleno de género
 		o.pon(-1, 1, -1, Blocks.PUMPKIN);
-		o.pon(0, 1, -1, Blocks.BARREL);
+		o.tonel(0, 1, -1);
 		o.pon(0, 2, -1, Blocks.MELON);
 		o.pon(1, 1, -1, Blocks.MELON);
 		// cajas en el suelo delante y a los lados
@@ -95,11 +95,11 @@ final class PuestoMercado {
 		o.pon(2, 1, -2, Blocks.COMPOSTER);
 		o.pon(1, 1, -2, Obra.trampilla(p.trampilla, Direction.NORTH, false, false));
 		// detrás: más cajas apiladas y sacos
-		o.pon(-1, 1, 1, Blocks.BARREL);
+		o.tonel(-1, 1, 1);
 		o.pon(0, 1, 1, Blocks.HAY_BLOCK);
 		o.pon(0, 2, 1, Blocks.PUMPKIN);
-		o.pon(1, 1, 1, Blocks.BARREL);
-		o.pon(1, 2, 1, Blocks.BARREL);
+		o.tonel(1, 1, 1);
+		o.tonel(1, 2, 1);
 		o.pon(0, 3, 0, Obra.farolColgado());
 	}
 
@@ -130,7 +130,7 @@ final class PuestoMercado {
 		o.pon(-2, 1, -2, Blocks.DECORATED_POT);
 		o.pon(2, 1, -2, Blocks.DECORATED_POT);
 		for (int u = -1; u <= 1; u++) {
-			o.pon(u, 1, 1, Blocks.BARREL);
+			o.tonel(u, 1, 1);
 			o.pon(u, 2, 1, macetas[o.azar(u, 2, 1, macetas.length)]);
 		}
 		o.pon(0, 3, 0, Obra.farolColgado());
@@ -151,9 +151,9 @@ final class PuestoMercado {
 		}
 		// la carga
 		Block[][] cargas = {
-				{Blocks.HAY_BLOCK, Blocks.HAY_BLOCK, Blocks.BARREL},
-				{Blocks.PUMPKIN, Blocks.BARREL, Blocks.MELON},
-				{Blocks.BARREL, Blocks.HAY_BLOCK, Blocks.PUMPKIN}};
+				{Blocks.HAY_BLOCK, Blocks.HAY_BLOCK, Blocks.SPRUCE_LOG},
+				{Blocks.PUMPKIN, Blocks.SPRUCE_LOG, Blocks.MELON},
+				{Blocks.SPRUCE_LOG, Blocks.HAY_BLOCK, Blocks.PUMPKIN}};
 		Block[] c = cargas[o.azar(0, 2, 0, cargas.length)];
 		for (int u = -1; u <= 1; u++) {
 			o.pon(u, 2, 0, c[u + 1]);
@@ -166,7 +166,7 @@ final class PuestoMercado {
 		o.caja(-2, 1, 0, -2, 3, 0, p.valla);
 		o.pon(-2, 4, 0, Blocks.LANTERN);
 		// un par de sacos y una caja en el suelo, junto al carro
-		o.pon(1, 1, -2, Blocks.BARREL);
+		o.tonel(1, 1, -2);
 		o.pon(-1, 1, -2, Blocks.HAY_BLOCK);
 	}
 	/** Toldo plano de lana a rayas de dos colores sobre los postes (de ly 4), cayendo un bloque por delante. */
@@ -186,12 +186,12 @@ final class PuestoMercado {
 		o.pon(-1, 1, -1, Obra.mira(Blocks.SMOKER, Direction.NORTH));
 		o.pon(0, 1, -1, Obra.tronco(p.troncoPelado, Direction.Axis.Y));
 		o.pon(0, 2, -1, Obra.trampilla(p.trampilla, Direction.NORTH, false, false));
-		o.pon(1, 1, -1, Blocks.BARREL);
+		o.tonel(1, 1, -1);
 		o.pon(1, 2, -1, Blocks.FLOWER_POT);
 		// detrás: los jamones (bloques de champiñón marrón colgados como piezas), sal y leña
 		o.pon(-1, 3, 1, Blocks.BROWN_MUSHROOM_BLOCK);
 		o.pon(1, 3, 1, Blocks.BROWN_MUSHROOM_BLOCK);
-		o.pon(-1, 1, 1, Blocks.BARREL);
+		o.tonel(-1, 1, 1);
 		o.pon(0, 1, 1, Obra.mira(Blocks.CHEST, Direction.NORTH));
 		o.pon(1, 1, 1, Obra.tronco(p.tronco, Direction.Axis.X));
 		o.pon(0, 3, 0, Obra.farolColgado());
@@ -207,11 +207,12 @@ final class PuestoMercado {
 		o.pon(-1, 2, -1, Obra.trampilla(Blocks.SPRUCE_TRAPDOOR, Direction.NORTH, false, false));
 		o.pon(1, 2, -1, Blocks.SEA_PICKLE.defaultBlockState().setValue(BlockStateProperties.WATERLOGGED, false));
 		// por delante, un barril de cebo; detrás, algas secas, cofre y la red colgada del toldo
+		// el barril de verdad del puesto: el sitio de trabajo del pescadero
 		o.pon(2, 1, -2, Blocks.BARREL);
 		o.pon(-1, 1, 1, Blocks.DRIED_KELP_BLOCK);
 		o.pon(-1, 2, 1, Blocks.DRIED_KELP_BLOCK);
 		o.pon(0, 1, 1, Obra.mira(Blocks.CHEST, Direction.NORTH));
-		o.pon(1, 1, 1, Blocks.BARREL);
+		o.tonel(1, 1, 1);
 		o.pon(1, 3, 1, Blocks.COBWEB);
 		o.pon(0, 3, 0, Obra.farolColgado());
 	}
@@ -247,7 +248,7 @@ final class PuestoMercado {
 		o.pon(-1, 1, 1, Obra.mira(Blocks.FURNACE, Direction.NORTH));
 		o.pon(0, 1, 1, Blocks.HAY_BLOCK);
 		o.pon(0, 2, 1, Blocks.HAY_BLOCK);
-		o.pon(1, 1, 1, Blocks.BARREL);
+		o.tonel(1, 1, 1);
 		o.pon(-2, 1, -2, Blocks.HAY_BLOCK);
 		o.pon(0, 3, 0, Obra.farolColgado());
 	}

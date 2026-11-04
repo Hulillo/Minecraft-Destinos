@@ -194,7 +194,7 @@ public final class PlazaMayor extends PiezaObra {
 				continue;
 			}
 			int h = o.azar(k, 19, 1, 5);
-			o.pon(u, 1, v, h == 0 ? Blocks.HAY_BLOCK : h == 1 ? Blocks.BARREL : h == 2 ? Blocks.COMPOSTER : h == 3 ? Blocks.PUMPKIN : Blocks.BARREL);
+			o.pon(u, 1, v, h == 0 ? Blocks.HAY_BLOCK : h == 1 ? Blocks.SPRUCE_LOG : h == 2 ? Blocks.MELON : h == 3 ? Blocks.PUMPKIN : Blocks.CHEST);
 			sueltas++;
 		}
 		int farolas = 0;

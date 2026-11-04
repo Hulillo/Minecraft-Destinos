@@ -79,6 +79,11 @@ enum ModoMapa {
 		return this == REINOS || this == GUERRAS || this == DIPLOMACIA;
 	}
 
+	/** Si los colores de este modo salen de las fichas (y hay que repintar cuando llegan ducados nuevos). */
+	boolean usaFichas() {
+		return this == PODER || this == CULTURA || this == SEGURIDAD;
+	}
+
 	/** Si en este modo las fronteras entre reinos van marcadas fuerte (si no, como una linde de ducado). */
 	boolean fronteras() {
 		return this != RELIEVE && this != FAUNA;

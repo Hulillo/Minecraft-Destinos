@@ -106,6 +106,26 @@ final class Obra {
 		pon(u, ly, v, b.defaultBlockState());
 	}
 
+	/**
+	 * Un tonel tumbado (tronco de abeto de lado) donde antes iba un barril de adorno: los barriles son el puesto del
+	 * pescador y, con tantos, todos los aldeanos de la capital acababan de pescadores. Se tumba hacia un lado u otro
+	 * según el sitio, para que una fila de toneles no quede toda igual.
+	 */
+	void tonel(int u, int ly, int v) {
+		pon(u, ly, v, Blocks.SPRUCE_LOG.defaultBlockState().setValue(BlockStateProperties.AXIS,
+				Math.floorMod(u + v, 2) == 0 ? Direction.Axis.X : Direction.Axis.Z));
+	}
+
+	void toneles(int u1, int y1, int v1, int u2, int y2, int v2) {
+		for (int u = Math.min(u1, u2); u <= Math.max(u1, u2); u++) {
+			for (int v = Math.min(v1, v2); v <= Math.max(v1, v2); v++) {
+				for (int y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
+					tonel(u, y, v);
+				}
+			}
+		}
+	}
+
 	BlockState en(int u, int ly, int v) {
 		Columna c = columna(u, v);
 		return c == null ? null : c.get(ly);

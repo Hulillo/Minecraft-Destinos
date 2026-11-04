@@ -3,17 +3,16 @@ package es.hulillo.destinos.cliente;
 import es.hulillo.destinos.Geo;
 import es.hulillo.destinos.MapaTerreno;
 import es.hulillo.destinos.PaqueteTerritorio;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import net.minecraft.network.chat.Component;
 
 /**
  * Los accidentes del mapa con nombre propio: sierras (casillas de montaña juntas), ríos y mares. Se buscan en las
  * zonas que tiene el cliente y el nombre sale de la sal y del sitio más alto (o más hondo, o la desembocadura), así
- * que el mismo accidente se llama siempre igual. Solo desde el hilo del cliente.
+ * que el mismo accidente se llama siempre igual.
  */
 final class GeografiaMapa {
 	private static final int MIN_SIERRA = 6;
@@ -39,113 +38,141 @@ final class GeografiaMapa {
 	private GeografiaMapa() {
 	}
 
-	private static PaqueteTerritorio.Ducado ducado(int tx, int tz) {
-		return TerritoriosCliente.ducado(tx, tz);
-	}
+	/** Lo que se busca: sierras (montaña o casilla alta), ríos y mares. Un bit de cada en las banderas de cada casilla. */
+	private static final int B_SIERRA = 1;
+	private static final int B_RIO = 2;
+	private static final int B_MAR = 4;
+	private static final int[] BITS = {B_SIERRA, B_RIO, B_MAR};
+	private static final int[] MINIMOS = {MIN_SIERRA, MIN_RIO, MIN_MAR};
+	private static final Tipo[] TIPOS = {Tipo.SIERRA, Tipo.RIO, Tipo.MAR};
 
-	private static boolean sierra(int tx, int tz) {
-		PaqueteTerritorio z = TerritoriosCliente.zona(tx, tz);
-		if (z == null) {
-			return false;
+	/** Una zona con sus banderas por casilla y lo que ya se ha visitado de cada tipo. */
+	private static final class Celdas {
+		final PaqueteTerritorio zona;
+		final byte[] banderas = new byte[N * N];
+		final byte[] vistos = new byte[N * N];
+
+		Celdas(PaqueteTerritorio z) {
+			zona = z;
+			for (int j = 0; j < N; j++) {
+				for (int i = 0; i < N; i++) {
+					PaqueteTerritorio.Ducado d = z.ducado(i, j);
+					int b = 0;
+					if (d.oceano()) {
+						b = B_MAR;
+					} else {
+						if (z.montana(i, j) || z.altura(i, j) >= ALTURA_SIERRA) {
+							b |= B_SIERRA;
+						}
+						if (z.rio(i, j)) {
+							b |= B_RIO;
+						}
+					}
+					banderas[i + j * N] = (byte) b;
+				}
+			}
 		}
-		int i = tx - z.wx() * MapaTerreno.NUCLEO;
-		int j = tz - z.wz() * MapaTerreno.NUCLEO;
-		return !z.ducado(i, j).oceano() && (z.montana(i, j) || z.altura(i, j) >= ALTURA_SIERRA);
 	}
 
-	private static boolean rio(int tx, int tz) {
-		PaqueteTerritorio z = TerritoriosCliente.zona(tx, tz);
-		if (z == null) {
-			return false;
+	private static final int N = MapaTerreno.NUCLEO;
+
+	/**
+	 * Todos los rótulos de lo que hay en estas zonas. No toca nada del cliente (las zonas no cambian una vez
+	 * recibidas), así que se puede llamar fuera del hilo del cliente para que no dé tirones.
+	 */
+	static List<Rotulo> calcula(List<PaqueteTerritorio> zonas, int sal) {
+		Map<Long, Celdas> todas = new HashMap<>();
+		for (PaqueteTerritorio z : zonas) {
+			todas.put(Geo.clave(z.wx(), z.wz()), new Celdas(z));
 		}
-		int i = tx - z.wx() * MapaTerreno.NUCLEO;
-		int j = tz - z.wz() * MapaTerreno.NUCLEO;
-		return !z.ducado(i, j).oceano() && z.rio(i, j);
-	}
-
-	private static boolean mar(int tx, int tz) {
-		PaqueteTerritorio.Ducado d = ducado(tx, tz);
-		return d != null && d.oceano();
-	}
-
-	interface Filtro {
-		boolean es(int tx, int tz);
-	}
-
-	/** Todos los rótulos de lo que hay en las zonas recibidas. */
-	static List<Rotulo> calcula() {
 		List<Rotulo> res = new ArrayList<>();
-		Set<Long> vistos = new HashSet<>();
-		Set<Long> vistosRio = new HashSet<>();
-		Set<Long> vistosMar = new HashSet<>();
-		int sal = TerritoriosCliente.sal();
-		for (PaqueteTerritorio z : TerritoriosCliente.zonasRecibidas()) {
-			for (int j = 0; j < MapaTerreno.NUCLEO; j++) {
-				for (int i = 0; i < MapaTerreno.NUCLEO; i++) {
-					int tx = z.wx() * MapaTerreno.NUCLEO + i;
-					int tz = z.wz() * MapaTerreno.NUCLEO + j;
-					grupo(tx, tz, GeografiaMapa::sierra, vistos, MIN_SIERRA, Tipo.SIERRA, sal, res);
-					grupo(tx, tz, GeografiaMapa::rio, vistosRio, MIN_RIO, Tipo.RIO, sal, res);
-					grupo(tx, tz, GeografiaMapa::mar, vistosMar, MIN_MAR, Tipo.MAR, sal, res);
+		for (Celdas c : todas.values()) {
+			int ox = c.zona.wx() * N;
+			int oz = c.zona.wz() * N;
+			for (int k = 0; k < N * N; k++) {
+				for (int t = 0; t < 3; t++) {
+					if ((c.banderas[k] & BITS[t]) != 0 && (c.vistos[k] & BITS[t]) == 0) {
+						grupo(todas, ox + k % N, oz + k / N, t, sal, res);
+					}
 				}
 			}
 		}
 		return res;
 	}
 
-	private static void grupo(int tx, int tz, Filtro filtro, Set<Long> vistos, int minimo, Tipo tipo, int sal, List<Rotulo> res) {
-		long k = Geo.clave(tx, tz);
-		if (vistos.contains(k) || !filtro.es(tx, tz)) {
-			return;
-		}
-		List<int[]> celdas = new ArrayList<>();
-		ArrayDeque<int[]> cola = new ArrayDeque<>();
-		vistos.add(k);
-		cola.add(new int[] {tx, tz});
-		while (!cola.isEmpty()) {
-			int[] c = cola.poll();
-			celdas.add(c);
+	private static Celdas celdas(Map<Long, Celdas> todas, int tx, int tz) {
+		return todas.get(Geo.clave(Math.floorDiv(tx, N), Math.floorDiv(tz, N)));
+	}
+
+	/** Recorre el grupo de casillas del tipo t que empieza en (tx, tz) y, si es bastante grande, le pone nombre. */
+	private static void grupo(Map<Long, Celdas> todas, int tx, int tz, int t, int sal, List<Rotulo> res) {
+		int bit = BITS[t];
+		Tipo tipo = TIPOS[t];
+		Enteros celdas = new Enteros();
+		Celdas c0 = celdas(todas, tx, tz);
+		c0.vistos[Math.floorMod(tx, N) + Math.floorMod(tz, N) * N] |= (byte) bit;
+		celdas.add(tx);
+		celdas.add(tz);
+		// la lista de celdas hace de cola: se va leyendo por detrás mientras se añaden vecinas
+		for (int q = 0; q < celdas.size(); q += 2) {
+			int cx = celdas.get(q);
+			int cz = celdas.get(q + 1);
 			for (int[] d : CRUZ) {
-				int nx = c[0] + d[0];
-				int nz = c[1] + d[1];
-				long nk = Geo.clave(nx, nz);
-				if (!vistos.contains(nk) && filtro.es(nx, nz)) {
-					vistos.add(nk);
-					cola.add(new int[] {nx, nz});
+				int nx = cx + d[0];
+				int nz = cz + d[1];
+				Celdas c = celdas(todas, nx, nz);
+				if (c == null) {
+					continue;
+				}
+				int k = Math.floorMod(nx, N) + Math.floorMod(nz, N) * N;
+				if ((c.banderas[k] & bit) != 0 && (c.vistos[k] & bit) == 0) {
+					c.vistos[k] |= (byte) bit;
+					celdas.add(nx);
+					celdas.add(nz);
 				}
 			}
 		}
-		if (celdas.size() < minimo) {
+		int n = celdas.size() / 2;
+		if (n < MINIMOS[t]) {
 			return;
 		}
 		// el sitio que da el nombre: la cumbre de la sierra, lo más hondo del mar, la desembocadura del río
-		int[] ref = celdas.get(0);
-		int mejor = TerritoriosCliente.altura(ref[0], ref[1]);
+		int rx = celdas.get(0);
+		int rz = celdas.get(1);
+		int mejor = altura(todas, rx, rz);
 		double sx = 0;
 		double sz = 0;
-		for (int[] c : celdas) {
-			int h = TerritoriosCliente.altura(c[0], c[1]);
+		for (int q = 0; q < celdas.size(); q += 2) {
+			int x = celdas.get(q);
+			int z = celdas.get(q + 1);
+			int h = altura(todas, x, z);
 			boolean gana = tipo == Tipo.SIERRA ? h > mejor : h < mejor;
-			if (gana || (h == mejor && (c[0] < ref[0] || (c[0] == ref[0] && c[1] < ref[1])))) {
+			if (gana || (h == mejor && (x < rx || (x == rx && z < rz)))) {
 				mejor = h;
-				ref = c;
+				rx = x;
+				rz = z;
 			}
-			sx += c[0] + 0.5;
-			sz += c[1] + 0.5;
+			sx += x + 0.5;
+			sz += z + 0.5;
 		}
-		Tipo t = tipo == Tipo.MAR && celdas.size() < MAR_GRANDE ? Tipo.GOLFO : tipo;
+		Tipo tt = tipo == Tipo.MAR && n < MAR_GRANDE ? Tipo.GOLFO : tipo;
 		double x;
 		double z;
 		if (tipo == Tipo.RIO) {
 			// en un río el centro puede caer fuera del agua: se pone en una casilla del propio río
-			int[] m = celdas.get(celdas.size() / 2);
-			x = m[0] + 0.5;
-			z = m[1] + 0.5;
+			int m = (n / 2) * 2;
+			x = celdas.get(m) + 0.5;
+			z = celdas.get(m + 1) + 0.5;
 		} else {
-			x = sx / celdas.size();
-			z = sz / celdas.size();
+			x = sx / n;
+			z = sz / n;
 		}
-		res.add(new Rotulo(x * MapaTerreno.CASILLA, z * MapaTerreno.CASILLA, texto(t, nombre(sal, ref[0], ref[1], t)), t, celdas.size()));
+		res.add(new Rotulo(x * MapaTerreno.CASILLA, z * MapaTerreno.CASILLA, texto(tt, nombre(sal, rx, rz, tt)), tt, n));
+	}
+
+	private static int altura(Map<Long, Celdas> todas, int tx, int tz) {
+		Celdas c = celdas(todas, tx, tz);
+		return c.zona.altura(Math.floorMod(tx, N), Math.floorMod(tz, N));
 	}
 
 	private static String nombre(int sal, int tx, int tz, Tipo t) {

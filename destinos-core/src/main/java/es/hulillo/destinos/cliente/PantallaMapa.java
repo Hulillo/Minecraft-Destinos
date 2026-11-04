@@ -7,12 +7,14 @@ import es.hulillo.destinos.PaquetePedirMapa;
 import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTerritorio;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.KeyMapping;
@@ -81,6 +83,7 @@ public final class PantallaMapa extends Screen {
 	private final Map<Long, Integer> coloresReino = new HashMap<>();
 	private int zonasPintadas = -1;
 	private int turnoPintado = Integer.MIN_VALUE;
+	private int cambiosPintados;
 	private ModoMapa modoPintado;
 	private final List<Button> botonesModo = new ArrayList<>();
 	private EditBox buscador;
@@ -90,6 +93,15 @@ public final class PantallaMapa extends Screen {
 	private String buscadoAntes = null;
 	private List<GeografiaMapa.Rotulo> rotulos = List.of();
 	private int zonasGeo = -1;
+	/** Los rótulos del relieve se buscan en otro hilo; aquí el que está en marcha. */
+	private CompletableFuture<List<GeografiaMapa.Rotulo>> buscandoGeo;
+	/** Dónde van las estrellitas de los bichos raros (se rehace al llegar fichas). */
+	private final List<int[]> raros = new ArrayList<>();
+	private int rarosVersion = -1;
+	/** El nombre de cada reino en mayúsculas, ya medido (se rehace al llegar fichas). */
+	private final Map<Long, FormattedCharSequence> nombres = new HashMap<>();
+	private final Map<Long, Integer> anchos = new HashMap<>();
+	private int nombresVersion = -1;
 	private List<FormattedCharSequence> pistaLineas;
 	private int pistaAncho;
 	private int pistaX;
@@ -455,17 +467,22 @@ public final class PantallaMapa extends Screen {
 	 */
 	private void prepara() {
 		int turno = FichasCliente.turno();
-		java.util.Collection<PaqueteTerritorio> zonas = TerritoriosCliente.zonasRecibidas();
-		boolean todo = turno != turnoPintado || modo != modoPintado || pinturas.size() > zonas.size();
+		int cambios = modo.usaFichas() ? FichasCliente.cambios() : 0;
+		Collection<PaqueteTerritorio> zonas = TerritoriosCliente.zonasRecibidas();
+		boolean todo = turno != turnoPintado || cambios != cambiosPintados || modo != modoPintado || pinturas.size() > zonas.size();
 		turnoPintado = turno;
+		cambiosPintados = cambios;
 		modoPintado = modo;
 		if (todo) {
 			pinturas.clear();
 		}
-		Set<Long> rehacer = new HashSet<>();
+		Set<Long> rehacer = null;
 		for (PaqueteTerritorio z : zonas) {
 			Pintura p = pinturas.get(Geo.clave(z.wx(), z.wz()));
 			if (p == null || p.zona != z) {
+				if (rehacer == null) {
+					rehacer = new HashSet<>();
+				}
 				rehacer.add(Geo.clave(z.wx(), z.wz()));
 				if (!todo) {
 					for (int dz = -1; dz <= 1; dz++) {
@@ -478,7 +495,7 @@ public final class PantallaMapa extends Screen {
 				}
 			}
 		}
-		if (rehacer.isEmpty()) {
+		if (rehacer == null) {
 			return;
 		}
 		Map<Long, PaqueteTerritorio> porClave = new HashMap<>();
@@ -523,23 +540,9 @@ public final class PantallaMapa extends Screen {
 	private Pintura pinta(PaqueteTerritorio z) {
 		int ox = z.wx() * NUCLEO;
 		int oz = z.wz() * NUCLEO;
-		List<Integer> tiras = new ArrayList<>();
-		List<Integer> bordes = new ArrayList<>();
+		Enteros bordes = new Enteros();
 		Map<Long, double[]> centros = new HashMap<>();
 		for (int j = 0; j < NUCLEO; j++) {
-			int desde = 0;
-			int c = modo.color(z, 0, j);
-			for (int i = 1; i <= NUCLEO; i++) {
-				int ci = i < NUCLEO ? modo.color(z, i, j) : 0;
-				if (i == NUCLEO || ci != c) {
-					tiras.add(j);
-					tiras.add(desde);
-					tiras.add(i);
-					tiras.add(c);
-					desde = i;
-					c = ci;
-				}
-			}
 			for (int i = 0; i < NUCLEO; i++) {
 				PaqueteTerritorio.Ducado d = z.ducado(i, j);
 				if (!d.salvaje() && !d.oceano()) {
@@ -554,22 +557,15 @@ public final class PantallaMapa extends Screen {
 				PaqueteTerritorio.Ducado arr = j > 0 ? z.ducado(i, j - 1) : TerritoriosCliente.ducado(ox + i, oz + j - 1);
 				int a = linde(d, izq);
 				if (a > 0) {
-					bordes.add(0);
-					bordes.add(i);
-					bordes.add(j);
-					bordes.add(a);
+					bordes.add(0, i, j, a);
 				}
 				int b = linde(d, arr);
 				if (b > 0) {
-					bordes.add(1);
-					bordes.add(i);
-					bordes.add(j);
-					bordes.add(b);
+					bordes.add(1, i, j, b);
 				}
 			}
 		}
-		return new Pintura(z, tiras.stream().mapToInt(Integer::intValue).toArray(), bordes.stream().mapToInt(Integer::intValue).toArray(),
-				centros);
+		return new Pintura(z, tiras(z, 1, false), bordes.toArray(), centros);
 	}
 
 	private void pintaZonas(GuiGraphics g) {
@@ -582,11 +578,7 @@ public final class PantallaMapa extends Screen {
 			return;
 		}
 		for (Pintura p : pinturas.values()) {
-			int zx0 = pantallaX((double) p.ox() * CASILLA);
-			int zy0 = pantallaY((double) p.oz() * CASILLA);
-			int zx1 = pantallaX((double) (p.ox() + NUCLEO) * CASILLA);
-			int zy1 = pantallaY((double) (p.oz() + NUCLEO) * CASILLA);
-			if (zx1 < x0 || zx0 > x1 || zy1 < y0 || zy0 > y1) {
+			if (!visible(p)) {
 				continue;
 			}
 			int[] t = p.tiras();
@@ -643,20 +635,22 @@ public final class PantallaMapa extends Screen {
 			k *= 2;
 		}
 		for (Pintura p : pinturas.values()) {
-			int ox = p.ox();
-			int oz = p.oz();
-			if (pantallaX((double) (ox + NUCLEO) * CASILLA) < x0 || pantallaX((double) ox * CASILLA) > x1
-					|| pantallaY((double) (oz + NUCLEO) * CASILLA) < y0 || pantallaY((double) oz * CASILLA) > y1) {
+			if (!visible(p)) {
 				continue;
 			}
+			int ox = p.ox();
+			int oz = p.oz();
 			if (p.lejosK != k) {
-				p.lejos = lejos(p.zona, k);
+				p.lejos = tiras(p.zona, k, true);
 				p.lejosK = k;
 			}
 			int[] t = p.lejos;
 			for (int q = 0; q < t.length; q += 4) {
 				int ya = pantallaY((double) (oz + t[q]) * CASILLA);
 				int yb = Math.max(ya + 1, pantallaY((double) (oz + Math.min(NUCLEO, t[q] + k)) * CASILLA));
+				if (yb < y0 || ya > y1) {
+					continue;
+				}
 				int xa = pantallaX((double) (ox + t[q + 1]) * CASILLA);
 				int xb = Math.max(xa + 1, pantallaX((double) (ox + t[q + 2]) * CASILLA));
 				g.fill(xa, ya, xb, yb, t[q + 3]);
@@ -664,42 +658,48 @@ public final class PantallaMapa extends Screen {
 		}
 	}
 
-	/** Las tiras de una zona vista de lejos, a bloques de k×k casillas: fila, desde, hasta (casillas) y color. */
-	private static int[] lejos(PaqueteTerritorio z, int k) {
-		List<Integer> l = new ArrayList<>();
+	/** Si la zona cae, aunque sea en parte, dentro del mapa. */
+	private boolean visible(Pintura p) {
+		return pantallaX((double) (p.ox() + NUCLEO) * CASILLA) >= x0 && pantallaX((double) p.ox() * CASILLA) <= x1
+				&& pantallaY((double) (p.oz() + NUCLEO) * CASILLA) >= y0 && pantallaY((double) p.oz() * CASILLA) <= y1;
+	}
+
+	/**
+	 * Las tiras de color de una zona a bloques de k×k casillas (k = 1: casilla a casilla): fila, desde, hasta (en
+	 * casillas) y color. Cada bloque toma el color de su casilla de en medio y, con fronteras, se pinta en negro (o rojo,
+	 * si hay guerra) donde cambia de reino respecto al de la izquierda o el de arriba.
+	 */
+	private static int[] tiras(PaqueteTerritorio z, int k, boolean fronteras) {
+		Enteros l = new Enteros();
 		for (int bj = 0; bj < NUCLEO; bj += k) {
 			int mj = Math.min(NUCLEO - 1, bj + k / 2);
 			int desde = 0;
 			int c = 0;
 			for (int bi = 0; bi < NUCLEO; bi += k) {
 				int mi = Math.min(NUCLEO - 1, bi + k / 2);
-				PaqueteTerritorio.Ducado d = z.ducado(mi, mj);
 				int color = modo.color(z, mi, mj);
-				int izq = bi >= k ? linde(d, z.ducado(Math.min(NUCLEO - 1, bi - k + k / 2), mj)) : 0;
-				int arr = bj >= k ? linde(d, z.ducado(mi, Math.min(NUCLEO - 1, bj - k + k / 2))) : 0;
-				int m = Math.max(izq, arr);
-				if (m == 4) {
-					color = FRENTE;
-				} else if (m == 3) {
-					color = FRONTERA;
+				if (fronteras) {
+					PaqueteTerritorio.Ducado d = z.ducado(mi, mj);
+					int izq = bi >= k ? linde(d, z.ducado(Math.min(NUCLEO - 1, bi - k + k / 2), mj)) : 0;
+					int arr = bj >= k ? linde(d, z.ducado(mi, Math.min(NUCLEO - 1, bj - k + k / 2))) : 0;
+					int m = Math.max(izq, arr);
+					if (m == 4) {
+						color = FRENTE;
+					} else if (m == 3) {
+						color = FRONTERA;
+					}
 				}
 				if (bi == 0) {
 					c = color;
 				} else if (color != c) {
-					l.add(bj);
-					l.add(desde);
-					l.add(bi);
-					l.add(c);
+					l.add(bj, desde, bi, c);
 					desde = bi;
 					c = color;
 				}
 			}
-			l.add(bj);
-			l.add(desde);
-			l.add(NUCLEO);
-			l.add(c);
+			l.add(bj, desde, NUCLEO, c);
 		}
-		return l.stream().mapToInt(Integer::intValue).toArray();
+		return l.toArray();
 	}
 
 	/** Líneas curvas entre capitales: verde las alianzas, rojo las guerras y oro del vasallo a su señor. */
@@ -760,13 +760,18 @@ public final class PantallaMapa extends Screen {
 		if (escala * CASILLA < 1.5) {
 			return;
 		}
-		Component estrella = Component.literal("✦");
-		int sal = TerritoriosCliente.sal();
-		for (PaqueteFichas.Nombre d : FichasCliente.ducados()) {
-			if (!FichasCliente.conRaros(d.dcx(), d.dcz())) {
-				continue;
+		if (rarosVersion != FichasCliente.version()) {
+			rarosVersion = FichasCliente.version();
+			raros.clear();
+			int sal = TerritoriosCliente.sal();
+			for (PaqueteFichas.Nombre d : FichasCliente.ducados()) {
+				if (FichasCliente.conRaros(d.dcx(), d.dcz())) {
+					raros.add(Geo.centroDucado(d.dcx(), d.dcz(), sal));
+				}
 			}
-			int[] c = Geo.centroDucado(d.dcx(), d.dcz(), sal);
+		}
+		Component estrella = Component.literal("✦");
+		for (int[] c : raros) {
 			int x = pantallaX(c[0]);
 			int y = pantallaY(c[1]);
 			if (x < x0 || x > x1 || y < y0 || y > y1) {
@@ -778,13 +783,22 @@ public final class PantallaMapa extends Screen {
 
 	/** En el modo Relieve, los nombres de sierras, ríos y mares (sin pisarse; primero los más grandes). */
 	private void pintaRelieve(GuiGraphics g) {
+		if (buscandoGeo != null && buscandoGeo.isDone()) {
+			rotulos = buscandoGeo.getNow(rotulos);
+			buscandoGeo = null;
+		}
 		int n = TerritoriosCliente.zonas();
-		if (n != zonasGeo && ticks - tickGeo >= REHACE_GEO) {
+		if (buscandoGeo == null && n != zonasGeo && ticks - tickGeo >= REHACE_GEO) {
 			zonasGeo = n;
 			tickGeo = ticks;
-			List<GeografiaMapa.Rotulo> l = new ArrayList<>(GeografiaMapa.calcula());
-			l.sort((a, b) -> Integer.compare(b.casillas(), a.casillas()));
-			rotulos = l;
+			// las zonas no cambian una vez recibidas: se copia la lista y se busca en otro hilo para no dar tirones
+			List<PaqueteTerritorio> copia = new ArrayList<>(TerritoriosCliente.zonasRecibidas());
+			int sal = TerritoriosCliente.sal();
+			buscandoGeo = CompletableFuture.supplyAsync(() -> {
+				List<GeografiaMapa.Rotulo> l = GeografiaMapa.calcula(copia, sal);
+				l.sort((a, b) -> Integer.compare(b.casillas(), a.casillas()));
+				return l;
+			}).exceptionally(e -> List.of());
 		}
 		double s = escala * CASILLA;
 		List<int[]> puestos = new ArrayList<>();
@@ -836,15 +850,24 @@ public final class PantallaMapa extends Screen {
 
 	/** El nombre de cada reino en el centro de sus tierras conocidas, si cabe. */
 	private void pintaNombres(GuiGraphics g) {
+		if (nombresVersion != FichasCliente.version()) {
+			nombresVersion = FichasCliente.version();
+			nombres.clear();
+			anchos.clear();
+			for (PaqueteFichas.Reino r : FichasCliente.reinos()) {
+				Component t = Component.literal(r.nombre().getString().toUpperCase(Locale.ROOT));
+				nombres.put(Geo.clave(r.kx(), r.kz()), t.getVisualOrderText());
+				anchos.put(Geo.clave(r.kx(), r.kz()), font.width(t));
+			}
+		}
 		double s = escala * CASILLA;
 		for (Map.Entry<Long, double[]> e : centros.entrySet()) {
 			double[] c = e.getValue();
-			Component nombre = FichasCliente.nombreReino(Geo.claveX(e.getKey()), Geo.claveZ(e.getKey()));
-			if (nombre == null || c[2] == 0) {
+			FormattedCharSequence sinColor = nombres.get(e.getKey());
+			if (sinColor == null || c[2] == 0) {
 				continue;
 			}
-			MutableComponent sinColor = Component.literal(nombre.getString().toUpperCase());
-			int w = font.width(sinColor);
+			int w = anchos.get(e.getKey());
 			// que las tierras del reino ocupen al menos el doble del nombre
 			if (c[2] * s * s < w * 9 * 2.0) {
 				continue;

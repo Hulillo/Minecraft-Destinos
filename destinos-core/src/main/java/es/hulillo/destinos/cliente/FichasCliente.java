@@ -3,7 +3,9 @@ package es.hulillo.destinos.cliente;
 import es.hulillo.destinos.Geo;
 import es.hulillo.destinos.PaqueteFichas;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.network.chat.Component;
 
 /** Las fichas del mapa político que ha mandado el servidor: reinos y nombres de ducados. Solo desde el hilo del cliente. */
@@ -15,6 +17,12 @@ public final class FichasCliente {
 	private static int anio;
 	private static int turno = -1;
 	private static int vivos;
+	/** Los ducados con algún bicho raro, calculado al llegar las fichas (el mapa los mira en cada frame). */
+	private static final Set<Long> CON_RAROS = new HashSet<>();
+	/** Sube cada vez que llegan fichas, y "cambios" solo si hay ducados nuevos o ha pasado un turno. */
+	private static int version;
+	private static int cambios;
+	private static int ducadosAntes = -1;
 
 	private FichasCliente() {
 	}
@@ -32,15 +40,43 @@ public final class FichasCliente {
 				ANIMALES.merge(a.getString(), 1, Integer::sum);
 			}
 		}
+		if (p.turno() != turno || p.ducados().size() != ducadosAntes) {
+			cambios++;
+		}
+		ducadosAntes = p.ducados().size();
 		anio = p.anio();
 		turno = p.turno();
 		vivos = p.reinos().size();
+		CON_RAROS.clear();
+		for (PaqueteFichas.Nombre d : p.ducados()) {
+			for (Component a : d.animales()) {
+				if (raro(a)) {
+					CON_RAROS.add(Geo.clave(d.dcx(), d.dcz()));
+					break;
+				}
+			}
+		}
+		version++;
+	}
+
+	/** Sube cada vez que llegan fichas (para rehacer lo que se guarda a partir de ellas). */
+	static int version() {
+		return version;
+	}
+
+	/** Sube solo si hay ducados nuevos o un turno nuevo (para repintar los modos que dependen de las fichas). */
+	static int cambios() {
+		return cambios;
 	}
 
 	static void borra() {
 		REINOS.clear();
 		DUCADOS.clear();
 		ANIMALES.clear();
+		CON_RAROS.clear();
+		ducadosAntes = -1;
+		version++;
+		cambios++;
 		turno = -1;
 		vivos = 0;
 	}
@@ -84,16 +120,7 @@ public final class FichasCliente {
 
 	/** Si el ducado tiene algún animal raro. */
 	static boolean conRaros(int dcx, int dcz) {
-		PaqueteFichas.Nombre d = DUCADOS.get(Geo.clave(dcx, dcz));
-		if (d == null) {
-			return false;
-		}
-		for (Component a : d.animales()) {
-			if (raro(a)) {
-				return true;
-			}
-		}
-		return false;
+		return CON_RAROS.contains(Geo.clave(dcx, dcz));
 	}
 
 	static Iterable<PaqueteFichas.Nombre> ducados() {

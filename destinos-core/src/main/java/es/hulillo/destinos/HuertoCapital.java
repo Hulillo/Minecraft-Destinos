@@ -91,7 +91,7 @@ public final class HuertoCapital extends PiezaObra {
 		o.pon(eu + 1, 2, ev, Obra.trampilla(p.trampilla, Direction.EAST, false, true));
 		// junto a la entrada: compostador, barriles y un farol en la valla
 		o.pon(-m + 1, 1, -m + 1, Blocks.COMPOSTER);
-		o.pon(m - 1, 1, -m + 1, Blocks.BARREL);
+		o.tonel(m - 1, 1, -m + 1);
 		o.pon(m - 2, 1, -m + 1, Blocks.HAY_BLOCK);
 		o.pon(-3, 2, -m, Blocks.LANTERN);
 	}
