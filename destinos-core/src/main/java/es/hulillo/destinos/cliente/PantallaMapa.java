@@ -64,12 +64,10 @@ public final class PantallaMapa extends Screen {
 	/** Cada cuánto se piden más zonas al servidor mientras el mapa está abierto, y cada cuánto las fichas. */
 	private static final int PIDE_ZONAS = 40;
 	private static final int PIDE_FICHAS = 200;
-	/** Por debajo de estos píxeles por casilla se pinta de lejos, a bloques de casillas. */
-	private static final double LEJOS = 2;
-	/** Desde estos píxeles por casilla las lindes van como rayas encima de la imagen de la zona. */
+	/** Desde estos píxeles por casilla se pinta zona a zona con las lindes encima; por debajo, el lienzo de atlas. */
 	private static final double CERCA = 4;
-	/** De lejos, más o menos cuántos cuadritos como mucho caben en el mapa (cada uno es un fill). */
-	private static final double CUADROS_LEJOS = 12000;
+	/** La costa en el lienzo de lejos, algo más clara que la de cerca para que no pese tanto. */
+	private static final int COSTA_LIENZO = 0xFF5C4E38;
 	/** Ancho de la columna de modos, a la izquierda. */
 	private static final int COLUMNA = 74;
 	/** Cada cuánto, como mucho, se vuelven a buscar los accidentes del relieve (son caros). */
@@ -91,6 +89,12 @@ public final class PantallaMapa extends Screen {
 	private final Map<Long, Integer> coloresReino = new HashMap<>();
 	private int zonasPintadas = -1;
 	private int turnoPintado = Integer.MIN_VALUE;
+	/** Si ha cambiado algo de lo que sale en el lienzo de lejos (y hay que rehacerlo). */
+	private boolean lienzoViejo = true;
+	/** El lienzo de lejos que se ve, y el que se está pintando en otro hilo. */
+	private Identifier lienzo;
+	private LienzoMapa.Hecho lienzoHecho;
+	private CompletableFuture<Object[]> pintandoLienzo;
 	private int cambiosPintados;
 	private ModoMapa modoPintado;
 	private final List<Button> botonesModo = new ArrayList<>();
@@ -135,28 +139,25 @@ public final class PantallaMapa extends Screen {
 	private boolean arrastra;
 	private double arrastrado;
 
-	/**
-	 * Una zona ya preparada: tiras de casillas del mismo color, trozos de frontera, lo que aporta al centro de cada
-	 * reino y, para de lejos, tiras de bloques de k×k casillas con las fronteras ya puestas (se guardan para el k de turno).
-	 */
+	/** Una zona ya preparada: trozos de frontera, lo que aporta al centro de cada reino y los datos de sus casillas. */
 	private static final class Pintura {
 		final PaqueteTerritorio zona;
 		final int ox;
 		final int oz;
 		final int[] bordes;
 		final Map<Long, double[]> centros;
-		int lejosK = -1;
-		int[] lejos;
-		/** La zona hecha imagen (un píxel por casilla): sin fronteras, y con las de reino y frentes pintadas. */
+		/** Color, dueño y marcas de cada casilla, para el lienzo de lejos (que se pinta en otro hilo). */
+		final LienzoMapa.Datos datos;
+		/** La zona hecha imagen, un píxel por casilla (para de cerca; se hace la primera vez que se pinta). */
 		Identifier imagen;
-		Identifier imagenConFronteras;
 
-		Pintura(PaqueteTerritorio zona, int[] bordes, Map<Long, double[]> centros) {
+		Pintura(PaqueteTerritorio zona, int[] bordes, Map<Long, double[]> centros, LienzoMapa.Datos datos) {
 			this.zona = zona;
 			this.ox = zona.wx() * NUCLEO;
 			this.oz = zona.wz() * NUCLEO;
 			this.bordes = bordes;
 			this.centros = centros;
+			this.datos = datos;
 		}
 
 		/** Suelta las imágenes de la tarjeta gráfica. */
@@ -165,10 +166,6 @@ public final class PantallaMapa extends Screen {
 			if (imagen != null) {
 				t.release(imagen);
 				imagen = null;
-			}
-			if (imagenConFronteras != null) {
-				t.release(imagenConFronteras);
-				imagenConFronteras = null;
 			}
 		}
 
@@ -460,8 +457,12 @@ public final class PantallaMapa extends Screen {
 		}
 		pintaCapitales(g);
 		if (modo == ModoMapa.RELIEVE) {
-			pintaRelieve(g);
+			pintaGeografia(g, true);
 		} else {
+			// de lejos, como en un atlas, también los mares y las sierras grandes (los ríos solo en Relieve)
+			if (escala * CASILLA < CERCA) {
+				pintaGeografia(g, false);
+			}
 			pintaNombres(g);
 		}
 		pintaJugador(g);
@@ -539,6 +540,22 @@ public final class PantallaMapa extends Screen {
 			}
 		}
 		zonasPintadas = pinturas.size();
+		// el lienzo de lejos solo se rehace si lo que ha cambiado cae dentro de él
+		LienzoMapa.Hecho h = lienzoHecho;
+		if (todo || h == null) {
+			lienzoViejo = true;
+		} else {
+			double lado = (double) NUCLEO * CASILLA;
+			for (long k : rehacer) {
+				double zx = Geo.claveX(k) * lado;
+				double zz = Geo.claveZ(k) * lado;
+				if (zx + lado > h.bx0() && zx < h.bx0() + h.ancho() * h.bloquesPorPixel() && zz + lado > h.bz0()
+						&& zz < h.bz0() + h.alto() * h.bloquesPorPixel()) {
+					lienzoViejo = true;
+					break;
+				}
+			}
+		}
 		centros.clear();
 		for (Pintura p : pinturas.values()) {
 			for (Map.Entry<Long, double[]> e : p.centros.entrySet()) {
@@ -572,9 +589,17 @@ public final class PantallaMapa extends Screen {
 		int oz = z.wz() * NUCLEO;
 		Enteros bordes = new Enteros();
 		Map<Long, double[]> centros = new HashMap<>();
+		int[] colores = new int[NUCLEO * NUCLEO];
+		long[] dueno = new long[NUCLEO * NUCLEO];
+		byte[] marcas = new byte[NUCLEO * NUCLEO];
 		for (int j = 0; j < NUCLEO; j++) {
 			for (int i = 0; i < NUCLEO; i++) {
 				PaqueteTerritorio.Ducado d = z.ducado(i, j);
+				int c = i + j * NUCLEO;
+				colores[c] = modo.color(z, i, j);
+				// las tierras salvajes son todas de nadie: entre ellas no hay frontera
+				dueno[c] = d.salvaje() ? Long.MIN_VALUE : Geo.clave(d.kx(), d.kz());
+				marcas[c] = (byte) ((d.oceano() ? LienzoMapa.Datos.OCEANO : 0) | (d.salvaje() ? LienzoMapa.Datos.SALVAJE : 0));
 				if (!d.salvaje() && !d.oceano()) {
 					coloresReino.put(Geo.clave(d.kx(), d.kz()), d.color());
 					double[] s = centros.computeIfAbsent(Geo.clave(d.kx(), d.kz()), k -> new double[3]);
@@ -595,22 +620,25 @@ public final class PantallaMapa extends Screen {
 				}
 			}
 		}
-		return new Pintura(z, bordes.toArray(), centros);
+		return new Pintura(z, bordes.toArray(), centros, new LienzoMapa.Datos(colores, dueno, marcas));
 	}
 
 	/**
-	 * Como hace JourneyMap: cada zona es una imagen de 48×48 (un píxel por casilla) que la tarjeta gráfica estira, así
-	 * que cuesta un solo dibujo por zona se vea como se vea. De cerca (4 px por casilla o más) la imagen va sin fronteras
-	 * y las lindes se pintan encima como rayas finas; a media distancia, las fronteras de reino y los frentes van ya
-	 * dentro de la imagen (a dos píxeles por casilla, para que sean rayas finas); y muy de lejos (menos de 2 px por casilla), a bloques, para que no parpadeen.
+	 * De cerca (4 px por casilla o más), cada zona es una imagen de 48×48 (un píxel por casilla) que la tarjeta gráfica
+	 * estira, y encima las lindes como rayas. De lejos, un lienzo de atlas (LienzoMapa): una sola imagen de todo lo que
+	 * se ve, a la resolución de verdad de la pantalla y con las fronteras en rayas finas, que se pinta en otro hilo y
+	 * solo se rehace al cambiar de zoom, al salirse de ella o al llegar zonas nuevas. Así cuesta un dibujo por zona de
+	 * cerca y uno solo de lejos.
 	 */
 	private void pintaZonas(GuiGraphics g) {
 		double s = escala * CASILLA;
-		if (s < LEJOS) {
-			pintaLejos(g, s);
-			return;
+		if (s < CERCA) {
+			preparaLienzo();
+			if (lienzo != null) {
+				pintaLienzo(g);
+				return;
+			}
 		}
-		boolean cerca = s >= CERCA;
 		// hacer imágenes cuesta (al abrir o al cambiar de modo hay que hacerlas todas): unas pocas por frame, y las
 		// zonas que aún no la tienen se quedan en niebla un instante
 		int presupuesto = IMAGENES_POR_FRAME;
@@ -618,21 +646,18 @@ public final class PantallaMapa extends Screen {
 			if (!visible(p)) {
 				continue;
 			}
-			boolean conFronteras = !cerca;
-			Identifier img = conFronteras ? p.imagenConFronteras : p.imagen;
-			if (img == null) {
+			if (p.imagen == null) {
 				if (presupuesto-- <= 0) {
 					continue;
 				}
-				img = imagen(p, conFronteras);
+				p.imagen = imagen(p);
 			}
 			int xa = pantallaX((double) p.ox() * CASILLA);
 			int ya = pantallaY((double) p.oz() * CASILLA);
 			int xb = pantallaX((double) (p.ox() + NUCLEO) * CASILLA);
 			int yb = pantallaY((double) (p.oz() + NUCLEO) * CASILLA);
-			int lado = conFronteras ? NUCLEO * 2 : NUCLEO;
-			g.blit(RenderPipelines.GUI_TEXTURED, img, xa, ya, 0, 0, xb - xa, yb - ya, lado, lado, lado, lado);
-			if (cerca) {
+			g.blit(RenderPipelines.GUI_TEXTURED, p.imagen, xa, ya, 0, 0, xb - xa, yb - ya, NUCLEO, NUCLEO, NUCLEO, NUCLEO);
+			if (s >= CERCA) {
 				pintaBordes(g, p, s);
 			}
 		}
@@ -640,50 +665,126 @@ public final class PantallaMapa extends Screen {
 
 	/** Cuántas imágenes de zona se hacen como mucho en un frame. */
 	private static final int IMAGENES_POR_FRAME = 40;
+	/** Casillas que ha de tener una sierra para salir con nombre fuera del modo Relieve. */
+	private static final int SIERRA_ATLAS = 40;
+	/** El lienzo cubre lo que se ve y esto más por cada lado (en fracción del ancho), para poder moverse sin rehacerlo. */
+	private static final double MARGEN_LIENZO = 0.25;
 
 	private static int imagenes;
 
-	/**
-	 * La imagen de la zona. Sin fronteras, un píxel por casilla. Con fronteras, dos por casilla, y la linde (costa,
-	 * reino o frente) ocupa solo el píxel del borde: así a media distancia se ve una raya fina y no una casilla negra.
-	 */
-	private static Identifier imagen(Pintura p, boolean conFronteras) {
-		PaqueteTerritorio z = p.zona;
-		int f = conFronteras ? 2 : 1;
-		NativeImage img = new NativeImage(NUCLEO * f, NUCLEO * f, false);
-		int[] t = tiras(z, 1, false);
-		for (int q = 0; q < t.length; q += 4) {
-			for (int i = t[q + 1] * f; i < t[q + 2] * f; i++) {
-				for (int d = 0; d < f; d++) {
-					img.setPixel(i, t[q] * f + d, t[q + 3]);
-				}
+	/** La imagen de cerca de una zona: un píxel por casilla. */
+	private static Identifier imagen(Pintura p) {
+		NativeImage img = new NativeImage(NUCLEO, NUCLEO, false);
+		int[] c = p.datos.colores();
+		for (int j = 0; j < NUCLEO; j++) {
+			for (int i = 0; i < NUCLEO; i++) {
+				img.setPixel(i, j, c[i + j * NUCLEO]);
 			}
 		}
-		if (conFronteras) {
-			int[] b = p.bordes();
-			for (int k = 0; k < b.length; k += 4) {
-				int tipo = b[k + 3];
-				if (tipo < 2) {
-					continue;
-				}
-				int color = tipo == 4 ? FRENTE : tipo == 2 ? COSTA : FRONTERA;
-				int i = b[k + 1] * 2;
-				int j = b[k + 2] * 2;
-				// la linde de la izquierda (0) o la de arriba (1) de la casilla
-				img.setPixel(i, j, color);
-				img.setPixel(b[k] == 0 ? i : i + 1, b[k] == 0 ? j + 1 : j, color);
-			}
-		}
-		Identifier id = Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "mapa/zona_" + (imagenes++));
+		return sube(img);
+	}
+
+	/** Sube una imagen a la tarjeta gráfica con un nombre nuevo. */
+	private static Identifier sube(NativeImage img) {
+		Identifier id = Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "mapa/img_" + (imagenes++));
 		DynamicTexture tex = new DynamicTexture(id::toString, img);
 		tex.upload();
 		Minecraft.getInstance().getTextureManager().register(id, tex);
-		if (conFronteras) {
-			p.imagenConFronteras = id;
-		} else {
-			p.imagen = id;
-		}
 		return id;
+	}
+
+	/** Píxeles de verdad por píxel de interfaz que usa el lienzo (como mucho 2, que más no se nota y cuesta). */
+	private static int resolucion() {
+		return (int) Math.max(1, Math.min(2, Math.round(Minecraft.getInstance().getWindow().getGuiScale())));
+	}
+
+	/** Si hace falta, pide un lienzo nuevo; y si ha acabado uno, lo sube y suelta el viejo. */
+	private void preparaLienzo() {
+		if (pintandoLienzo != null && pintandoLienzo.isDone()) {
+			Object[] r = pintandoLienzo.getNow(null);
+			pintandoLienzo = null;
+			if (r != null) {
+				soltarLienzo();
+				lienzo = sube((NativeImage) r[1]);
+				lienzoHecho = (LienzoMapa.Hecho) r[0];
+			}
+		}
+		if (pintandoLienzo != null) {
+			return;
+		}
+		int res = resolucion();
+		double bpp = 1 / (escala * res);
+		double vx0 = bloqueX(x0);
+		double vz0 = bloqueZ(y0);
+		double vx1 = bloqueX(x1);
+		double vz1 = bloqueZ(y1);
+		LienzoMapa.Hecho h = lienzoHecho;
+		boolean vale = h != null && !lienzoViejo && Math.abs(h.bloquesPorPixel() - bpp) <= bpp * 1e-6
+				&& vx0 >= h.bx0() && vz0 >= h.bz0() && vx1 <= h.bx0() + h.ancho() * h.bloquesPorPixel()
+				&& vz1 <= h.bz0() + h.alto() * h.bloquesPorPixel();
+		if (vale) {
+			return;
+		}
+		// lo que se ve y un margen alrededor, con el origen en un múltiplo de píxel para que no tiemble al rehacerlo
+		double mx = (vx1 - vx0) * MARGEN_LIENZO;
+		double mz = (vz1 - vz0) * MARGEN_LIENZO;
+		double bx0 = Math.floor((vx0 - mx) / bpp) * bpp;
+		double bz0 = Math.floor((vz0 - mz) / bpp) * bpp;
+		int ancho = (int) Math.ceil((vx1 - vx0 + 2 * mx) / bpp) + 1;
+		int alto = (int) Math.ceil((vz1 - vz0 + 2 * mz) / bpp) + 1;
+		Map<Long, LienzoMapa.Datos> zonas = new HashMap<>();
+		for (Map.Entry<Long, Pintura> e : pinturas.entrySet()) {
+			zonas.put(e.getKey(), e.getValue().datos);
+		}
+		Set<Long> guerras = new HashSet<>();
+		if (modo.frentes()) {
+			for (PaqueteFichas.Reino r : FichasCliente.reinos()) {
+				for (int[] o : r.guerras()) {
+					guerras.add(LienzoMapa.par(Geo.clave(r.kx(), r.kz()), Geo.clave(o[0], o[1])));
+				}
+			}
+		}
+		boolean fronteras = modo.fronteras();
+		lienzoViejo = false;
+		pintandoLienzo = CompletableFuture.supplyAsync(() -> {
+			LienzoMapa.Hecho hecho = LienzoMapa.pinta(zonas, guerras, bx0, bz0, bpp, ancho, alto, res, fronteras, COSTA_LIENZO, FRONTERA,
+					FRENTE);
+			// la imagen también se rellena aquí, que son millones de píxeles: al hilo del cliente solo le toca subirla
+			NativeImage img = new NativeImage(ancho, alto, true);
+			int[] px = hecho.pixeles();
+			for (int y = 0; y < alto; y++) {
+				for (int x = 0; x < ancho; x++) {
+					img.setPixel(x, y, px[x + y * ancho]);
+				}
+			}
+			return new Object[] {hecho, img};
+		}).exceptionally(e -> {
+			DestinosCore.LOG.warn("Destinos Core: no se pudo pintar el lienzo del mapa", e);
+			return null;
+		});
+	}
+
+	/** El lienzo en su sitio (con traslación en coma flotante para que se mueva suave al arrastrar). */
+	private void pintaLienzo(GuiGraphics g) {
+		LienzoMapa.Hecho h = lienzoHecho;
+		double ex = (h.bx0() - vistaX) * escala + cx();
+		double ez = (h.bz0() - vistaZ) * escala + cy();
+		// si ha cambiado el zoom y el nuevo aún no está, se estira el viejo
+		float w = (float) (h.ancho() * h.bloquesPorPixel() * escala);
+		float hh = (float) (h.alto() * h.bloquesPorPixel() * escala);
+		g.pose().pushMatrix();
+		g.pose().translate((float) ex, (float) ez);
+		g.pose().scale(w / h.ancho(), hh / h.alto());
+		g.blit(RenderPipelines.GUI_TEXTURED, lienzo, 0, 0, 0, 0, h.ancho(), h.alto(), h.ancho(), h.alto(), h.ancho(), h.alto());
+		g.pose().popMatrix();
+	}
+
+	private void soltarLienzo() {
+		if (lienzo != null) {
+			Minecraft.getInstance().getTextureManager().release(lienzo);
+			lienzo = null;
+			lienzoHecho = null;
+		}
 	}
 
 	/** Las lindes de la zona como rayas encima de la imagen (solo de cerca). */
@@ -731,87 +832,23 @@ public final class PantallaMapa extends Screen {
 	public void removed() {
 		pinturas.values().forEach(Pintura::suelta);
 		pinturas.clear();
-		super.removed();
-	}
-
-	/**
-	 * De lejos: un cuadrito por cada bloque de k×k casillas, con el color de la casilla de en medio y en negro (o rojo,
-	 * si hay guerra) donde cambia de reino respecto al de la izquierda o el de arriba. Los cuadritos seguidos del mismo
-	 * color van en una sola tira, y las tiras se guardan por zona mientras no cambie k, así que arrastrar no recalcula nada.
-	 */
-	private void pintaLejos(GuiGraphics g, double s) {
-		// el tamaño del cuadrito crece si el mapa es grande, para no pasar de CUADROS_LEJOS fills
-		double lado = Math.max(2, Math.sqrt((double) (x1 - x0) * (y1 - y0) / CUADROS_LEJOS));
-		int k = 1;
-		while (k * s < lado && k < NUCLEO) {
-			k *= 2;
-		}
-		for (Pintura p : pinturas.values()) {
-			if (!visible(p)) {
-				continue;
-			}
-			int ox = p.ox();
-			int oz = p.oz();
-			if (p.lejosK != k) {
-				p.lejos = tiras(p.zona, k, true);
-				p.lejosK = k;
-			}
-			int[] t = p.lejos;
-			for (int q = 0; q < t.length; q += 4) {
-				int ya = pantallaY((double) (oz + t[q]) * CASILLA);
-				int yb = Math.max(ya + 1, pantallaY((double) (oz + Math.min(NUCLEO, t[q] + k)) * CASILLA));
-				if (yb < y0 || ya > y1) {
-					continue;
+		soltarLienzo();
+		if (pintandoLienzo != null) {
+			// si acaba después de cerrar, que no se quede la imagen colgando
+			pintandoLienzo.thenAccept(r -> {
+				if (r != null) {
+					Minecraft.getInstance().execute(((NativeImage) r[1])::close);
 				}
-				int xa = pantallaX((double) (ox + t[q + 1]) * CASILLA);
-				int xb = Math.max(xa + 1, pantallaX((double) (ox + t[q + 2]) * CASILLA));
-				g.fill(xa, ya, xb, yb, t[q + 3]);
-			}
+			});
+			pintandoLienzo = null;
 		}
+		super.removed();
 	}
 
 	/** Si la zona cae, aunque sea en parte, dentro del mapa. */
 	private boolean visible(Pintura p) {
 		return pantallaX((double) (p.ox() + NUCLEO) * CASILLA) >= x0 && pantallaX((double) p.ox() * CASILLA) <= x1
 				&& pantallaY((double) (p.oz() + NUCLEO) * CASILLA) >= y0 && pantallaY((double) p.oz() * CASILLA) <= y1;
-	}
-
-	/**
-	 * Las tiras de color de una zona a bloques de k×k casillas (k = 1: casilla a casilla): fila, desde, hasta (en
-	 * casillas) y color. Cada bloque toma el color de su casilla de en medio y, con fronteras, se pinta en negro (o rojo,
-	 * si hay guerra) donde cambia de reino respecto al de la izquierda o el de arriba.
-	 */
-	private static int[] tiras(PaqueteTerritorio z, int k, boolean fronteras) {
-		Enteros l = new Enteros();
-		for (int bj = 0; bj < NUCLEO; bj += k) {
-			int mj = Math.min(NUCLEO - 1, bj + k / 2);
-			int desde = 0;
-			int c = 0;
-			for (int bi = 0; bi < NUCLEO; bi += k) {
-				int mi = Math.min(NUCLEO - 1, bi + k / 2);
-				int color = modo.color(z, mi, mj);
-				if (fronteras) {
-					PaqueteTerritorio.Ducado d = z.ducado(mi, mj);
-					int izq = bi >= k ? linde(d, z.ducado(Math.min(NUCLEO - 1, bi - k + k / 2), mj)) : 0;
-					int arr = bj >= k ? linde(d, z.ducado(mi, Math.min(NUCLEO - 1, bj - k + k / 2))) : 0;
-					int m = Math.max(izq, arr);
-					if (m == 4) {
-						color = FRENTE;
-					} else if (m == 3) {
-						color = FRONTERA;
-					}
-				}
-				if (bi == 0) {
-					c = color;
-				} else if (color != c) {
-					l.add(bj, desde, bi, c);
-					desde = bi;
-					c = color;
-				}
-			}
-			l.add(bj, desde, NUCLEO, c);
-		}
-		return l.toArray();
 	}
 
 	/** Líneas curvas entre capitales: verde las alianzas, rojo las guerras y oro del vasallo a su señor. */
@@ -894,7 +931,7 @@ public final class PantallaMapa extends Screen {
 	}
 
 	/** En el modo Relieve, los nombres de sierras, ríos y mares (sin pisarse; primero los más grandes). */
-	private void pintaRelieve(GuiGraphics g) {
+	private void pintaGeografia(GuiGraphics g, boolean todo) {
 		if (buscandoGeo != null && buscandoGeo.isDone()) {
 			rotulos = buscandoGeo.getNow(rotulos);
 			buscandoGeo = null;
@@ -931,6 +968,9 @@ public final class PantallaMapa extends Screen {
 			FormattedCharSequence t = (FormattedCharSequence) o[1];
 			int w = (Integer) o[2];
 			int color = (Integer) o[3];
+			if (!todo && (r.tipo() == GeografiaMapa.Tipo.RIO || (r.tipo() == GeografiaMapa.Tipo.SIERRA && r.casillas() < SIERRA_ATLAS))) {
+				continue;
+			}
 			// que el accidente se vea más grande que su nombre: los ríos por lo largos, lo demás por el área
 			boolean cabe = r.tipo() == GeografiaMapa.Tipo.RIO ? r.casillas() * s >= w * 0.7 : r.casillas() * s * s >= w * 9 * 1.2;
 			if (!cabe) {
@@ -988,15 +1028,35 @@ public final class PantallaMapa extends Screen {
 				continue;
 			}
 			int w = anchos.get(e.getKey());
-			// que las tierras del reino ocupen al menos el doble del nombre
-			if (c[2] * s * s < w * 9 * 2.0) {
+			// que las tierras del reino ocupen al menos el doble del nombre; y si sobra sitio, el nombre más grande, como
+			// en los atlas (hasta el triple)
+			double area = c[2] * s * s;
+			if (area < w * 9 * 2.0) {
 				continue;
 			}
-			int x = pantallaX(c[0] / c[2] * CASILLA) - w / 2;
-			int y = pantallaY(c[1] / c[2] * CASILLA) + 6;
-			g.drawString(font, sinColor, x, y, TINTA, false);
+			float f = 1;
+			for (float t : new float[] {1.5f, 2, 3}) {
+				if (area >= w * t * 9 * t * 3.0) {
+					f = t;
+				}
+			}
+			float x = (float) (cx() + (c[0] / c[2] * CASILLA - vistaX) * escala);
+			float y = (float) (cy() + (c[1] / c[2] * CASILLA - vistaZ) * escala) + 6;
+			g.pose().pushMatrix();
+			g.pose().translate(x, y);
+			g.pose().scale(f, f);
+			// un halo de pergamino alrededor para que se lea encima de fronteras y colores
+			int ox = -w / 2;
+			for (int[] d : HALO) {
+				g.drawString(font, sinColor, ox + d[0], d[1], HALO_COLOR, false);
+			}
+			g.drawString(font, sinColor, ox, 0, TINTA, false);
+			g.pose().popMatrix();
 		}
 	}
+
+	private static final int[][] HALO = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+	private static final int HALO_COLOR = 0xB0E3D3AE;
 
 	private void pintaJugador(GuiGraphics g) {
 		Minecraft mc = Minecraft.getInstance();
