@@ -65,7 +65,7 @@ public final class PantallaMapa extends Screen {
 	private static final int PIDE_ZONAS = 40;
 	private static final int PIDE_FICHAS = 200;
 	/** Por debajo de estos píxeles por casilla se pinta de lejos, a bloques de casillas. */
-	private static final double LEJOS = 1;
+	private static final double LEJOS = 2;
 	/** Desde estos píxeles por casilla las lindes van como rayas encima de la imagen de la zona. */
 	private static final double CERCA = 4;
 	/** De lejos, más o menos cuántos cuadritos como mucho caben en el mapa (cada uno es un fill). */
@@ -602,7 +602,7 @@ public final class PantallaMapa extends Screen {
 	 * Como hace JourneyMap: cada zona es una imagen de 48×48 (un píxel por casilla) que la tarjeta gráfica estira, así
 	 * que cuesta un solo dibujo por zona se vea como se vea. De cerca (4 px por casilla o más) la imagen va sin fronteras
 	 * y las lindes se pintan encima como rayas finas; a media distancia, las fronteras de reino y los frentes van ya
-	 * dentro de la imagen; y muy de lejos (menos de un píxel por casilla), a bloques, para que no parpadeen.
+	 * dentro de la imagen (a dos píxeles por casilla, para que sean rayas finas); y muy de lejos (menos de 2 px por casilla), a bloques, para que no parpadeen.
 	 */
 	private void pintaZonas(GuiGraphics g) {
 		double s = escala * CASILLA;
@@ -611,38 +611,70 @@ public final class PantallaMapa extends Screen {
 			return;
 		}
 		boolean cerca = s >= CERCA;
+		// hacer imágenes cuesta (al abrir o al cambiar de modo hay que hacerlas todas): unas pocas por frame, y las
+		// zonas que aún no la tienen se quedan en niebla un instante
+		int presupuesto = IMAGENES_POR_FRAME;
 		for (Pintura p : pinturas.values()) {
 			if (!visible(p)) {
 				continue;
+			}
+			boolean conFronteras = !cerca;
+			Identifier img = conFronteras ? p.imagenConFronteras : p.imagen;
+			if (img == null) {
+				if (presupuesto-- <= 0) {
+					continue;
+				}
+				img = imagen(p, conFronteras);
 			}
 			int xa = pantallaX((double) p.ox() * CASILLA);
 			int ya = pantallaY((double) p.oz() * CASILLA);
 			int xb = pantallaX((double) (p.ox() + NUCLEO) * CASILLA);
 			int yb = pantallaY((double) (p.oz() + NUCLEO) * CASILLA);
-			Identifier img = imagen(p, !cerca);
-			g.blit(RenderPipelines.GUI_TEXTURED, img, xa, ya, 0, 0, xb - xa, yb - ya, NUCLEO, NUCLEO, NUCLEO, NUCLEO);
+			int lado = conFronteras ? NUCLEO * 2 : NUCLEO;
+			g.blit(RenderPipelines.GUI_TEXTURED, img, xa, ya, 0, 0, xb - xa, yb - ya, lado, lado, lado, lado);
 			if (cerca) {
 				pintaBordes(g, p, s);
 			}
 		}
 	}
 
+	/** Cuántas imágenes de zona se hacen como mucho en un frame. */
+	private static final int IMAGENES_POR_FRAME = 40;
+
 	private static int imagenes;
 
-	/** La imagen de la zona (se hace la primera vez que se pinta). */
+	/**
+	 * La imagen de la zona. Sin fronteras, un píxel por casilla. Con fronteras, dos por casilla, y la linde (costa,
+	 * reino o frente) ocupa solo el píxel del borde: así a media distancia se ve una raya fina y no una casilla negra.
+	 */
 	private static Identifier imagen(Pintura p, boolean conFronteras) {
-		Identifier id = conFronteras ? p.imagenConFronteras : p.imagen;
-		if (id != null) {
-			return id;
-		}
-		NativeImage img = new NativeImage(NUCLEO, NUCLEO, false);
-		int[] t = tiras(p.zona, 1, conFronteras);
+		PaqueteTerritorio z = p.zona;
+		int f = conFronteras ? 2 : 1;
+		NativeImage img = new NativeImage(NUCLEO * f, NUCLEO * f, false);
+		int[] t = tiras(z, 1, false);
 		for (int q = 0; q < t.length; q += 4) {
-			for (int i = t[q + 1]; i < t[q + 2]; i++) {
-				img.setPixel(i, t[q], t[q + 3]);
+			for (int i = t[q + 1] * f; i < t[q + 2] * f; i++) {
+				for (int d = 0; d < f; d++) {
+					img.setPixel(i, t[q] * f + d, t[q + 3]);
+				}
 			}
 		}
-		id = Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "mapa/zona_" + (imagenes++));
+		if (conFronteras) {
+			int[] b = p.bordes();
+			for (int k = 0; k < b.length; k += 4) {
+				int tipo = b[k + 3];
+				if (tipo < 2) {
+					continue;
+				}
+				int color = tipo == 4 ? FRENTE : tipo == 2 ? COSTA : FRONTERA;
+				int i = b[k + 1] * 2;
+				int j = b[k + 2] * 2;
+				// la linde de la izquierda (0) o la de arriba (1) de la casilla
+				img.setPixel(i, j, color);
+				img.setPixel(b[k] == 0 ? i : i + 1, b[k] == 0 ? j + 1 : j, color);
+			}
+		}
+		Identifier id = Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "mapa/zona_" + (imagenes++));
 		DynamicTexture tex = new DynamicTexture(id::toString, img);
 		tex.upload();
 		Minecraft.getInstance().getTextureManager().register(id, tex);
