@@ -144,6 +144,11 @@ public final class TerritoriosCliente {
 		OYENTES.forEach(Oyente::borrado);
 	}
 
+	/** La sal del mundo (para los nombres de sierras, ríos y mares, que salen siempre iguales). */
+	public static int sal() {
+		return sal;
+	}
+
 	public static boolean visible() {
 		return visible;
 	}
@@ -180,7 +185,8 @@ public final class TerritoriosCliente {
 		return z == null ? SIN_ALTURA : z.altura(tx - z.wx() * MapaTerreno.NUCLEO, tz - z.wz() * MapaTerreno.NUCLEO);
 	}
 
-	private static PaqueteTerritorio zona(int tx, int tz) {
+	/** La zona que tiene la casilla (tx, tz), o null. */
+	public static PaqueteTerritorio zona(int tx, int tz) {
 		int wx = Math.floorDiv(tx, MapaTerreno.NUCLEO);
 		int wz = Math.floorDiv(tz, MapaTerreno.NUCLEO);
 		PaqueteTerritorio z = ultima;

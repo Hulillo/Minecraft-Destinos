@@ -11,7 +11,7 @@ import net.minecraft.resources.Identifier;
  * Servidor → cliente: los ducados de una zona ya calculada (núcleo de una ventana de MapaTerreno), para que
  * los mapas del cliente (JourneyMap, Diorama) pinten los reinos. Solo lo reciben clientes con Destinos Core.
  */
-public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, short[] indice, short[] altura)
+public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, short[] indice, short[] altura, byte[] tipo)
 		implements CustomPacketPayload {
 	public static final CustomPacketPayload.Type<PaqueteTerritorio> TIPO =
 			new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "territorio"));
@@ -63,7 +63,7 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 		for (MapaTerreno.Entrada e : z.paleta()) {
 			paleta.add(Ducado.de(e, sal, politica));
 		}
-		return new PaqueteTerritorio(sal, z.wx(), z.wz(), paleta, z.indice(), z.altura());
+		return new PaqueteTerritorio(sal, z.wx(), z.wz(), paleta, z.indice(), z.altura(), z.tipo());
 	}
 
 	/** Ducado de la casilla (i, j) del núcleo, contando desde la esquina noroeste. */
@@ -73,6 +73,24 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 
 	public int altura(int i, int j) {
 		return altura[i + j * MapaTerreno.NUCLEO];
+	}
+
+	/** Si por la casilla pasa un río. */
+	public boolean rio(int i, int j) {
+		return (tipo[i + j * MapaTerreno.NUCLEO] & 1) != 0;
+	}
+
+	/** Si la casilla es de montaña. */
+	public boolean montana(int i, int j) {
+		return (tipo[i + j * MapaTerreno.NUCLEO] & 2) != 0;
+	}
+
+	/**
+	 * Familia del bioma de la casilla: 0 otra, 1 océano, 2 río, 3 nieve, 4 badlands, 5 desierto, 6 jungla, 7 sabana,
+	 * 8 pantano, 9 taiga, 10 montaña, 11 bosque, 12 llanura (MuestreadorMundo.FAMILIAS).
+	 */
+	public int familia(int i, int j) {
+		return (tipo[i + j * MapaTerreno.NUCLEO] >> 2) & 15;
 	}
 
 	private void escribe(FriendlyByteBuf buf) {
@@ -93,6 +111,7 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 			buf.writeVarInt(indice[k]);
 			buf.writeShort(altura[k]);
 		}
+		buf.writeByteArray(tipo);
 	}
 
 	private static PaqueteTerritorio lee(FriendlyByteBuf buf) {
@@ -120,7 +139,11 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 			indice[k] = (short) i;
 			altura[k] = buf.readShort();
 		}
-		return new PaqueteTerritorio(sal, wx, wz, paleta, indice, altura);
+		byte[] tipo = buf.readByteArray(CASILLAS);
+		if (tipo.length != CASILLAS) {
+			throw new IllegalArgumentException("Destinos Core: zona con el terreno incompleto");
+		}
+		return new PaqueteTerritorio(sal, wx, wz, paleta, indice, altura, tipo);
 	}
 
 	@Override

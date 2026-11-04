@@ -119,6 +119,7 @@ public final class DestinosCore implements ModInitializer {
 			TablonesPueblos.olvida();
 			EncargosMundo.olvida();
 			MazmorrasMundo.olvida();
+			FaunaDucados.olvida();
 			mapaEnviado = null;
 			ENVIO.olvidaTodo();
 		});

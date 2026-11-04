@@ -66,7 +66,9 @@ final class ComandosDestinos {
 							EncargosMundo.de(ctx.getSource().getServer()));
 					long conNombre = f.ducados().stream().filter(d -> !d.nombre().getString().equals("?")).count();
 					String t = "Destinos Core: fichas del mapa · " + f.reinos().size() + " reinos · " + f.ducados().size() + " ducados · "
-							+ conNombre + " con nombre · primero " + (f.reinos().isEmpty() ? "-" : f.reinos().get(0).nombre().getString());
+							+ conNombre + " con nombre · primero " + (f.reinos().isEmpty() ? "-" : f.reinos().get(0).nombre().getString())
+							+ " · " + f.ducados().stream().filter(d -> !d.animales().isEmpty()).count() + " con fauna · "
+							+ f.ducados().stream().filter(d -> d.peligro() >= 2).count() + " peligrosos";
 					DestinosCore.LOG.info(t);
 					ctx.getSource().sendSuccess(() -> Component.literal(t), false);
 				})))

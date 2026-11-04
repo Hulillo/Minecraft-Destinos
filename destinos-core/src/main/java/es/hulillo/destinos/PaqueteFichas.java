@@ -26,11 +26,31 @@ public record PaqueteFichas(int anio, int turno, List<Reino> reinos, List<Nombre
 	 * capital (vacío si aún no se sabe) y si la ha perdido. senor: reino del que es vasallo (kx, kz) o null.
 	 */
 	public record Reino(int kx, int kz, Component nombre, int poder, int habitantes, int ducados, int estabilidad, int puesto,
-			Component capital, boolean capitalPerdida, int[] senor, List<int[]> guerras, List<int[]> aliados, int rep) {
+			Component capital, boolean capitalPerdida, int[] senor, List<int[]> guerras, List<int[]> aliados, int rep, String cultura,
+			List<Component> cronica) {
 	}
 
-	/** Nombre de un ducado (con su tipo: "Ducado de X", "Marca de X", "Tierras de X"…). */
-	public record Nombre(int dcx, int dcz, Component nombre) {
+	/**
+	 * Un ducado: su nombre (con su tipo: "Ducado de X", "Marca de X", "Tierras de X"…), lo peligroso que es (0 seguro
+	 * a 3 muy peligroso) y los animales y monstruos que salen en sus biomas.
+	 */
+	public record Nombre(int dcx, int dcz, Component nombre, int peligro, List<Component> animales, List<Component> peligros) {
+	}
+
+	private static void textos(RegistryFriendlyByteBuf buf, List<Component> l) {
+		buf.writeVarInt(l.size());
+		for (Component c : l) {
+			ComponentSerialization.TRUSTED_STREAM_CODEC.encode(buf, c);
+		}
+	}
+
+	private static List<Component> textos(RegistryFriendlyByteBuf buf) {
+		int n = cuenta(buf);
+		List<Component> l = new ArrayList<>(n);
+		for (int i = 0; i < n; i++) {
+			l.add(ComponentSerialization.TRUSTED_STREAM_CODEC.decode(buf));
+		}
+		return l;
 	}
 
 	private static void celdas(RegistryFriendlyByteBuf buf, List<int[]> l) {
@@ -81,12 +101,17 @@ public record PaqueteFichas(int anio, int turno, List<Reino> reinos, List<Nombre
 			celdas(buf, r.guerras());
 			celdas(buf, r.aliados());
 			buf.writeVarInt(r.rep());
+			buf.writeUtf(r.cultura());
+			textos(buf, r.cronica());
 		}
 		buf.writeVarInt(ducados.size());
 		for (Nombre d : ducados) {
 			buf.writeVarInt(d.dcx());
 			buf.writeVarInt(d.dcz());
 			ComponentSerialization.TRUSTED_STREAM_CODEC.encode(buf, d.nombre());
+			buf.writeByte(d.peligro());
+			textos(buf, d.animales());
+			textos(buf, d.peligros());
 		}
 	}
 
@@ -109,13 +134,20 @@ public record PaqueteFichas(int anio, int turno, List<Reino> reinos, List<Nombre
 			int[] senor = buf.readBoolean() ? new int[] {buf.readVarInt(), buf.readVarInt()} : null;
 			List<int[]> guerras = celdas(buf);
 			List<int[]> aliados = celdas(buf);
+			int rep = buf.readVarInt();
+			String cultura = buf.readUtf();
 			reinos.add(new Reino(kx, kz, nombre, poder, habitantes, ducados, estabilidad, puesto, capital, perdida, senor, guerras,
-					aliados, buf.readVarInt()));
+					aliados, rep, cultura, textos(buf)));
 		}
 		int m = cuenta(buf);
 		List<Nombre> ducados = new ArrayList<>(m);
 		for (int i = 0; i < m; i++) {
-			ducados.add(new Nombre(buf.readVarInt(), buf.readVarInt(), ComponentSerialization.TRUSTED_STREAM_CODEC.decode(buf)));
+			int dcx = buf.readVarInt();
+			int dcz = buf.readVarInt();
+			Component nombre = ComponentSerialization.TRUSTED_STREAM_CODEC.decode(buf);
+			int peligro = buf.readByte();
+			List<Component> animales = textos(buf);
+			ducados.add(new Nombre(dcx, dcz, nombre, peligro, animales, textos(buf)));
 		}
 		return new PaqueteFichas(anio, turno, reinos, ducados);
 	}

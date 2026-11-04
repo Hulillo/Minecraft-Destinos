@@ -32,6 +32,8 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	static final int TICKS_TURNO = 24000;
 	/** Anuncios como mucho por tanda (al forzar varios turnos); el resto queda en la crónica. */
 	private static final int MAX_ANUNCIOS = 10;
+	/** Sucesos de cada reino que salen en su ficha del mapa político. */
+	private static final int CRONICA_FICHA = 4;
 
 	private final Grafo grafo = new Grafo();
 	private final Politica politica;
@@ -271,6 +273,7 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 			filas.add(new Fila(r, politica.resumen(grafo, r)));
 		}
 		filas.sort((a, b) -> Integer.compare(b.resumen().poder(), a.resumen().poder()));
+		List<Suceso> todos = new ArrayList<>(politica.cronica());
 		List<PaqueteFichas.Reino> reinos = new ArrayList<>(filas.size());
 		for (int i = 0; i < filas.size(); i++) {
 			long id = filas.get(i).reino();
@@ -296,16 +299,74 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 					aliados.add(celda(par.otro(id)));
 				}
 			}
+			// lo último que ha pasado con el reino, lo más reciente primero
+			List<Component> cronica = new ArrayList<>();
+			for (int k = todos.size() - 1; k >= 0 && cronica.size() < CRONICA_FICHA; k--) {
+				Suceso s = todos.get(k);
+				if (s.reinoA() == id || s.reinoB() == id) {
+					cronica.add(nombres.texto(server, s));
+				}
+			}
 			int[] senor = e != null && e.senor != Politica.NADIE ? celda(e.senor) : null;
 			reinos.add(new PaqueteFichas.Reino(Grafo.x(id), Grafo.z(id), nombreReino(server, id), res.poder(),
 					NombresPolitica.redondea(res.habitantes()), res.ducados(), e == null ? 60 : e.estabilidad, i + 1, capital, perdida,
-					senor, guerras, aliados, p == null ? 0 : encargos.rep(p, id)));
+					senor, guerras, aliados, p == null ? 0 : encargos.rep(p, id), nombres.cultura(server, id), cronica));
 		}
+		Map<Long, Integer> peligro = peligros(server);
+		FaunaDucados fauna = FaunaDucados.de(server.overworld(), sal());
 		List<PaqueteFichas.Nombre> ducados = new ArrayList<>(grafo.ducados().size());
 		for (long id : grafo.ducados().keySet()) {
-			ducados.add(new PaqueteFichas.Nombre(Grafo.x(id), Grafo.z(id), nombreDucado(server, id)));
+			FaunaDucados.Fauna f = fauna.de(Grafo.x(id), Grafo.z(id));
+			ducados.add(new PaqueteFichas.Nombre(Grafo.x(id), Grafo.z(id), nombreDucado(server, id), Math.min(3, peligro.getOrDefault(id, 0)),
+					f.animales(), f.peligros()));
 		}
 		return new PaqueteFichas(Estaciones.anio(server.overworld()), politica.turno(), reinos, ducados);
+	}
+
+	/**
+	 * Lo peligroso que es cada ducado conocido (de 0 a 3, para el modo Seguridad): tierra salvaje (bandidos) +1, reino
+	 * en guerra +1, frente de una guerra +2, reino en crisis +1 y una mazmorra despierta dentro +1.
+	 */
+	private Map<Long, Integer> peligros(MinecraftServer server) {
+		Map<Long, Integer> res = new HashMap<>();
+		Set<Long> enGuerra = new HashSet<>();
+		for (Politica.Par par : politica.guerras().keySet()) {
+			enGuerra.add(par.a());
+			enGuerra.add(par.b());
+			for (long frente : new long[] {politica.frente(grafo, par.a(), par.b()), politica.frente(grafo, par.b(), par.a())}) {
+				if (frente != Politica.NADIE) {
+					res.merge(frente, 2, Integer::sum);
+				}
+			}
+		}
+		for (Grafo.Ducado d : grafo.ducados().values()) {
+			long dueno = politica.dueno(d);
+			int n = 0;
+			if (dueno == Politica.SALVAJE) {
+				n++;
+			} else {
+				if (enGuerra.contains(dueno)) {
+					n++;
+				}
+				Politica.Reino e = politica.reinos().get(dueno);
+				if (e != null && e.estabilidad < 35) {
+					n++;
+				}
+			}
+			if (n > 0) {
+				res.merge(d.id(), n, Integer::sum);
+			}
+		}
+		MapaTerreno m = DestinosCore.mapaActual();
+		if (m != null) {
+			for (int[] xz : MazmorrasMundo.de(server).despiertasXZ()) {
+				MapaTerreno.Resultado r = m.consultaSiLista(xz[0], xz[1]);
+				if (r != null) {
+					res.merge(Grafo.id(r.dcx(), r.dcz()), 1, Integer::sum);
+				}
+			}
+		}
+		return res;
 	}
 
 	private static int[] celda(long id) {

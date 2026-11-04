@@ -116,7 +116,7 @@ public final class MapaTerreno {
 	 * núcleo donde sale un pueblo.
 	 */
 	private record Ventana(int[] dueno, boolean[] isla, boolean[] oceano, boolean[] dificil, int[] mar, int[] altura,
-			byte[] recurso, List<Semilla> semillas, int[] pueblos) {
+			byte[] recurso, byte[] tipo, List<Semilla> semillas, int[] pueblos) {
 	}
 
 	/**
@@ -143,7 +143,7 @@ public final class MapaTerreno {
 	 * El núcleo de una ventana, listo para pintarlo en un mapa: cada casilla (i + j * NUCLEO, empezando en la
 	 * casilla wx * NUCLEO, wz * NUCLEO) apunta a una entrada de la paleta y lleva la altura del suelo.
 	 */
-	public record Zona(int wx, int wz, List<Entrada> paleta, short[] indice, short[] altura) {
+	public record Zona(int wx, int wz, List<Entrada> paleta, short[] indice, short[] altura, byte[] tipo) {
 	}
 
 	private final Muestreador muestreador;
@@ -250,6 +250,7 @@ public final class MapaTerreno {
 		LinkedHashMap<Entrada, Integer> paleta = new LinkedHashMap<>();
 		short[] indice = new short[NUCLEO * NUCLEO];
 		short[] altura = new short[NUCLEO * NUCLEO];
+		byte[] tipo = new byte[NUCLEO * NUCLEO];
 		for (int j = 0; j < NUCLEO; j++) {
 			for (int i = 0; i < NUCLEO; i++) {
 				int x = (wx * NUCLEO + i) * CASILLA;
@@ -259,9 +260,10 @@ public final class MapaTerreno {
 				Entrada e = new Entrada(r, r.oceano() && v.mar()[k] > AGUAS_TERRITORIALES);
 				indice[i + j * NUCLEO] = (short) (int) paleta.computeIfAbsent(e, c -> paleta.size());
 				altura[i + j * NUCLEO] = (short) v.altura()[k];
+				tipo[i + j * NUCLEO] = v.tipo()[k];
 			}
 		}
-		return new Zona(wx, wz, List.copyOf(paleta.keySet()), indice, altura);
+		return new Zona(wx, wz, List.copyOf(paleta.keySet()), indice, altura, tipo);
 	}
 
 	/** Claves de las ventanas ya calculadas (sin error). */
@@ -360,6 +362,11 @@ public final class MapaTerreno {
 		return new Resultado(g[0], g[1], g[2], g[3], g[4] == 1, oceano);
 	}
 
+	/** Lo que el mapa político necesita del terreno de una casilla, en un byte: bit 0 río, bit 1 montaña, del 2 al 5 la familia del bioma. */
+	static byte tipo(Casilla c) {
+		return (byte) ((c.rio() ? 1 : 0) | (c.montana() ? 2 : 0) | (Math.min(15, c.familia()) << 2));
+	}
+
 	/** Ventana cuyo núcleo contiene la coordenada de bloque (en un eje). */
 	public static int indiceVentana(int bloque) {
 		return Math.floorDiv(Math.floorDiv(bloque, CASILLA), NUCLEO);
@@ -399,7 +406,9 @@ public final class MapaTerreno {
 		int[] altura = new int[total];
 		boolean[] dificil = new boolean[total];
 		byte[] recurso = new byte[total];
+		byte[] tipo = new byte[total];
 		for (int k = 0; k < total; k++) {
+			tipo[k] = tipo(terreno[k]);
 			isla[k] = !terreno[k].oceano() && mar[k] >= MAR_ISLA;
 			oceano[k] = terreno[k].oceano();
 			altura[k] = terreno[k].altura();
@@ -414,7 +423,7 @@ public final class MapaTerreno {
 		for (int p = 0; p < pueblos.length; p++) {
 			pueblos[p] = (Math.floorDiv(sitios.get(p)[0], CASILLA) - bx) + (Math.floorDiv(sitios.get(p)[1], CASILLA) - bz) * N;
 		}
-		return new Ventana(dueno, isla, oceano, dificil, mar, altura, recurso, semillas, pueblos);
+		return new Ventana(dueno, isla, oceano, dificil, mar, altura, recurso, tipo, semillas, pueblos);
 	}
 
 	// ------------------------------------------------------------------ capitales

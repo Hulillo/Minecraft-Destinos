@@ -148,6 +148,10 @@ if not fichas:
     sys.exit("/destinoscore fichas no ha contestado")
 if int(fichas[-1][0]) == 0 or int(fichas[-1][2]) == 0:
     sys.exit("las fichas del mapa político han salido vacías")
+fauna = re.findall(r"fichas del mapa · .* · (\d+) con fauna · (\d+) peligrosos", salida)
+print("fauna y peligro:", fauna[-1] if fauna else "sin datos")
+if not fauna or int(fauna[-1][0]) == 0:
+    sys.exit("ningún ducado tiene fauna en las fichas del mapa")
 guerra = re.findall(r"Destinos Core: campamento de guerra de prueba · .*", salida)
 print("guerra:", guerra[-1] if guerra else "sin respuesta")
 if not guerra:

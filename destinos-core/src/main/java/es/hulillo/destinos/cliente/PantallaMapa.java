@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.ChatFormatting;
@@ -17,6 +18,7 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -32,11 +34,8 @@ import org.lwjgl.glfw.GLFW;
  * con un clic).
  */
 public final class PantallaMapa extends Screen {
-	private static final int PERGAMINO = 0xFFE3D3AE;
-	private static final int NIEBLA = 0xFFCDBB92;
-	private static final int MAR = 0xFF8FA9A1;
-	private static final int SALVAJE = 0xFFA39D8C;
-	private static final int ORO = 0xFFE8B83A;
+	private static final int NIEBLA = ModoMapa.NIEBLA;
+	private static final int ORO = ModoMapa.ORO;
 	private static final int TINTA = 0xFF2B2015;
 	private static final int TINTA_SUAVE = 0xFF6B5640;
 	private static final int MARCO = 0xFF5A3D22;
@@ -44,7 +43,7 @@ public final class PantallaMapa extends Screen {
 	private static final int PANEL = 0xF02A231A;
 	private static final int TEXTO = 0xFFEFE4C8;
 	private static final int TEXTO_SUAVE = 0xFFB9AB8A;
-	private static final int FRENTE = 0xFFC0281F;
+	private static final int FRENTE = ModoMapa.FRENTE;
 	private static final int COSTA = 0xFF4A3D2A;
 	private static final int FRONTERA = 0xFF2B2015;
 	private static final int LINDE = 0x552B2015;
@@ -56,12 +55,18 @@ public final class PantallaMapa extends Screen {
 	/** Cada cuánto se piden más zonas al servidor mientras el mapa está abierto, y cada cuánto las fichas. */
 	private static final int PIDE_ZONAS = 40;
 	private static final int PIDE_FICHAS = 200;
+	/** Ancho de la columna de modos, a la izquierda. */
+	private static final int COLUMNA = 74;
+	/** Cada cuánto, como mucho, se vuelven a buscar los accidentes del relieve (son caros). */
+	private static final int REHACE_GEO = 100;
 
 	/** Lo que se queda de una vista a otra mientras dura la conexión. */
 	private static double vistaX = Double.NaN;
 	private static double vistaZ;
 	private static double escala = 1.0 / 12;
 	private static long fijado = Long.MIN_VALUE;
+	private static ModoMapa modo = ModoMapa.REINOS;
+	private static String buscado = "";
 
 	private final KeyMapping tecla;
 	/** Cómo se pinta cada zona (se rehace si llegan zonas nuevas, porque cambian las fronteras de los bordes). */
@@ -69,6 +74,16 @@ public final class PantallaMapa extends Screen {
 	private final Map<Long, double[]> centros = new HashMap<>();
 	private int zonasPintadas = -1;
 	private int turnoPintado = Integer.MIN_VALUE;
+	private ModoMapa modoPintado;
+	private final List<Button> botonesModo = new ArrayList<>();
+	private EditBox buscador;
+	/** Lo que se encontró con la última búsqueda, en bloques, y por cuál va. */
+	private final List<double[]> encontrados = new ArrayList<>();
+	private int encontrado;
+	private String buscadoAntes = null;
+	private List<GeografiaMapa.Rotulo> rotulos = List.of();
+	private int zonasGeo = -1;
+	private int tickGeo = -REHACE_GEO;
 	private int ticks;
 	private int x0;
 	private int y0;
@@ -101,7 +116,7 @@ public final class PantallaMapa extends Screen {
 			vistaZ = mc.player.getZ();
 		}
 		int ancho = Math.min(170, Math.max(120, width / 4));
-		x0 = 8;
+		x0 = 8 + COLUMNA + 6;
 		y0 = 30;
 		panelX = width - ancho - 8;
 		x1 = panelX - 6;
@@ -112,7 +127,91 @@ public final class PantallaMapa extends Screen {
 			TerritoriosCliente.alterna();
 			b.setMessage(textoCapa());
 		}).bounds(width - 8 - 56 - 4 - 150, 6, 150, 18).build());
+		botonesModo.clear();
+		for (ModoMapa m : ModoMapa.values()) {
+			Button b = Button.builder(Component.literal((m.ordinal() + 1) + " ").append(m.nombre()), x -> cambiaModo(m))
+					.bounds(8, y0 + m.ordinal() * 20, COLUMNA, 18).build();
+			botonesModo.add(addRenderableWidget(b));
+		}
+		marcaModo();
+		int anchoBusca = Math.min(140, Math.max(70, width - 8 - 56 - 4 - 150 - 4 - 260));
+		buscador = new EditBox(font, width - 8 - 56 - 4 - 150 - 4 - anchoBusca, 7, anchoBusca, 16,
+				Component.translatableWithFallback("destinos.mapa.buscar", "Buscar reino o ducado"));
+		buscador.setHint(Component.translatableWithFallback("destinos.mapa.buscar", "Buscar reino o ducado"));
+		buscador.setMaxLength(40);
+		buscador.setValue(buscado);
+		buscador.setResponder(t -> buscado = t);
+		addRenderableWidget(buscador);
 		ClientPlayNetworking.send(new PaquetePedirMapa(true));
+	}
+
+	private void cambiaModo(ModoMapa m) {
+		modo = m;
+		marcaModo();
+	}
+
+	/** El botón del modo que está puesto se queda apagado, para que se vea cuál es. */
+	private void marcaModo() {
+		for (int k = 0; k < botonesModo.size(); k++) {
+			botonesModo.get(k).active = k != modo.ordinal();
+		}
+	}
+
+	/** Busca reinos y ducados cuyo nombre lleve el texto; cada Intro salta al siguiente que haya. */
+	private void busca() {
+		String q = buscado.trim().toLowerCase(Locale.ROOT);
+		if (q.isEmpty()) {
+			return;
+		}
+		if (!q.equals(buscadoAntes)) {
+			buscadoAntes = q;
+			encontrados.clear();
+			encontrado = -1;
+			for (PaqueteFichas.Reino r : FichasCliente.reinos()) {
+				if (r.nombre().getString().toLowerCase(Locale.ROOT).contains(q)) {
+					double[] p = sitioReino(r.kx(), r.kz());
+					if (p != null) {
+						encontrados.add(new double[] {p[0], p[1], 1, r.kx(), r.kz()});
+					}
+				}
+			}
+			int sal = TerritoriosCliente.sal();
+			for (PaqueteFichas.Nombre d : FichasCliente.ducados()) {
+				if (d.nombre().getString().toLowerCase(Locale.ROOT).contains(q)) {
+					int[] c = Geo.centroDucado(d.dcx(), d.dcz(), sal);
+					encontrados.add(new double[] {c[0], c[1], 0, 0, 0});
+				}
+			}
+		}
+		if (encontrados.isEmpty()) {
+			return;
+		}
+		encontrado = (encontrado + 1) % encontrados.size();
+		double[] e = encontrados.get(encontrado);
+		vistaX = e[0];
+		vistaZ = e[1];
+		escala = Math.max(escala, 1.0 / 24);
+		if (e[2] == 1) {
+			fijado = Geo.clave((int) e[3], (int) e[4]);
+		}
+	}
+
+	/** Dónde está un reino en el mapa (en bloques): su capital, o el centro de sus tierras conocidas. */
+	private double[] sitioReino(int kx, int kz) {
+		double[] mejor = null;
+		for (PaquetePolitica.Capital c : TerritoriosCliente.capitales()) {
+			if (c.kx() == kx && c.kz() == kz) {
+				mejor = new double[] {c.x(), c.z()};
+				if (!c.perdida()) {
+					return mejor;
+				}
+			}
+		}
+		if (mejor != null) {
+			return mejor;
+		}
+		double[] s = centros.get(Geo.clave(kx, kz));
+		return s == null || s[2] == 0 ? null : new double[] {s[0] / s[2] * CASILLA, s[1] / s[2] * CASILLA};
 	}
 
 	private static Component textoCapa() {
@@ -173,6 +272,7 @@ public final class PantallaMapa extends Screen {
 			return true;
 		}
 		if (e.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT && enMapa(e.x(), e.y())) {
+			setFocused(null);
 			arrastra = true;
 			arrastrado = 0;
 			return true;
@@ -221,6 +321,18 @@ public final class PantallaMapa extends Screen {
 
 	@Override
 	public boolean keyPressed(KeyEvent e) {
+		if (buscador != null && buscador.isFocused()) {
+			if (e.key() == GLFW.GLFW_KEY_ENTER || e.key() == GLFW.GLFW_KEY_KP_ENTER) {
+				busca();
+				return true;
+			}
+			// mientras se escribe, las letras y los números son del buscador (Escape sí cierra)
+			return super.keyPressed(e);
+		}
+		if (e.key() >= GLFW.GLFW_KEY_1 && e.key() < GLFW.GLFW_KEY_1 + ModoMapa.values().length) {
+			cambiaModo(ModoMapa.values()[e.key() - GLFW.GLFW_KEY_1]);
+			return true;
+		}
 		if (tecla.matches(e)) {
 			onClose();
 			return true;
@@ -240,16 +352,30 @@ public final class PantallaMapa extends Screen {
 		g.fill(0, 0, width, height, FONDO);
 		g.drawString(font, title.copy().withStyle(ChatFormatting.BOLD), 10, 11, ORO, true);
 		if (FichasCliente.hay()) {
-			g.drawString(font, Component.translatableWithFallback("destinos.mapa.anio", "Año %s · turno %s · %s reinos conocidos",
-					FichasCliente.anio(), FichasCliente.turno(), FichasCliente.vivos()), 16 + font.width(title) + 12, 11, TEXTO_SUAVE, false);
+			Component anio = Component.translatableWithFallback("destinos.mapa.anio", "Año %s · turno %s · %s reinos conocidos",
+					FichasCliente.anio(), FichasCliente.turno(), FichasCliente.vivos());
+			int ax = 16 + font.width(title) + 12;
+			if (buscador == null || ax + font.width(anio) < buscador.getX() - 6) {
+				g.drawString(font, anio, ax, 11, TEXTO_SUAVE, false);
+			}
 		}
 		g.fill(x0 - 3, y0 - 3, x1 + 3, y1 + 3, MARCO);
 		g.enableScissor(x0, y0, x1, y1);
 		g.fill(x0, y0, x1, y1, NIEBLA);
 		prepara();
 		pintaZonas(g);
+		if (modo == ModoMapa.DIPLOMACIA) {
+			pintaDiplomacia(g);
+		}
+		if (modo == ModoMapa.FAUNA) {
+			pintaRaros(g);
+		}
 		pintaCapitales(g);
-		pintaNombres(g);
+		if (modo == ModoMapa.RELIEVE) {
+			pintaRelieve(g);
+		} else {
+			pintaNombres(g);
+		}
 		pintaJugador(g);
 		g.disableScissor();
 		if (TerritoriosCliente.vacio()) {
@@ -260,6 +386,7 @@ public final class PantallaMapa extends Screen {
 		leyenda(g);
 		PaqueteTerritorio.Ducado d = bajo(mx, my);
 		ficha(g, d);
+		g.drawString(font, Component.translatableWithFallback("destinos.mapa.modos", "Modos"), 10, y0 - 11, TEXTO_SUAVE, false);
 		super.render(g, mx, my, pt);
 		if (d != null && !arrastra) {
 			g.nextStratum();
@@ -276,11 +403,12 @@ public final class PantallaMapa extends Screen {
 	private void prepara() {
 		int n = TerritoriosCliente.zonas();
 		int turno = FichasCliente.turno();
-		if (n == zonasPintadas && turno == turnoPintado && pinturas.size() == n) {
+		if (n == zonasPintadas && turno == turnoPintado && modo == modoPintado && pinturas.size() == n) {
 			return;
 		}
 		zonasPintadas = n;
 		turnoPintado = turno;
+		modoPintado = modo;
 		pinturas.clear();
 		centros.clear();
 		for (PaqueteTerritorio z : TerritoriosCliente.zonasRecibidas()) {
@@ -288,40 +416,19 @@ public final class PantallaMapa extends Screen {
 		}
 	}
 
-	private static int mezcla(int a, int b, double t) {
-		int r = (int) Math.round(((a >> 16) & 255) * (1 - t) + ((b >> 16) & 255) * t);
-		int v = (int) Math.round(((a >> 8) & 255) * (1 - t) + ((b >> 8) & 255) * t);
-		int z = (int) Math.round((a & 255) * (1 - t) + (b & 255) * t);
-		return 0xFF000000 | r << 16 | v << 8 | z;
-	}
-
-	private static int color(PaqueteTerritorio.Ducado d) {
-		int c;
-		if (d.deNadie()) {
-			return MAR;
-		} else if (d.oceano()) {
-			c = d.salvaje() ? MAR : mezcla(MAR, 0xFF000000 | d.color(), 0.3);
-		} else if (d.salvaje()) {
-			c = SALVAJE;
-		} else {
-			c = mezcla(0xFF000000 | d.color(), PERGAMINO, 0.22);
-		}
-		return TerritoriosCliente.reciente(d) ? mezcla(c, ORO, 0.45) : c;
-	}
-
 	/** Tipo de linde entre dos casillas vecinas: 0 nada, 1 ducado, 2 costa, 3 reino, 4 frente de guerra. */
 	private static int linde(PaqueteTerritorio.Ducado a, PaqueteTerritorio.Ducado b) {
 		if (a == null || b == null || (a.deNadie() && b.deNadie())) {
 			return 0;
 		}
-		if (TerritoriosCliente.enGuerra(a, b)) {
+		if (modo.frentes() && TerritoriosCliente.enGuerra(a, b)) {
 			return 4;
 		}
 		if (a.oceano() != b.oceano()) {
 			return 2;
 		}
 		if (!a.mismoReino(b)) {
-			return a.oceano() ? 1 : 3;
+			return a.oceano() ? 1 : modo.fronteras() ? 3 : 1;
 		}
 		return a.mismoDucado(b) || a.oceano() ? 0 : 1;
 	}
@@ -333,9 +440,9 @@ public final class PantallaMapa extends Screen {
 		List<Integer> bordes = new ArrayList<>();
 		for (int j = 0; j < NUCLEO; j++) {
 			int desde = 0;
-			int c = color(z.ducado(0, j));
+			int c = modo.color(z, 0, j);
 			for (int i = 1; i <= NUCLEO; i++) {
-				int ci = i < NUCLEO ? color(z.ducado(i, j)) : 0;
+				int ci = i < NUCLEO ? modo.color(z, i, j) : 0;
 				if (i == NUCLEO || ci != c) {
 					tiras.add(j);
 					tiras.add(desde);
@@ -450,8 +557,9 @@ public final class PantallaMapa extends Screen {
 				for (int bi = 0; bi < NUCLEO; bi += k) {
 					int xa = pantallaX((double) (ox + bi) * CASILLA);
 					int xb = Math.max(xa + 1, pantallaX((double) (ox + Math.min(NUCLEO, bi + k)) * CASILLA));
-					PaqueteTerritorio.Ducado d = z.ducado(Math.min(NUCLEO - 1, bi + k / 2), mj);
-					int color = color(d);
+					int mi = Math.min(NUCLEO - 1, bi + k / 2);
+					PaqueteTerritorio.Ducado d = z.ducado(mi, mj);
+					int color = modo.color(z, mi, mj);
 					int izq = bi >= k ? linde(d, z.ducado(Math.min(NUCLEO - 1, bi - k + k / 2), mj)) : 0;
 					int arr = bj >= k ? linde(d, z.ducado(Math.min(NUCLEO - 1, bi + k / 2), Math.min(NUCLEO - 1, bj - k + k / 2))) : 0;
 					int l = Math.max(izq, arr);
@@ -463,6 +571,126 @@ public final class PantallaMapa extends Screen {
 					g.fill(xa, ya, xb, yb, color);
 				}
 			}
+		}
+	}
+
+	/** Líneas curvas entre capitales: verde las alianzas, rojo las guerras y oro del vasallo a su señor. */
+	private void pintaDiplomacia(GuiGraphics g) {
+		for (PaqueteFichas.Reino r : FichasCliente.reinos()) {
+			double[] a = sitioReino(r.kx(), r.kz());
+			if (a == null) {
+				continue;
+			}
+			long ka = Geo.clave(r.kx(), r.kz());
+			for (int[] o : r.aliados()) {
+				if (Geo.clave(o[0], o[1]) > ka) {
+					curva(g, a, sitioReino(o[0], o[1]), ModoMapa.ALIANZA);
+				}
+			}
+			for (int[] o : r.guerras()) {
+				if (Geo.clave(o[0], o[1]) > ka) {
+					curva(g, a, sitioReino(o[0], o[1]), FRENTE);
+				}
+			}
+			if (r.senor() != null) {
+				curva(g, a, sitioReino(r.senor()[0], r.senor()[1]), ModoMapa.VASALLAJE);
+			}
+		}
+	}
+
+	/** Una curva suave de a a b (en bloques), combada hacia un lado para que no se tapen las de ida y vuelta. */
+	private void curva(GuiGraphics g, double[] a, double[] b, int color) {
+		if (b == null) {
+			return;
+		}
+		double ax = pantallaX(a[0]);
+		double ay = pantallaY(a[1]);
+		double bx = pantallaX(b[0]);
+		double by = pantallaY(b[1]);
+		double dx = bx - ax;
+		double dy = by - ay;
+		double largo = Math.hypot(dx, dy);
+		if (largo < 4 || Math.max(ax, bx) < x0 - 20 || Math.min(ax, bx) > x1 + 20 || Math.max(ay, by) < y0 - 20 || Math.min(ay, by) > y1 + 20) {
+			return;
+		}
+		double qx = (ax + bx) / 2 - dy * 0.18;
+		double qy = (ay + by) / 2 + dx * 0.18;
+		int pasos = (int) Math.min(600, largo / 1.5) + 1;
+		for (int k = 0; k <= pasos; k++) {
+			double t = k / (double) pasos;
+			double u = 1 - t;
+			int x = (int) Math.round(u * u * ax + 2 * u * t * qx + t * t * bx);
+			int y = (int) Math.round(u * u * ay + 2 * u * t * qy + t * t * by);
+			if (x >= x0 - 2 && x <= x1 + 2 && y >= y0 - 2 && y <= y1 + 2) {
+				g.fill(x - 1, y - 1, x + 1, y + 1, color);
+			}
+		}
+	}
+
+	/** En el modo Fauna, una estrellita en los ducados con algún bicho que sale en pocos sitios. */
+	private void pintaRaros(GuiGraphics g) {
+		if (escala * CASILLA < 1.5) {
+			return;
+		}
+		Component estrella = Component.literal("✦");
+		int sal = TerritoriosCliente.sal();
+		for (PaqueteFichas.Nombre d : FichasCliente.ducados()) {
+			if (!FichasCliente.conRaros(d.dcx(), d.dcz())) {
+				continue;
+			}
+			int[] c = Geo.centroDucado(d.dcx(), d.dcz(), sal);
+			int x = pantallaX(c[0]);
+			int y = pantallaY(c[1]);
+			if (x < x0 || x > x1 || y < y0 || y > y1) {
+				continue;
+			}
+			g.drawString(font, estrella, x - font.width(estrella) / 2, y - 4, ORO, true);
+		}
+	}
+
+	/** En el modo Relieve, los nombres de sierras, ríos y mares (sin pisarse; primero los más grandes). */
+	private void pintaRelieve(GuiGraphics g) {
+		int n = TerritoriosCliente.zonas();
+		if (n != zonasGeo && ticks - tickGeo >= REHACE_GEO) {
+			zonasGeo = n;
+			tickGeo = ticks;
+			List<GeografiaMapa.Rotulo> l = new ArrayList<>(GeografiaMapa.calcula());
+			l.sort((a, b) -> Integer.compare(b.casillas(), a.casillas()));
+			rotulos = l;
+		}
+		double s = escala * CASILLA;
+		List<int[]> puestos = new ArrayList<>();
+		for (GeografiaMapa.Rotulo r : rotulos) {
+			boolean agua = r.tipo() != GeografiaMapa.Tipo.SIERRA;
+			Component t = agua ? r.texto().copy().withStyle(ChatFormatting.ITALIC) : r.texto();
+			int w = font.width(t);
+			// que el accidente se vea más grande que su nombre: los ríos por lo largos, lo demás por el área
+			boolean cabe = r.tipo() == GeografiaMapa.Tipo.RIO ? r.casillas() * s >= w * 0.7 : r.casillas() * s * s >= w * 9 * 1.2;
+			if (!cabe) {
+				continue;
+			}
+			int x = pantallaX(r.x()) - w / 2;
+			int y = pantallaY(r.z()) - 4;
+			if (x + w < x0 || x > x1 || y + 9 < y0 || y > y1) {
+				continue;
+			}
+			boolean pisa = false;
+			for (int[] p : puestos) {
+				if (x < p[2] && x + w > p[0] && y < p[3] && y + 9 > p[1]) {
+					pisa = true;
+					break;
+				}
+			}
+			if (pisa) {
+				continue;
+			}
+			puestos.add(new int[] {x - 2, y - 1, x + w + 2, y + 10});
+			int color = switch (r.tipo()) {
+				case SIERRA -> 0xFF4A2E17;
+				case RIO -> 0xFF1E4A78;
+				default -> 0xFF173B5C;
+			};
+			g.drawString(font, t, x, y, color, false);
 		}
 	}
 
@@ -518,13 +746,10 @@ public final class PantallaMapa extends Screen {
 	private void leyenda(GuiGraphics g) {
 		int x = x0;
 		int y = y1 + 7;
-		x = muestra(g, x, y, ORO, Component.translatableWithFallback("destinos.mapa.leyenda.capital", "♛ Capital"));
-		x = muestra(g, x, y, FRENTE, Component.translatableWithFallback("destinos.mapa.leyenda.frente", "Frente de guerra"));
-		x = muestra(g, x, y, SALVAJE, Component.translatableWithFallback("destinos.mapa.leyenda.salvaje", "Tierras salvajes"));
-		x = muestra(g, x, y, mezcla(PERGAMINO, ORO, 0.6), Component.translatableWithFallback("destinos.mapa.leyenda.reciente",
-				"Cambió de dueño"));
-		x = muestra(g, x, y, NIEBLA, Component.translatableWithFallback("destinos.mapa.leyenda.niebla", "Sin explorar"));
-		Component ayuda = Component.translatableWithFallback("destinos.mapa.ayuda", "Arrastra · rueda: zoom · espacio: a ti · clic: fijar ficha");
+		for (Object[] m : modo.leyenda()) {
+			x = muestra(g, x, y, (Integer) m[0], (Component) m[1]);
+		}
+		Component ayuda = Component.translatableWithFallback("destinos.mapa.ayuda", "Arrastra · rueda: zoom · 1-8: modos · espacio: a ti · clic: fijar");
 		if (x + font.width(ayuda) < x1) {
 			g.drawString(font, ayuda, x1 - font.width(ayuda), y, TEXTO_SUAVE, false);
 		}
@@ -603,6 +828,11 @@ public final class PantallaMapa extends Screen {
 				r.ducados()), tx, y, w, TEXTO);
 		y = linea(g, Component.translatableWithFallback("destinos.mapa.estabilidad", "Estabilidad %s/100", r.estabilidad()), tx, y, w,
 				r.estabilidad() < 35 ? 0xFFFF7A6A : TEXTO);
+		if (!r.cultura().isEmpty()) {
+			y = linea(g, Component.translatableWithFallback("destinos.mapa.cultura", "Cultura: %s",
+					Component.translatableWithFallback("destinos.cultura." + r.cultura(), r.cultura())), tx, y, w,
+					ModoMapa.CULTURAS.getOrDefault(r.cultura(), TEXTO) | 0xFF000000);
+		}
 		if (!r.capital().getString().isEmpty()) {
 			y = linea(g, Component.translatableWithFallback(r.capitalPerdida() ? "destinos.mapa.capital_perdida" : "destinos.mapa.capital",
 					r.capitalPerdida() ? "♛ Capital perdida: %s" : "♛ Capital: %s", r.capital()), tx, y, w,
@@ -629,8 +859,19 @@ public final class PantallaMapa extends Screen {
 		String clave = rep >= 20 ? "destinos.mapa.rep_buena" : rep <= -20 ? "destinos.mapa.rep_mala" : "destinos.mapa.rep";
 		String respaldo = rep >= 20 ? "Tu reputación: %s (te aprecian)" : rep <= -20 ? "Tu reputación: %s (sus guardias van a por ti)"
 				: "Tu reputación: %s";
-		linea(g, Component.translatableWithFallback(clave, respaldo, (rep > 0 ? "+" : "") + rep), tx, y, w,
+		y = linea(g, Component.translatableWithFallback(clave, respaldo, (rep > 0 ? "+" : "") + rep), tx, y, w,
 				rep >= 20 ? 0xFF9FD08A : rep <= -20 ? 0xFFFF7A6A : TEXTO);
+		if (!r.cronica().isEmpty() && y + 24 < y1) {
+			y += 6;
+			y = linea(g, Component.translatableWithFallback("destinos.mapa.cronica", "Crónica").withStyle(ChatFormatting.BOLD), tx, y, w, ORO)
+					+ 2;
+			for (Component c : r.cronica()) {
+				if (y + 10 > y1 - 4) {
+					break;
+				}
+				y = linea(g, Component.literal("· ").append(c), tx, y, w, TEXTO_SUAVE) + 2;
+			}
+		}
 	}
 
 	private static Component nombre(int[] celda) {
@@ -690,6 +931,7 @@ public final class PantallaMapa extends Screen {
 		}
 		int bx = (int) Math.floor(bloqueX(mx));
 		int bz = (int) Math.floor(bloqueZ(my));
+		extras(lineas, d, Math.floorDiv(bx, CASILLA), Math.floorDiv(bz, CASILLA));
 		lineas.add(Component.literal(bx + ", " + bz).withStyle(ChatFormatting.DARK_GRAY));
 		int w = 0;
 		for (Component c : lineas) {
@@ -708,6 +950,60 @@ public final class PantallaMapa extends Screen {
 		for (Component c : lineas) {
 			g.drawString(font, c, x + 4, yy, TEXTO, false);
 			yy += 10;
+		}
+	}
+
+	/** Lo que añade a la pista cada modo: el peligro, los bichos o la altura. */
+	private static void extras(List<Component> lineas, PaqueteTerritorio.Ducado d, int tx, int tz) {
+		switch (modo) {
+			case SEGURIDAD -> {
+				int p = d.oceano() ? -1 : FichasCliente.peligro(d.dcx(), d.dcz());
+				if (p >= 0) {
+					String[] claves = {"seguro", "tranquilo", "peligroso", "muy_peligroso"};
+					String[] respaldos = {"Seguro", "Tranquilo", "Peligroso", "Muy peligroso"};
+					int q = Math.min(3, p);
+					lineas.add(Component.translatableWithFallback("destinos.mapa.pista_peligro", "Peligro: %s",
+							Component.translatableWithFallback("destinos.mapa.leyenda." + claves[q], respaldos[q]))
+							.withColor(ModoMapa.PELIGRO[q] & 0xFFFFFF));
+				}
+			}
+			case FAUNA -> {
+				PaqueteFichas.Nombre f = d.oceano() ? null : FichasCliente.fichaDucado(d.dcx(), d.dcz());
+				if (f != null && !f.animales().isEmpty()) {
+					MutableComponent a = Component.empty();
+					for (int k = 0; k < f.animales().size(); k++) {
+						Component c = f.animales().get(k);
+						if (k > 0) {
+							a.append(", ");
+						}
+						a.append(FichasCliente.raro(c) ? Component.literal("✦ ").append(c).withStyle(ChatFormatting.GOLD) : c);
+					}
+					lineas.add(Component.translatableWithFallback("destinos.mapa.pista_animales", "Animales: %s", a).withStyle(ChatFormatting.GREEN));
+				}
+				if (f != null && !f.peligros().isEmpty()) {
+					MutableComponent m = Component.empty();
+					for (int k = 0; k < f.peligros().size(); k++) {
+						if (k > 0) {
+							m.append(", ");
+						}
+						m.append(f.peligros().get(k));
+					}
+					lineas.add(Component.translatableWithFallback("destinos.mapa.pista_bichos", "Ojo con: %s", m).withStyle(ChatFormatting.RED));
+				}
+			}
+			case RELIEVE -> {
+				int h = TerritoriosCliente.altura(tx, tz);
+				if (h != TerritoriosCliente.SIN_ALTURA) {
+					lineas.add(Component.translatableWithFallback(d.oceano() ? "destinos.mapa.pista_fondo" : "destinos.mapa.pista_altura",
+							d.oceano() ? "Fondo a y=%s" : "Altura: y=%s", h).withStyle(ChatFormatting.AQUA));
+				}
+				PaqueteTerritorio z = TerritoriosCliente.zona(tx, tz);
+				if (z != null && !d.oceano() && z.rio(tx - z.wx() * NUCLEO, tz - z.wz() * NUCLEO)) {
+					lineas.add(Component.translatableWithFallback("destinos.mapa.pista_rio", "Pasa un río").withStyle(ChatFormatting.BLUE));
+				}
+			}
+			default -> {
+			}
 		}
 	}
 
