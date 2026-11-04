@@ -109,6 +109,15 @@ public final class PantallaMapa extends Screen {
 	/** Lo que ya ocupan los rótulos en este frame, para que no se pisen (nombres de reino, accidentes, bichos). */
 	private final List<int[]> ocupados = new ArrayList<>();
 	private EditBox buscador;
+	/** El cuadro para poner nombre a una marca nueva (clic derecho), y dónde va la marca (en bloques). */
+	private EditBox nombrando;
+	private int marcaX;
+	private int marcaZ;
+	/** Rutas entre capitales (puntos en casillas), la que se calcula en otro hilo y con qué capitales se hizo. */
+	private List<float[]> rutas = List.of();
+	private CompletableFuture<List<float[]>> haciendoRutas;
+	private boolean rutasViejas = true;
+	private List<PaquetePolitica.Capital> rutasCapitales;
 	/** Lo que se encontró con la última búsqueda, en bloques, y por cuál va. */
 	private final List<double[]> encontrados = new ArrayList<>();
 	private int encontrado;
@@ -254,6 +263,11 @@ public final class PantallaMapa extends Screen {
 		buscador.setValue(buscado);
 		buscador.setResponder(t -> buscado = t);
 		addRenderableWidget(buscador);
+		nombrando = new EditBox(font, 0, 0, 110, 14, Component.translatableWithFallback("destinos.mapa.marca_nombre", "Nombre de la marca"));
+		nombrando.setHint(Component.translatableWithFallback("destinos.mapa.marca_nombre", "Nombre de la marca"));
+		nombrando.setMaxLength(32);
+		nombrando.visible = false;
+		addRenderableWidget(nombrando);
 		ClientPlayNetworking.send(new PaquetePedirMapa(true));
 	}
 
@@ -435,6 +449,26 @@ public final class PantallaMapa extends Screen {
 		if (super.mouseClicked(e, doble)) {
 			return true;
 		}
+		if (nombrando.visible) {
+			// clic fuera del cuadro: se deja la marca sin poner
+			cierraNombre();
+		}
+		if (e.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT && enMapa(e.x(), e.y())) {
+			MarcasMapa.Marca m = marcaEn(e.x(), e.y());
+			if (m != null) {
+				MarcasMapa.quita(m);
+			} else {
+				// marca nueva: se pide el nombre en un cuadro junto al ratón
+				marcaX = (int) Math.floor(bloqueX(e.x()));
+				marcaZ = (int) Math.floor(bloqueZ(e.y()));
+				nombrando.setX((int) Math.max(x0, Math.min(x1 - nombrando.getWidth(), e.x() + 6)));
+				nombrando.setY((int) Math.max(y0, Math.min(y1 - 16, e.y() - 7)));
+				nombrando.setValue("");
+				nombrando.visible = true;
+				setFocused(nombrando);
+			}
+			return true;
+		}
 		if (e.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT && enMapa(e.x(), e.y())) {
 			setFocused(null);
 			arrastra = true;
@@ -459,7 +493,11 @@ public final class PantallaMapa extends Screen {
 	public boolean mouseReleased(MouseButtonEvent e) {
 		if (arrastra && e.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
 			arrastra = false;
-			if (arrastrado < 3) {
+			MarcasMapa.Marca m = arrastrado < 3 ? marcaEn(e.x(), e.y()) : null;
+			if (m != null) {
+				// clic en una marca: es el destino (o deja de serlo), con su línea de viaje
+				MarcasMapa.alterna(m);
+			} else if (arrastrado < 3) {
 				// un clic sin arrastrar: fija la ficha del reino de ahí (o la suelta en el mar o en tierra de nadie)
 				PaqueteTerritorio.Ducado d = bajo(e.x(), e.y());
 				fijado = d == null || d.salvaje() || d.deNadie() ? Long.MIN_VALUE : Geo.clave(d.kx(), d.kz());
@@ -485,6 +523,18 @@ public final class PantallaMapa extends Screen {
 
 	@Override
 	public boolean keyPressed(KeyEvent e) {
+		if (nombrando != null && nombrando.visible) {
+			if (e.key() == GLFW.GLFW_KEY_ENTER || e.key() == GLFW.GLFW_KEY_KP_ENTER) {
+				MarcasMapa.pon(marcaX, marcaZ, nombrando.getValue());
+				cierraNombre();
+				return true;
+			}
+			if (e.key() == GLFW.GLFW_KEY_ESCAPE) {
+				cierraNombre();
+				return true;
+			}
+			return super.keyPressed(e);
+		}
 		if (buscador != null && buscador.isFocused()) {
 			if (e.key() == GLFW.GLFW_KEY_ENTER || e.key() == GLFW.GLFW_KEY_KP_ENTER) {
 				busca();
@@ -507,6 +557,27 @@ public final class PantallaMapa extends Screen {
 			return true;
 		}
 		return super.keyPressed(e);
+	}
+
+	private void cierraNombre() {
+		nombrando.visible = false;
+		nombrando.setFocused(false);
+		setFocused(null);
+	}
+
+	/** La marca que hay bajo el ratón (a 6 píxeles como mucho), o null. */
+	private MarcasMapa.Marca marcaEn(double mx, double my) {
+		MarcasMapa.Marca mejor = null;
+		double d = 36;
+		for (MarcasMapa.Marca m : MarcasMapa.todas()) {
+			double dx = pantallaX(m.x()) - mx;
+			double dy = pantallaY(m.z()) - 3 - my;
+			if (dx * dx + dy * dy < d) {
+				d = dx * dx + dy * dy;
+				mejor = m;
+			}
+		}
+		return mejor;
 	}
 
 	// ------------------------------------------------------------------ pintar
@@ -534,6 +605,7 @@ public final class PantallaMapa extends Screen {
 		if (modo == ModoMapa.FAUNA) {
 			pintaRaros(g);
 		}
+		pintaRutas(g);
 		pintaCapitales(g);
 		// los rótulos, de más a menos importantes, sin pisarse: reinos, accidentes y bichos
 		ocupados.clear();
@@ -548,8 +620,13 @@ public final class PantallaMapa extends Screen {
 			if (modo == ModoMapa.FAUNA) {
 				pintaBichos(g);
 			}
+			pintaDucados(g);
 		}
+		pintaViaje(g);
+		pintaMarcas(g);
 		pintaJugador(g);
+		pintaEscala(g);
+		pintaRosa(g);
 		g.disableScissor();
 		if (TerritoriosCliente.vacio()) {
 			Component c = Component.translatableWithFallback("destinos.mapa.vacio",
@@ -626,6 +703,7 @@ public final class PantallaMapa extends Screen {
 		}
 		zonasPintadas = pinturas.size();
 		polosViejos = true;
+		rutasViejas = true;
 		// el lienzo de lejos solo se rehace si lo que ha cambiado cae dentro de él
 		LienzoMapa.Hecho h = lienzoHecho;
 		if (todo || h == null) {
@@ -1491,21 +1569,243 @@ public final class PantallaMapa extends Screen {
 	private int bichosVersion = -1;
 	private static final int HALO_COLOR = 0xB0E3D3AE;
 
+	/** Tú: una flecha que apunta hacia donde miras. */
 	private void pintaJugador(GuiGraphics g) {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.player == null) {
 			return;
 		}
-		int x = pantallaX(mc.player.getX());
-		int y = pantallaY(mc.player.getZ());
-		g.fill(x - 3, y - 3, x + 4, y + 4, 0xFF000000);
-		g.fill(x - 2, y - 2, x + 3, y + 3, 0xFFFFFFFF);
-		// hacia dónde mira, con un puntito delante
-		double a = Math.toRadians(mc.player.getYRot());
-		int fx = x + (int) Math.round(-Math.sin(a) * 6);
-		int fy = y + (int) Math.round(Math.cos(a) * 6);
-		g.fill(fx - 1, fy - 1, fx + 2, fy + 2, 0xFFFFFFFF);
+		float x = (float) (cx() + (mc.player.getX() - vistaX) * escala);
+		float y = (float) (cy() + (mc.player.getZ() - vistaZ) * escala);
+		g.pose().pushMatrix();
+		g.pose().translate(x, y);
+		// yaw 0 mira al sur (+z, abajo en el mapa); la flecha se dibuja apuntando arriba
+		g.pose().rotate((float) Math.toRadians(mc.player.getYRot() + 180));
+		flecha(g, 0xFF1A1208, 1);
+		flecha(g, 0xFFFFFFFF, 0);
+		g.pose().popMatrix();
 	}
+
+	/** Una punta de flecha hacia arriba centrada en 0, 0 (con borde extra de b píxeles). */
+	private static void flecha(GuiGraphics g, int color, int b) {
+		for (int f = 0; f <= 8; f++) {
+			// filas de la punta (arriba) a la base, con una muesca en las dos últimas
+			int medio = f < 7 ? f / 2 : 3 - (f - 6);
+			int y = -5 + f;
+			g.fill(-medio - b, y - b, medio + 1 + b, y + 1 + b, color);
+		}
+	}
+
+	/** Rumbo de (dx, dz) como N, NE, E… (el norte es -z). */
+	static Component rumbo(double dx, double dz) {
+		String[] r = {"e", "se", "s", "so", "o", "no", "n", "ne"};
+		int k = Math.floorMod((int) Math.round(Math.atan2(dz, dx) / (Math.PI / 4)), 8);
+		return Component.translatableWithFallback("destinos.rumbo." + r[k], r[k].toUpperCase(Locale.ROOT));
+	}
+
+	/** Barra de escala abajo a la izquierda: un número redondo de bloques que mida unos 80 píxeles. */
+	private void pintaEscala(GuiGraphics g) {
+		double objetivo = 80 / escala;
+		double base = Math.pow(10, Math.floor(Math.log10(objetivo)));
+		double bloques = base;
+		for (double m : new double[] {1, 2, 5, 10}) {
+			if (base * m <= objetivo) {
+				bloques = base * m;
+			}
+		}
+		int largo = (int) Math.round(bloques * escala);
+		int x = x0 + 8;
+		int y = y1 - 10;
+		Component t = Component.translatableWithFallback("destinos.mapa.escala", "%s bloques", (long) bloques);
+		int w = font.width(t);
+		g.fill(x - 3, y - 12, x + Math.max(largo, w) + 3, y + 5, 0xB0E3D3AE);
+		g.fill(x, y, x + largo, y + 2, TINTA);
+		// la mitad en claro, como en los atlas
+		g.fill(x + largo / 2, y, x + largo, y + 2, 0xFF8A7A5A);
+		g.fill(x, y - 3, x + 1, y + 2, TINTA);
+		g.fill(x + largo - 1, y - 3, x + largo, y + 2, TINTA);
+		g.drawString(font, t, x, y - 11, TINTA, false);
+	}
+
+	/** Rosa de los vientos arriba a la derecha. */
+	private void pintaRosa(GuiGraphics g) {
+		int x = x1 - 18;
+		int y = y0 + 22;
+		g.fill(x - 11, y, x + 12, y + 1, 0x995A4A30);
+		g.fill(x, y - 11, x + 1, y + 12, 0x995A4A30);
+		// el norte, más largo y oscuro
+		for (int f = 0; f < 9; f++) {
+			int medio = f / 3;
+			g.fill(x - medio, y - 10 + f, x + 1 + medio, y - 9 + f, TINTA);
+		}
+		for (int f = 0; f < 6; f++) {
+			int medio = (5 - f) / 3;
+			g.fill(x - medio, y + 2 + f, x + 1 + medio, y + 3 + f, 0xFF8A7A5A);
+		}
+		Component n = Component.translatableWithFallback("destinos.rumbo.n", "N");
+		int w = font.width(n);
+		for (int[] d : HALO) {
+			g.drawString(font, n, x - w / 2 + 1 + d[0], y - 20 + d[1], HALO_COLOR, false);
+		}
+		g.drawString(font, n, x - w / 2 + 1, y - 20, TINTA, false);
+	}
+
+	/** Las marcas del jugador: un banderín con su nombre (el destino en rojo). */
+	private void pintaMarcas(GuiGraphics g) {
+		MarcasMapa.Marca destino = MarcasMapa.destino();
+		for (MarcasMapa.Marca m : MarcasMapa.todas()) {
+			int x = pantallaX(m.x());
+			int y = pantallaY(m.z());
+			if (x < x0 - 40 || x > x1 + 40 || y < y0 - 10 || y > y1 + 20) {
+				continue;
+			}
+			int color = m == destino ? 0xFFC0392B : 0xFF2E5E9E;
+			// mástil y banderín
+			g.fill(x, y - 9, x + 1, y + 1, 0xFF1A1208);
+			g.fill(x + 1, y - 9, x + 6, y - 5, color);
+			g.fill(x - 1, y, x + 2, y + 1, 0xFF1A1208);
+			int w = font.width(m.nombre());
+			int tx = x - w / 2;
+			int ty = y + 3;
+			if (libre(tx - 2, ty - 1, tx + w + 2, ty + 10)) {
+				for (int[] d : HALO) {
+					g.drawString(font, m.nombre(), tx + d[0], ty + d[1], HALO_COLOR, false);
+				}
+				g.drawString(font, m.nombre(), tx, ty, color, false);
+			}
+		}
+	}
+
+	/** La línea de viaje de ti al destino, a trazos, con la distancia y el rumbo en medio. */
+	private void pintaViaje(GuiGraphics g) {
+		MarcasMapa.Marca m = MarcasMapa.destino();
+		Minecraft mc = Minecraft.getInstance();
+		if (m == null || mc.player == null) {
+			return;
+		}
+		double ax = pantallaX(mc.player.getX());
+		double ay = pantallaY(mc.player.getZ());
+		double bx = pantallaX(m.x());
+		double by = pantallaY(m.z());
+		trazos(g, ax, ay, bx, by, 0xFFC0392B, 6, 4, 2);
+		double dx = m.x() - mc.player.getX();
+		double dz = m.z() - mc.player.getZ();
+		Component t = Component.translatableWithFallback("destinos.mapa.viaje", "%s bloques al %s", (int) Math.round(Math.hypot(dx, dz)),
+				rumbo(dx, dz));
+		int w = font.width(t);
+		int x = (int) Math.max(x0 + 2, Math.min(x1 - w - 2, (ax + bx) / 2 - w / 2.0));
+		int y = (int) Math.max(y0 + 2, Math.min(y1 - 12, (ay + by) / 2 - 12));
+		g.fill(x - 3, y - 2, x + w + 3, y + 10, 0xE02B2015);
+		g.drawString(font, t, x, y, 0xFFF1E3C0, false);
+	}
+
+	/** Una raya a trazos de (ax, ay) a (bx, by): lleno trazos de largo "lleno" y huecos de "hueco", de grosor g. */
+	private void trazos(GuiGraphics g, double ax, double ay, double bx, double by, int color, int lleno, int hueco, int grosor) {
+		double largo = Math.hypot(bx - ax, by - ay);
+		if (largo < 1) {
+			return;
+		}
+		// solo el trozo que se ve
+		int paso = 1;
+		int ciclo = lleno + hueco;
+		for (int q = 0; q <= largo; q += paso) {
+			if (q % ciclo >= lleno) {
+				continue;
+			}
+			int x = (int) Math.round(ax + (bx - ax) * q / largo);
+			int y = (int) Math.round(ay + (by - ay) * q / largo);
+			if (x < x0 - 2 || x > x1 + 2 || y < y0 - 2 || y > y1 + 2) {
+				continue;
+			}
+			g.fill(x - grosor / 2, y - grosor / 2, x - grosor / 2 + grosor, y - grosor / 2 + grosor, color);
+		}
+	}
+
+	/** Las rutas entre capitales, como caminos punteados (se calculan en otro hilo al cambiar el mapa conocido). */
+	private void pintaRutas(GuiGraphics g) {
+		List<PaquetePolitica.Capital> caps = TerritoriosCliente.capitales();
+		if (caps != rutasCapitales) {
+			rutasViejas = true;
+		}
+		if (haciendoRutas != null && haciendoRutas.isDone()) {
+			List<float[]> r = haciendoRutas.getNow(null);
+			if (r != null) {
+				rutas = r;
+			}
+			haciendoRutas = null;
+		}
+		if (rutasViejas && haciendoRutas == null) {
+			rutasViejas = false;
+			rutasCapitales = caps;
+			Map<Long, PaqueteTerritorio> zonas = new HashMap<>();
+			for (Map.Entry<Long, Pintura> e : pinturas.entrySet()) {
+				zonas.put(e.getKey(), e.getValue().zona);
+			}
+			List<PaquetePolitica.Capital> copia = List.copyOf(caps);
+			haciendoRutas = CompletableFuture.supplyAsync(() -> RutasMapa.calcula(zonas, copia)).exceptionally(e -> {
+				DestinosCore.LOG.warn("Destinos Core: no se pudieron trazar las rutas del mapa", e);
+				return null;
+			});
+		}
+		double s = escala * CASILLA;
+		int grosor = s >= 12 ? 2 : 1;
+		for (float[] r : rutas) {
+			// puntos de 2 cada 5 píxeles, como los caminos de los atlas; los tramos se pintan seguidos para que el
+			// punteado no se corte en cada esquina
+			double resto = 0;
+			for (int k = 0; k + 3 < r.length; k += 2) {
+				double ax = cx() + (r[k] * CASILLA - vistaX) * escala;
+				double ay = cy() + (r[k + 1] * CASILLA - vistaZ) * escala;
+				double bx = cx() + (r[k + 2] * CASILLA - vistaX) * escala;
+				double by = cy() + (r[k + 3] * CASILLA - vistaZ) * escala;
+				double largo = Math.hypot(bx - ax, by - ay);
+				if (Math.max(ax, bx) < x0 - 4 || Math.min(ax, bx) > x1 + 4 || Math.max(ay, by) < y0 - 4 || Math.min(ay, by) > y1 + 4) {
+					resto = (resto + largo) % 5;
+					continue;
+				}
+				for (double q = (5 - resto) % 5; q < largo; q += 5) {
+					int x = (int) Math.round(ax + (bx - ax) * q / largo);
+					int y = (int) Math.round(ay + (by - ay) * q / largo);
+					g.fill(x, y, x + grosor + 1, y + grosor, RUTA);
+				}
+				resto = (resto + largo) % 5;
+			}
+		}
+	}
+
+	/** Los nombres de los ducados al acercarse (en cursiva y pequeños, por debajo de los de reino). */
+	private void pintaDucados(GuiGraphics g) {
+		if (escala * CASILLA < DUCADOS_DESDE) {
+			return;
+		}
+		int sal = TerritoriosCliente.sal();
+		for (PaqueteFichas.Nombre d : FichasCliente.ducados()) {
+			int[] c = Geo.centroDucado(d.dcx(), d.dcz(), sal);
+			int x = pantallaX(c[0]);
+			int y = pantallaY(c[1]) - 14;
+			if (x < x0 - 60 || x > x1 + 60 || y < y0 - 10 || y > y1 + 10) {
+				continue;
+			}
+			// solo si el centro cae en su propio ducado (si no, el nombre saldría en el de al lado o en el mar)
+			PaqueteTerritorio.Ducado aqui = TerritoriosCliente.ducado(Math.floorDiv(c[0], CASILLA), Math.floorDiv(c[1], CASILLA));
+			if (aqui == null || aqui.oceano() || aqui.dcx() != d.dcx() || aqui.dcz() != d.dcz()) {
+				continue;
+			}
+			Component t = d.nombre().copy().withStyle(ChatFormatting.ITALIC);
+			int w = font.width(t);
+			if (!libre(x - w / 2 - 2, y - 1, x + w / 2 + 2, y + 10)) {
+				continue;
+			}
+			for (int[] h : HALO) {
+				g.drawString(font, t, x - w / 2 + h[0], y + h[1], HALO_COLOR, false);
+			}
+			g.drawString(font, t, x - w / 2, y, 0xFF4A3A28, false);
+		}
+	}
+
+	/** Píxeles por casilla desde los que salen los nombres de ducado. */
+	private static final double DUCADOS_DESDE = 10;
+	private static final int RUTA = 0xCC7A4E26;
 
 	private void leyenda(GuiGraphics g) {
 		int x = x0;
@@ -1521,7 +1821,7 @@ public final class PantallaMapa extends Screen {
 		for (Object[] m : leyendaMuestras) {
 			x = muestra(g, x, y, (Integer) m[0], (FormattedCharSequence) m[1], (Integer) m[2]);
 		}
-		Component ayuda = Component.translatableWithFallback("destinos.mapa.ayuda", "Arrastra · rueda: zoom · 1-8: modos · espacio: a ti · clic: fijar");
+		Component ayuda = Component.translatableWithFallback("destinos.mapa.ayuda", "Arrastra · rueda: zoom · 1-8: modos · espacio: a ti · clic: fijar · clic der.: marca");
 		if (x + font.width(ayuda) < x1) {
 			g.drawString(font, ayuda, x1 - font.width(ayuda), y, TEXTO_SUAVE, false);
 		}
@@ -1763,6 +2063,16 @@ public final class PantallaMapa extends Screen {
 
 	/** Lo que añade a la pista cada modo: el peligro, los bichos o la altura. */
 	private static void extras(List<Component> lineas, PaqueteTerritorio.Ducado d, int tx, int tz) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player != null) {
+			double dx = (tx + 0.5) * CASILLA - mc.player.getX();
+			double dz = (tz + 0.5) * CASILLA - mc.player.getZ();
+			int lejos = (int) Math.round(Math.hypot(dx, dz) / 10) * 10;
+			if (lejos >= CASILLA) {
+				lineas.add(Component.translatableWithFallback("destinos.mapa.pista_lejos", "A %s bloques de ti, al %s", lejos, rumbo(dx, dz))
+						.withStyle(ChatFormatting.GRAY));
+			}
+		}
 		switch (modo) {
 			case SEGURIDAD -> {
 				int p = d.oceano() ? -1 : FichasCliente.peligro(d.dcx(), d.dcz());
