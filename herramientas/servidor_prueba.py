@@ -28,6 +28,8 @@ COMANDOS = [
     "destinoscore turno 16",
     "destinoscore politica reinos",
     "destinoscore cronica",
+    # el mapa político: las fichas de reinos y los nombres de los ducados conocidos
+    "destinoscore fichas",
     "data get storage destinos:politica turno",
     # la capital (el pueblo del bioma, agrandado): que se pueda generar
     "place structure destinos_core:capital 0 80 600",
@@ -140,6 +142,12 @@ if cuentas and int(cuentas[-1][0]) > 0 and int(cuentas[-1][1]) == 0:
     sys.exit("se han visto campanas de capitales pero ninguna ha recibido su tablón")
 if "tablón de encargos junto a la campana" not in salida:
     print("AVISO: ninguna campana de pueblo o capital ha recibido su tablón")
+fichas = re.findall(r"Destinos Core: fichas del mapa · (\d+) reinos · (\d+) ducados · (\d+) con nombre.*", salida)
+print("fichas:", fichas[-1] if fichas else "sin respuesta")
+if not fichas:
+    sys.exit("/destinoscore fichas no ha contestado")
+if int(fichas[-1][0]) == 0 or int(fichas[-1][2]) == 0:
+    sys.exit("las fichas del mapa político han salido vacías")
 guerra = re.findall(r"Destinos Core: campamento de guerra de prueba · .*", salida)
 print("guerra:", guerra[-1] if guerra else "sin respuesta")
 if not guerra:

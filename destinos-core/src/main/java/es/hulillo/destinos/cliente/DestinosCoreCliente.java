@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.MapaTerreno;
 import es.hulillo.destinos.PaqueteEncargos;
+import es.hulillo.destinos.PaqueteFichas;
 import es.hulillo.destinos.PaqueteMazmorra;
 import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTablon;
@@ -28,7 +29,8 @@ import org.lwjgl.glfw.GLFW;
 
 /**
  * Lado cliente: guarda los territorios que manda el servidor para que los mapas los pinten. La tecla del mapa
- * político (K por defecto) o /destinosmapa alternar lo enciende y apaga.
+ * político (K por defecto) abre la pantalla del mapa político; dentro de JourneyMap o Diorama, y con /destinosmapa
+ * alternar, enciende y apaga los colores de los reinos en esos mapas.
  */
 public final class DestinosCoreCliente implements ClientModInitializer {
 	@Override
@@ -39,8 +41,11 @@ public final class DestinosCoreCliente implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteTablon.TIPO, (paquete, contexto) -> PantallaTablon.abre(paquete));
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteEncargos.TIPO, (paquete, contexto) -> HudEncargos.recibe(paquete));
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteMazmorra.TIPO, (paquete, contexto) -> BarraMazmorra.recibe(paquete));
+		ClientPlayNetworking.registerGlobalReceiver(PaqueteFichas.TIPO, (paquete, contexto) -> FichasCliente.recibe(paquete));
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, cliente) -> cliente.execute(() -> {
 			TerritoriosCliente.borra();
+			FichasCliente.borra();
+			PantallaMapa.olvida();
 			HudEncargos.borra();
 			BarraMazmorra.borra();
 		}));
@@ -57,7 +62,10 @@ public final class DestinosCoreCliente implements ClientModInitializer {
 				KeyMapping.Category.register(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "destinos"))));
 		ClientTickEvents.END_CLIENT_TICK.register(cliente -> {
 			while (tecla.consumeClick()) {
-				alterna(cliente);
+				// en el juego la K abre el mapa político; dentro de JourneyMap o Diorama enciende y apaga sus colores
+				if (cliente.screen == null && cliente.player != null) {
+					cliente.setScreen(new PantallaMapa(tecla));
+				}
 			}
 		});
 		// con un mapa abierto a pantalla completa las teclas no llegan al juego: se escucha en la pantalla del mapa

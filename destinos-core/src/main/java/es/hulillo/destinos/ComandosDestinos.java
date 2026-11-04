@@ -60,6 +60,16 @@ final class ComandosDestinos {
 					ctx.getSource().sendSuccess(() -> Component.literal(t), false);
 					return 1;
 				})))
+				.then(Commands.literal("fichas").executes(ctx -> conPolitica(ctx.getSource(), false, (pol, m) -> {
+					// lo que recibiría el mapa político: para la CI, que los nombres salgan y el paquete se pueda montar
+					PaqueteFichas f = pol.fichas(ctx.getSource().getServer(), ctx.getSource().getPlayer(),
+							EncargosMundo.de(ctx.getSource().getServer()));
+					long conNombre = f.ducados().stream().filter(d -> !d.nombre().getString().equals("?")).count();
+					String t = "Destinos Core: fichas del mapa · " + f.reinos().size() + " reinos · " + f.ducados().size() + " ducados · "
+							+ conNombre + " con nombre · primero " + (f.reinos().isEmpty() ? "-" : f.reinos().get(0).nombre().getString());
+					DestinosCore.LOG.info(t);
+					ctx.getSource().sendSuccess(() -> Component.literal(t), false);
+				})))
 				.then(Commands.literal("tablones").executes(ctx -> {
 					String t = TablonesPueblos.cuenta();
 					DestinosCore.LOG.info(t);
