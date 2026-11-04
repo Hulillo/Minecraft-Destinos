@@ -799,11 +799,11 @@ public final class PantallaMapa extends Screen {
 					}
 				} else if (modo == ModoMapa.BIOMAS) {
 					// raya fina donde cambia el bioma
-					String b = z.bioma(i, j);
-					if (i > 0 && !z.bioma(i - 1, j).equals(b)) {
+					String bi = z.bioma(i, j);
+					if (i > 0 && !z.bioma(i - 1, j).equals(bi)) {
 						bordes.add(0, i, j, HABITAT);
 					}
-					if (j > 0 && !z.bioma(i, j - 1).equals(b)) {
+					if (j > 0 && !z.bioma(i, j - 1).equals(bi)) {
 						bordes.add(1, i, j, HABITAT);
 					}
 				} else if (modo == ModoMapa.FAUNA && !d.oceano()) {
