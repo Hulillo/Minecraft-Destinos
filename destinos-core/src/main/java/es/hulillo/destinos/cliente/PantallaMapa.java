@@ -93,6 +93,14 @@ public final class PantallaMapa extends Screen {
 	private String buscadoAntes = null;
 	private List<GeografiaMapa.Rotulo> rotulos = List.of();
 	private int zonasGeo = -1;
+	private String fichaClave;
+	private final List<Trazo> fichaTrazos = new ArrayList<>();
+	private List<Trazo> grabando;
+	/** La leyenda del modo, ya traducida y medida. */
+	private ModoMapa leyendaModo;
+	private List<Object[]> leyendaMuestras = List.of();
+	/** Los rótulos del relieve ya preparados para pintar: texto, ancho y color. */
+	private List<Object[]> rotulosListos = List.of();
 	/** Los rótulos del relieve se buscan en otro hilo; aquí el que está en marcha. */
 	private CompletableFuture<List<GeografiaMapa.Rotulo>> buscandoGeo;
 	/** Dónde van las estrellitas de los bichos raros (se rehace al llegar fichas). */
@@ -743,14 +751,14 @@ public final class PantallaMapa extends Screen {
 		}
 		double qx = (ax + bx) / 2 - dy * 0.18;
 		double qy = (ay + by) / 2 + dx * 0.18;
-		int pasos = (int) Math.min(600, largo / 1.5) + 1;
+		int pasos = (int) Math.min(300, largo / 2.5) + 1;
 		for (int k = 0; k <= pasos; k++) {
 			double t = k / (double) pasos;
 			double u = 1 - t;
 			int x = (int) Math.round(u * u * ax + 2 * u * t * qx + t * t * bx);
 			int y = (int) Math.round(u * u * ay + 2 * u * t * qy + t * t * by);
 			if (x >= x0 - 2 && x <= x1 + 2 && y >= y0 - 2 && y <= y1 + 2) {
-				g.fill(x - 1, y - 1, x + 1, y + 1, color);
+				g.fill(x - 1, y - 1, x + 2, y + 2, color);
 			}
 		}
 	}
@@ -786,6 +794,18 @@ public final class PantallaMapa extends Screen {
 		if (buscandoGeo != null && buscandoGeo.isDone()) {
 			rotulos = buscandoGeo.getNow(rotulos);
 			buscandoGeo = null;
+			// estilo, ancho y color de cada rótulo, una vez y no en cada frame
+			List<Object[]> l = new ArrayList<>(rotulos.size());
+			for (GeografiaMapa.Rotulo r : rotulos) {
+				Component t = r.tipo() != GeografiaMapa.Tipo.SIERRA ? r.texto().copy().withStyle(ChatFormatting.ITALIC) : r.texto();
+				int color = switch (r.tipo()) {
+					case SIERRA -> 0xFF4A2E17;
+					case RIO -> 0xFF1E4A78;
+					default -> 0xFF173B5C;
+				};
+				l.add(new Object[] {r, t.getVisualOrderText(), font.width(t), color});
+			}
+			rotulosListos = l;
 		}
 		int n = TerritoriosCliente.zonas();
 		if (buscandoGeo == null && n != zonasGeo && ticks - tickGeo >= REHACE_GEO) {
@@ -802,10 +822,11 @@ public final class PantallaMapa extends Screen {
 		}
 		double s = escala * CASILLA;
 		List<int[]> puestos = new ArrayList<>();
-		for (GeografiaMapa.Rotulo r : rotulos) {
-			boolean agua = r.tipo() != GeografiaMapa.Tipo.SIERRA;
-			Component t = agua ? r.texto().copy().withStyle(ChatFormatting.ITALIC) : r.texto();
-			int w = font.width(t);
+		for (Object[] o : rotulosListos) {
+			GeografiaMapa.Rotulo r = (GeografiaMapa.Rotulo) o[0];
+			FormattedCharSequence t = (FormattedCharSequence) o[1];
+			int w = (Integer) o[2];
+			int color = (Integer) o[3];
 			// que el accidente se vea más grande que su nombre: los ríos por lo largos, lo demás por el área
 			boolean cabe = r.tipo() == GeografiaMapa.Tipo.RIO ? r.casillas() * s >= w * 0.7 : r.casillas() * s * s >= w * 9 * 1.2;
 			if (!cabe) {
@@ -827,11 +848,6 @@ public final class PantallaMapa extends Screen {
 				continue;
 			}
 			puestos.add(new int[] {x - 2, y - 1, x + w + 2, y + 10});
-			int color = switch (r.tipo()) {
-				case SIERRA -> 0xFF4A2E17;
-				case RIO -> 0xFF1E4A78;
-				default -> 0xFF173B5C;
-			};
 			g.drawString(font, t, x, y, color, false);
 		}
 	}
@@ -897,8 +913,16 @@ public final class PantallaMapa extends Screen {
 	private void leyenda(GuiGraphics g) {
 		int x = x0;
 		int y = y1 + 7;
-		for (Object[] m : modo.leyenda()) {
-			x = muestra(g, x, y, (Integer) m[0], (Component) m[1]);
+		if (leyendaModo != modo) {
+			leyendaModo = modo;
+			leyendaMuestras = new ArrayList<>();
+			for (Object[] m : modo.leyenda()) {
+				Component c = (Component) m[1];
+				leyendaMuestras.add(new Object[] {m[0], c.getVisualOrderText(), font.width(c)});
+			}
+		}
+		for (Object[] m : leyendaMuestras) {
+			x = muestra(g, x, y, (Integer) m[0], (FormattedCharSequence) m[1], (Integer) m[2]);
 		}
 		Component ayuda = Component.translatableWithFallback("destinos.mapa.ayuda", "Arrastra · rueda: zoom · 1-8: modos · espacio: a ti · clic: fijar");
 		if (x + font.width(ayuda) < x1) {
@@ -906,11 +930,11 @@ public final class PantallaMapa extends Screen {
 		}
 	}
 
-	private int muestra(GuiGraphics g, int x, int y, int color, Component texto) {
+	private int muestra(GuiGraphics g, int x, int y, int color, FormattedCharSequence texto, int ancho) {
 		g.fill(x, y, x + 8, y + 8, 0xFF000000);
 		g.fill(x + 1, y + 1, x + 7, y + 7, color);
 		g.drawString(font, texto, x + 11, y, TEXTO, false);
-		return x + 11 + font.width(texto) + 10;
+		return x + 11 + ancho + 10;
 	}
 
 	// ------------------------------------------------------------------ ficha y pista
@@ -957,6 +981,23 @@ public final class PantallaMapa extends Screen {
 		g.fill(tx, y, tx + 10, y + 14, 0xFF000000);
 		Integer colorReino = coloresReino.get(Geo.clave(kx, kz));
 		g.fill(tx + 1, y + 1, tx + 9, y + 13, colorReino == null ? 0xFF888888 : 0xFF000000 | colorReino);
+		// el texto de la ficha (traducir y partir en líneas) solo se rehace si cambia el reino, las fichas o el tamaño
+		String clave = kx + "," + kz + "," + (fijado != Long.MIN_VALUE) + "," + tx + "," + w + "," + y1 + "," + FichasCliente.version();
+		if (clave.equals(fichaClave)) {
+			for (Trazo t : fichaTrazos) {
+				g.drawString(font, t.texto(), t.x(), t.y(), t.color(), false);
+			}
+			return;
+		}
+		fichaClave = clave;
+		fichaTrazos.clear();
+		grabando = fichaTrazos;
+		fichaReino(g, r, tx, y, w);
+		grabando = null;
+	}
+
+	/** Lo escrito en la ficha de un reino (se graba en fichaTrazos para los frames siguientes). */
+	private void fichaReino(GuiGraphics g, PaqueteFichas.Reino r, int tx, int y, int w) {
 		y = linea(g, r.nombre().copy().withStyle(ChatFormatting.BOLD), tx + 14, y + 3, w - 14, TEXTO) + 6;
 		if (fijado != Long.MIN_VALUE) {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.fijada", "(ficha fija: clic fuera para soltarla)"), tx, y, w,
@@ -1033,9 +1074,16 @@ public final class PantallaMapa extends Screen {
 	private int linea(GuiGraphics g, Component c, int x, int y, int w, int color) {
 		for (FormattedCharSequence l : font.split(c, w)) {
 			g.drawString(font, l, x, y, color, false);
+			if (grabando != null) {
+				grabando.add(new Trazo(l, x, y, color));
+			}
 			y += 10;
 		}
 		return y;
+	}
+
+	/** Un trozo de texto ya partido y puesto en su sitio, para repintar la ficha sin rehacerla. */
+	private record Trazo(FormattedCharSequence texto, int x, int y, int color) {
 	}
 
 	/** El cartelito junto al ratón: ducado, reino y si está en guerra. */
