@@ -32,7 +32,7 @@ final class GeografiaMapa {
 	}
 
 	/** Un rótulo: dónde va (en bloques), qué dice y de qué es. */
-	record Rotulo(double x, double z, Component texto, Tipo tipo, int casillas) {
+	record Rotulo(double x, double z, Component texto, Tipo tipo, int casillas, int ancho, int alto) {
 	}
 
 	private GeografiaMapa() {
@@ -142,9 +142,17 @@ final class GeografiaMapa {
 		int mejor = altura(todas, rx, rz);
 		double sx = 0;
 		double sz = 0;
+		int minX = Integer.MAX_VALUE;
+		int maxX = Integer.MIN_VALUE;
+		int minZ = Integer.MAX_VALUE;
+		int maxZ = Integer.MIN_VALUE;
 		for (int q = 0; q < celdas.size(); q += 2) {
 			int x = celdas.get(q);
 			int z = celdas.get(q + 1);
+			minX = Math.min(minX, x);
+			maxX = Math.max(maxX, x);
+			minZ = Math.min(minZ, z);
+			maxZ = Math.max(maxZ, z);
 			int h = altura(todas, x, z);
 			boolean gana = tipo == Tipo.SIERRA ? h > mejor : h < mejor;
 			if (gana || (h == mejor && (x < rx || (x == rx && z < rz)))) {
@@ -167,7 +175,8 @@ final class GeografiaMapa {
 			x = sx / n;
 			z = sz / n;
 		}
-		res.add(new Rotulo(x * MapaTerreno.CASILLA, z * MapaTerreno.CASILLA, texto(tt, nombre(sal, rx, rz, tt)), tt, n));
+		res.add(new Rotulo(x * MapaTerreno.CASILLA, z * MapaTerreno.CASILLA, texto(tt, nombre(sal, rx, rz, tt)), tt, n, maxX - minX + 1,
+				maxZ - minZ + 1));
 	}
 
 	private static int altura(Map<Long, Celdas> todas, int tx, int tz) {

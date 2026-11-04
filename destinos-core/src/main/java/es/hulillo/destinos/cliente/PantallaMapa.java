@@ -22,7 +22,6 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
@@ -97,7 +96,9 @@ public final class PantallaMapa extends Screen {
 	private CompletableFuture<Object[]> pintandoLienzo;
 	private int cambiosPintados;
 	private ModoMapa modoPintado;
-	private final List<Button> botonesModo = new ArrayList<>();
+	private final List<Boton> botones = new ArrayList<>();
+	/** Lo que ya ocupan los rótulos en este frame, para que no se pisen (nombres de reino, accidentes, bichos). */
+	private final List<int[]> ocupados = new ArrayList<>();
 	private EditBox buscador;
 	/** Lo que se encontró con la última búsqueda, en bloques, y por cuál va. */
 	private final List<double[]> encontrados = new ArrayList<>();
@@ -148,10 +149,15 @@ public final class PantallaMapa extends Screen {
 		final Map<Long, double[]> centros;
 		/** Color, dueño y marcas de cada casilla, para el lienzo de lejos (que se pinta en otro hilo). */
 		final LienzoMapa.Datos datos;
+		/** Tramos de río (i, j, i2, j2) y cumbres (i, j, altura, 0), para de cerca. */
+		final int[] rios;
+		final int[] cumbres;
 		/** La zona hecha imagen, un píxel por casilla (para de cerca; se hace la primera vez que se pinta). */
 		Identifier imagen;
 
-		Pintura(PaqueteTerritorio zona, int[] bordes, Map<Long, double[]> centros, LienzoMapa.Datos datos) {
+		Pintura(PaqueteTerritorio zona, int[] bordes, Map<Long, double[]> centros, LienzoMapa.Datos datos, int[][] detalles) {
+			this.rios = detalles[0];
+			this.cumbres = detalles[1];
 			this.zona = zona;
 			this.ox = zona.wx() * NUCLEO;
 			this.oz = zona.wz() * NUCLEO;
@@ -206,22 +212,23 @@ public final class PantallaMapa extends Screen {
 		panelX = width - ancho - 8;
 		x1 = panelX - 6;
 		y1 = height - 22;
-		addRenderableWidget(Button.builder(Component.translatableWithFallback("destinos.mapa.cerrar", "Cerrar"), b -> onClose())
-				.bounds(width - 8 - 56, 6, 56, 18).build());
-		addRenderableWidget(Button.builder(textoCapa(), b -> {
-			TerritoriosCliente.alterna();
-			b.setMessage(textoCapa());
-		}).bounds(width - 8 - 56 - 4 - 150, 6, 150, 18).build());
-		botonesModo.clear();
+		// botones propios, con pinta de pergamino como el resto del mapa (no los grises de Minecraft)
+		botones.clear();
+		Component cerrar = Component.translatableWithFallback("destinos.mapa.cerrar", "Cerrar").copy().append(" ✕");
+		int wc = font.width(cerrar) + 14;
+		botones.add(new Boton(width - 8 - wc, 7, wc, 16, () -> cerrar, b -> onClose(), false));
+		int wcapa = Math.max(font.width(textoCapa()), font.width(textoCapaOtro())) + 14;
+		botones.add(new Boton(width - 8 - wc - 4 - wcapa, 7, wcapa, 16, PantallaMapa::textoCapa, b -> TerritoriosCliente.alterna(), false));
 		for (ModoMapa m : ModoMapa.values()) {
-			Button b = Button.builder(Component.literal((m.ordinal() + 1) + " ").append(m.nombre()), x -> cambiaModo(m))
-					.bounds(8, y0 + m.ordinal() * 20, COLUMNA, 18).build();
-			botonesModo.add(addRenderableWidget(b));
+			Component t = Component.literal(ICONOS[m.ordinal()] + " ").append(m.nombre());
+			botones.add(new Boton(8, y0 + m.ordinal() * 19, COLUMNA, 17, () -> t, b -> cambiaModo(m), true, m));
 		}
-		marcaModo();
-		int anchoBusca = Math.min(140, Math.max(70, width - 8 - 56 - 4 - 150 - 4 - 260));
-		buscador = new EditBox(font, width - 8 - 56 - 4 - 150 - 4 - anchoBusca, 7, anchoBusca, 16,
+		int libre = width - 8 - wc - 4 - wcapa - 6;
+		int anchoBusca = Math.min(140, Math.max(70, libre - 260));
+		buscador = new EditBox(font, libre - anchoBusca + 4, 9, anchoBusca - 8, 12,
 				Component.translatableWithFallback("destinos.mapa.buscar", "Buscar reino o ducado"));
+		buscador.setBordered(false);
+		buscador.setTextColor(TEXTO);
 		buscador.setHint(Component.translatableWithFallback("destinos.mapa.buscar", "Buscar reino o ducado"));
 		buscador.setMaxLength(40);
 		buscador.setValue(buscado);
@@ -232,13 +239,49 @@ public final class PantallaMapa extends Screen {
 
 	private void cambiaModo(ModoMapa m) {
 		modo = m;
-		marcaModo();
 	}
 
-	/** El botón del modo que está puesto se queda apagado, para que se vea cuál es. */
-	private void marcaModo() {
-		for (int k = 0; k < botonesModo.size(); k++) {
-			botonesModo.get(k).active = k != modo.ordinal();
+	/** Un botón del mapa: caja de pergamino oscuro, dorada si es el modo puesto, más clara al pasar el ratón. */
+	private record Boton(int x, int y, int w, int h, java.util.function.Supplier<Component> texto,
+			java.util.function.Consumer<Boton> accion, boolean izquierda, ModoMapa modo) {
+		Boton(int x, int y, int w, int h, java.util.function.Supplier<Component> texto, java.util.function.Consumer<Boton> accion,
+				boolean izquierda) {
+			this(x, y, w, h, texto, accion, izquierda, null);
+		}
+
+		boolean dentro(double mx, double my) {
+			return mx >= x && mx < x + w && my >= y && my < y + h;
+		}
+	}
+
+	/** Los iconos de los modos, en el orden de ModoMapa. */
+	private static final String[] ICONOS = {"♛", "✦", "⚔", "◆", "✿", "☠", "❀", "▲"};
+
+	private void pintaBotones(GuiGraphics g, int mx, int my) {
+		for (Boton b : botones) {
+			boolean puesto = b.modo() != null && b.modo() == modo;
+			boolean encima = b.dentro(mx, my);
+			int fondo = puesto ? 0xFF6B4A1E : encima ? 0xFF4A3B28 : 0xFF2E251A;
+			g.fill(b.x(), b.y(), b.x() + b.w(), b.y() + b.h(), puesto ? ORO : encima ? 0xFF9C7A45 : MARCO);
+			g.fill(b.x() + 1, b.y() + 1, b.x() + b.w() - 1, b.y() + b.h() - 1, fondo);
+			if (puesto) {
+				// la pestaña del modo puesto: una raya dorada a la izquierda
+				g.fill(b.x() + 1, b.y() + 1, b.x() + 3, b.y() + b.h() - 1, ORO);
+			}
+			Component t = b.texto().get();
+			int color = puesto ? 0xFFFFE9A8 : encima ? TEXTO : TEXTO_SUAVE;
+			int tx = b.izquierda() ? b.x() + 7 : b.x() + (b.w() - font.width(t)) / 2;
+			g.drawString(font, t, tx, b.y() + (b.h() - 8) / 2, color, puesto);
+		}
+		if (buscador != null) {
+			int bx = buscador.getX() - 4;
+			int by = buscador.getY() - 3;
+			boolean foco = buscador.isFocused();
+			g.fill(bx, by, bx + buscador.getWidth() + 8, by + 16, foco ? ORO : MARCO);
+			g.fill(bx + 1, by + 1, bx + buscador.getWidth() + 7, by + 15, 0xFF1C1610);
+			if (!foco && buscado.isEmpty()) {
+				g.drawString(font, "⌕", bx + buscador.getWidth() - 2, by + 4, TEXTO_SUAVE, false);
+			}
 		}
 	}
 
@@ -299,6 +342,11 @@ public final class PantallaMapa extends Screen {
 		return s == null || s[2] == 0 ? null : new double[] {s[0] / s[2] * CASILLA, s[1] / s[2] * CASILLA};
 	}
 
+	private static Component textoCapaOtro() {
+		return Component.translatableWithFallback(!TerritoriosCliente.visible() ? "destinos.mapa.capa_si" : "destinos.mapa.capa_no",
+				!TerritoriosCliente.visible() ? "Colores en tus mapas: sí" : "Colores en tus mapas: no");
+	}
+
 	private static Component textoCapa() {
 		return Component.translatableWithFallback(TerritoriosCliente.visible() ? "destinos.mapa.capa_si" : "destinos.mapa.capa_no",
 				TerritoriosCliente.visible() ? "Colores en tus mapas: sí" : "Colores en tus mapas: no");
@@ -353,6 +401,17 @@ public final class PantallaMapa extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent e, boolean doble) {
+		if (e.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+			for (Boton b : botones) {
+				if (b.dentro(e.x(), e.y())) {
+					setFocused(null);
+					b.accion().accept(b);
+					Minecraft.getInstance().getSoundManager().play(
+							net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1));
+					return true;
+				}
+			}
+		}
 		if (super.mouseClicked(e, doble)) {
 			return true;
 		}
@@ -456,14 +515,19 @@ public final class PantallaMapa extends Screen {
 			pintaRaros(g);
 		}
 		pintaCapitales(g);
+		// los rótulos, de más a menos importantes, sin pisarse: reinos, accidentes y bichos
+		ocupados.clear();
 		if (modo == ModoMapa.RELIEVE) {
 			pintaGeografia(g, true);
 		} else {
+			pintaNombres(g);
 			// de lejos, como en un atlas, también los mares y las sierras grandes (los ríos solo en Relieve)
 			if (escala * CASILLA < CERCA) {
 				pintaGeografia(g, false);
 			}
-			pintaNombres(g);
+			if (modo == ModoMapa.FAUNA) {
+				pintaBichos(g);
+			}
 		}
 		pintaJugador(g);
 		g.disableScissor();
@@ -476,6 +540,7 @@ public final class PantallaMapa extends Screen {
 		PaqueteTerritorio.Ducado d = bajo(mx, my);
 		ficha(g, d);
 		g.drawString(font, Component.translatableWithFallback("destinos.mapa.modos", "Modos"), 10, y0 - 11, TEXTO_SUAVE, false);
+		pintaBotones(g, mx, my);
 		super.render(g, mx, my, pt);
 		if (d != null && !arrastra) {
 			g.nextStratum();
@@ -559,7 +624,9 @@ public final class PantallaMapa extends Screen {
 		centros.clear();
 		for (Pintura p : pinturas.values()) {
 			for (Map.Entry<Long, double[]> e : p.centros.entrySet()) {
-				double[] a = centros.computeIfAbsent(e.getKey(), x -> new double[3]);
+				double[] a = centros.computeIfAbsent(e.getKey(), x -> new double[] {0, 0, 0, Double.MAX_VALUE, -Double.MAX_VALUE});
+				a[3] = Math.min(a[3], e.getValue()[3]);
+				a[4] = Math.max(a[4], e.getValue()[4]);
 				a[0] += e.getValue()[0];
 				a[1] += e.getValue()[1];
 				a[2] += e.getValue()[2];
@@ -602,7 +669,10 @@ public final class PantallaMapa extends Screen {
 				marcas[c] = (byte) ((d.oceano() ? LienzoMapa.Datos.OCEANO : 0) | (d.salvaje() ? LienzoMapa.Datos.SALVAJE : 0));
 				if (!d.salvaje() && !d.oceano()) {
 					coloresReino.put(Geo.clave(d.kx(), d.kz()), d.color());
-					double[] s = centros.computeIfAbsent(Geo.clave(d.kx(), d.kz()), k -> new double[3]);
+					double[] s = centros.computeIfAbsent(Geo.clave(d.kx(), d.kz()), k -> new double[] {0, 0, 0, Double.MAX_VALUE, -Double.MAX_VALUE});
+					// de dónde a dónde va el reino de oeste a este (para que el nombre no sea más ancho que sus tierras)
+					s[3] = Math.min(s[3], ox + i);
+					s[4] = Math.max(s[4], ox + i + 1);
 					s[0] += ox + i + 0.5;
 					s[1] += oz + j + 0.5;
 					s[2]++;
@@ -618,9 +688,94 @@ public final class PantallaMapa extends Screen {
 				if (b > 0) {
 					bordes.add(1, i, j, b);
 				}
+				// los detalles de cerca: curvas de nivel en Relieve y límites de hábitat en Fauna
+				if (modo == ModoMapa.RELIEVE && !d.oceano()) {
+					int nivel = Math.floorDiv(z.altura(i, j), CURVA);
+					if (nivel != nivel(z, ox + i - 1, oz + j, i - 1, j)) {
+						bordes.add(0, i, j, CURVA_NIVEL);
+					}
+					if (nivel != nivel(z, ox + i, oz + j - 1, i, j - 1)) {
+						bordes.add(1, i, j, CURVA_NIVEL);
+					}
+				} else if (modo == ModoMapa.FAUNA && !d.oceano()) {
+					int f = z.familia(i, j);
+					if (i > 0 && z.familia(i - 1, j) != f && !z.ducado(i - 1, j).oceano()) {
+						bordes.add(0, i, j, HABITAT);
+					}
+					if (j > 0 && z.familia(i, j - 1) != f && !z.ducado(i, j - 1).oceano()) {
+						bordes.add(1, i, j, HABITAT);
+					}
+				}
 			}
 		}
-		return new Pintura(z, bordes.toArray(), centros, new LienzoMapa.Datos(colores, dueno, marcas));
+		return new Pintura(z, bordes.toArray(), centros, new LienzoMapa.Datos(colores, dueno, marcas), detalles(z));
+	}
+
+	/** El escalón de altura de una casilla (para las curvas de nivel), o el mismo que el de al lado si no se sabe. */
+	private static int nivel(PaqueteTerritorio z, int tx, int tz, int i, int j) {
+		if (i >= 0 && j >= 0) {
+			return z.ducado(i, j).oceano() ? Integer.MIN_VALUE : Math.floorDiv(z.altura(i, j), CURVA);
+		}
+		PaqueteTerritorio.Ducado d = TerritoriosCliente.ducado(tx, tz);
+		int h = TerritoriosCliente.altura(tx, tz);
+		if (d == null || h == TerritoriosCliente.SIN_ALTURA) {
+			return Math.floorDiv(z.altura(Math.max(0, i), Math.max(0, j)), CURVA);
+		}
+		return d.oceano() ? Integer.MIN_VALUE : Math.floorDiv(h, CURVA);
+	}
+
+	/**
+	 * Lo que se dibuja encima de la zona de cerca: los tramos de río (de centro a centro de casillas de río vecinas,
+	 * para que se vean como un río y no como cuadros) y las cumbres (la casilla más alta de su alrededor).
+	 */
+	private static int[][] detalles(PaqueteTerritorio z) {
+		Enteros rios = new Enteros();
+		Enteros cumbres = new Enteros();
+		for (int j = 0; j < NUCLEO; j++) {
+			for (int i = 0; i < NUCLEO; i++) {
+				if (z.ducado(i, j).oceano()) {
+					continue;
+				}
+				if (z.rio(i, j)) {
+					// hacia la derecha, abajo y las dos diagonales de abajo (las otras las pone la casilla vecina)
+					for (int[] d : new int[][] {{1, 0}, {0, 1}, {1, 1}, {-1, 1}}) {
+						int ni = i + d[0];
+						int nj = j + d[1];
+						if (ni >= 0 && ni < NUCLEO && nj < NUCLEO && (z.rio(ni, nj) || z.ducado(ni, nj).oceano())) {
+							// en diagonal solo si no hay ya un camino recto, para no hacer triángulos
+							if (d[0] != 0 && d[1] != 0 && (z.rio(i + d[0], j) || z.rio(i, j + d[1]))) {
+								continue;
+							}
+							rios.add(i, j, ni, nj);
+						}
+					}
+				}
+				int h = z.altura(i, j);
+				if (h >= CUMBRE_MIN && esCumbre(z, i, j, h)) {
+					cumbres.add(i, j, h, 0);
+				}
+			}
+		}
+		return new int[][] {rios.toArray(), cumbres.toArray()};
+	}
+
+	/** Si la casilla es la más alta en RADIO_CUMBRE casillas a la redonda (dentro de la zona). */
+	private static boolean esCumbre(PaqueteTerritorio z, int i, int j, int h) {
+		for (int dj = -RADIO_CUMBRE; dj <= RADIO_CUMBRE; dj++) {
+			for (int di = -RADIO_CUMBRE; di <= RADIO_CUMBRE; di++) {
+				int a = i + di;
+				int b = j + dj;
+				if ((di != 0 || dj != 0) && a >= 0 && b >= 0 && a < NUCLEO && b < NUCLEO) {
+					int o = z.altura(a, b);
+					// en empate gana la primera, para que no salgan dos cumbres juntas
+					if (o > h || (o == h && (dj < 0 || (dj == 0 && di < 0)))) {
+						return false;
+					}
+				}
+			}
+		}
+		return true;
+	}
 	}
 
 	/**
@@ -659,12 +814,67 @@ public final class PantallaMapa extends Screen {
 			g.blit(RenderPipelines.GUI_TEXTURED, p.imagen, xa, ya, 0, 0, xb - xa, yb - ya, NUCLEO, NUCLEO, NUCLEO, NUCLEO);
 			if (s >= CERCA) {
 				pintaBordes(g, p, s);
+				if (modo == ModoMapa.RELIEVE) {
+					pintaDetalles(g, p, s);
+				}
+			}
+		}
+	}
+
+	/** Ríos como rayas de centro a centro de casilla y cumbres con su altura (en Relieve, de cerca). */
+	private void pintaDetalles(GuiGraphics g, Pintura p, double s) {
+		int[] r = p.rios;
+		int grosor = s >= 16 ? 3 : 2;
+		for (int k = 0; k < r.length; k += 4) {
+			double ax = pantallaX((p.ox() + r[k] + 0.5) * CASILLA);
+			double ay = pantallaY((p.oz() + r[k + 1] + 0.5) * CASILLA);
+			double bx = pantallaX((p.ox() + r[k + 2] + 0.5) * CASILLA);
+			double by = pantallaY((p.oz() + r[k + 3] + 0.5) * CASILLA);
+			if (Math.max(ax, bx) < x0 || Math.min(ax, bx) > x1 || Math.max(ay, by) < y0 || Math.min(ay, by) > y1) {
+				continue;
+			}
+			if (ax == bx || ay == by) {
+				// recto: un solo rectángulo
+				g.fill((int) Math.min(ax, bx) - grosor / 2, (int) Math.min(ay, by) - grosor / 2, (int) Math.max(ax, bx) - grosor / 2 + grosor,
+						(int) Math.max(ay, by) - grosor / 2 + grosor, RIO);
+			} else {
+				int pasos = (int) Math.ceil(Math.abs(bx - ax) / 1.5);
+				for (int q = 0; q <= pasos; q++) {
+					int x = (int) Math.round(ax + (bx - ax) * q / pasos);
+					int y = (int) Math.round(ay + (by - ay) * q / pasos);
+					g.fill(x - grosor / 2, y - grosor / 2, x - grosor / 2 + grosor, y - grosor / 2 + grosor, RIO);
+				}
+			}
+		}
+		if (s < 8) {
+			return;
+		}
+		int[] c = p.cumbres;
+		for (int k = 0; k < c.length; k += 4) {
+			int x = pantallaX((p.ox() + c[k] + 0.5) * CASILLA);
+			int y = pantallaY((p.oz() + c[k + 1] + 0.5) * CASILLA);
+			if (x < x0 || x > x1 || y < y0 || y > y1) {
+				continue;
+			}
+			String t = s >= 12 ? "▲ " + c[k + 2] : "▲";
+			int w = font.width(t);
+			if (libre(x - w / 2 - 1, y - 5, x + w / 2 + 1, y + 5)) {
+				g.drawString(font, t, x - w / 2, y - 4, 0xFF3A2A1A, false);
 			}
 		}
 	}
 
 	/** Cuántas imágenes de zona se hacen como mucho en un frame. */
 	private static final int IMAGENES_POR_FRAME = 40;
+	/** Tipos de raya de cerca además de las lindes: curva de nivel (Relieve) y límite de hábitat (Fauna). */
+	private static final int CURVA_NIVEL = 5;
+	private static final int HABITAT = 6;
+	/** Cada cuántos bloques de altura va una curva de nivel. */
+	private static final int CURVA = 24;
+	/** Altura mínima para marcar una cumbre, y en cuántas casillas a la redonda ha de ser la más alta. */
+	private static final int CUMBRE_MIN = 110;
+	private static final int RADIO_CUMBRE = 4;
+	private static final int RIO = 0xFF3F7FB8;
 	/** Casillas que ha de tener una sierra para salir con nombre fuera del modo Relieve. */
 	private static final int SIERRA_ATLAS = 40;
 	/** El lienzo cubre lo que se ve y esto más por cada lado (en fracción del ancho), para poder moverse sin rehacerlo. */
@@ -795,7 +1005,10 @@ public final class PantallaMapa extends Screen {
 			if (tipo == 1 && s < 6) {
 				continue;
 			}
-			int grosor = tipo >= 3 && s >= 12 ? 2 : 1;
+			if (tipo >= CURVA_NIVEL && s < 6) {
+				continue;
+			}
+			int grosor = tipo >= 3 && tipo <= 4 && s >= 12 ? 2 : 1;
 			if (tipo == 4) {
 				grosor++;
 			}
@@ -803,6 +1016,8 @@ public final class PantallaMapa extends Screen {
 				case 1 -> LINDE;
 				case 2 -> COSTA;
 				case 4 -> FRENTE;
+				case CURVA_NIVEL -> 0x664A3520;
+				case HABITAT -> 0x55203018;
 				default -> FRONTERA;
 			};
 			int i = p.ox() + b[k + 1];
@@ -962,7 +1177,6 @@ public final class PantallaMapa extends Screen {
 			}).exceptionally(e -> List.of());
 		}
 		double s = escala * CASILLA;
-		List<int[]> puestos = new ArrayList<>();
 		for (Object[] o : rotulosListos) {
 			GeografiaMapa.Rotulo r = (GeografiaMapa.Rotulo) o[0];
 			FormattedCharSequence t = (FormattedCharSequence) o[1];
@@ -972,7 +1186,10 @@ public final class PantallaMapa extends Screen {
 				continue;
 			}
 			// que el accidente se vea más grande que su nombre: los ríos por lo largos, lo demás por el área
-			boolean cabe = r.tipo() == GeografiaMapa.Tipo.RIO ? r.casillas() * s >= w * 0.7 : r.casillas() * s * s >= w * 9 * 1.2;
+			// y que el nombre no sea más ancho que el propio accidente en pantalla (un mar lejano no lleva un letrero enorme)
+			double largo = Math.max(r.ancho(), r.alto()) * s;
+			boolean cabe = r.tipo() == GeografiaMapa.Tipo.RIO ? r.casillas() * s >= w * 0.7 && largo >= w * 0.8
+					: r.casillas() * s * s >= w * 9 * 2.5 && r.ancho() * s >= w * 1.1 && r.alto() * s >= 14;
 			if (!cabe) {
 				continue;
 			}
@@ -981,17 +1198,9 @@ public final class PantallaMapa extends Screen {
 			if (x + w < x0 || x > x1 || y + 9 < y0 || y > y1) {
 				continue;
 			}
-			boolean pisa = false;
-			for (int[] p : puestos) {
-				if (x < p[2] && x + w > p[0] && y < p[3] && y + 9 > p[1]) {
-					pisa = true;
-					break;
-				}
-			}
-			if (pisa) {
+			if (!libre(x - 2, y - 1, x + w + 2, y + 10)) {
 				continue;
 			}
-			puestos.add(new int[] {x - 2, y - 1, x + w + 2, y + 10});
 			g.drawString(font, t, x, y, color, false);
 		}
 	}
@@ -1002,6 +1211,10 @@ public final class PantallaMapa extends Screen {
 			int x = pantallaX(c.x());
 			int y = pantallaY(c.z());
 			if (x < x0 - 8 || x > x1 + 8 || y < y0 - 8 || y > y1 + 8) {
+				continue;
+			}
+			// solo las de tierras ya exploradas: si no, quedan flotando en la niebla
+			if (TerritoriosCliente.zona(Math.floorDiv(c.x(), CASILLA), Math.floorDiv(c.z(), CASILLA)) == null) {
 				continue;
 			}
 			g.drawString(font, corona, x - font.width(corona) / 2, y - 4, c.perdida() ? 0xFF8A8577 : ORO, true);
@@ -1021,7 +1234,10 @@ public final class PantallaMapa extends Screen {
 			}
 		}
 		double s = escala * CASILLA;
-		for (Map.Entry<Long, double[]> e : centros.entrySet()) {
+		// los reinos grandes primero, que son los que se quedan el sitio si dos nombres chocan
+		List<Map.Entry<Long, double[]>> orden = new ArrayList<>(centros.entrySet());
+		orden.sort((a, b) -> Double.compare(b.getValue()[2], a.getValue()[2]));
+		for (Map.Entry<Long, double[]> e : orden) {
 			double[] c = e.getValue();
 			FormattedCharSequence sinColor = nombres.get(e.getKey());
 			if (sinColor == null || c[2] == 0) {
@@ -1034,14 +1250,20 @@ public final class PantallaMapa extends Screen {
 			if (area < w * 9 * 2.0) {
 				continue;
 			}
-			float f = 1;
-			for (float t : new float[] {1.5f, 2, 3}) {
-				if (area >= w * t * 9 * t * 3.0) {
-					f = t;
-				}
-			}
 			float x = (float) (cx() + (c[0] / c[2] * CASILLA - vistaX) * escala);
 			float y = (float) (cy() + (c[1] / c[2] * CASILLA - vistaZ) * escala) + 6;
+			// el tamaño más grande que quepa en sus tierras y no pise otro nombre; si ni a tamaño normal cabe, no sale
+			float f = 0;
+			for (float t : new float[] {3, 2, 1.5f, 1}) {
+				if ((t == 1 || area >= w * t * 9 * t * 3.0) && w * t <= (c[4] - c[3]) * s * 1.1
+						&& libre((int) (x - w * t / 2) - 2, (int) y - 2, (int) (x + w * t / 2) + 2, (int) (y + 9 * t) + 2)) {
+					f = t;
+					break;
+				}
+			}
+			if (f == 0) {
+				continue;
+			}
 			g.pose().pushMatrix();
 			g.pose().translate(x, y);
 			g.pose().scale(f, f);
@@ -1056,6 +1278,61 @@ public final class PantallaMapa extends Screen {
 	}
 
 	private static final int[][] HALO = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+	/** Si el rectángulo está libre de rótulos; si lo está, lo aparta para el que lo pide. */
+	private boolean libre(int xa, int ya, int xb, int yb) {
+		for (int[] o : ocupados) {
+			if (xa < o[2] && xb > o[0] && ya < o[3] && yb > o[1]) {
+				return false;
+			}
+		}
+		ocupados.add(new int[] {xa, ya, xb, yb});
+		return true;
+	}
+
+	/** El nombre del bicho más típico de cada ducado, de cerca y en el modo Fauna (los raros en dorado). */
+	private void pintaBichos(GuiGraphics g) {
+		if (escala * CASILLA < 6) {
+			return;
+		}
+		if (bichosVersion != FichasCliente.version()) {
+			bichosVersion = FichasCliente.version();
+			bichos.clear();
+			int sal = TerritoriosCliente.sal();
+			for (PaqueteFichas.Nombre d : FichasCliente.ducados()) {
+				if (d.animales().isEmpty()) {
+					continue;
+				}
+				// el raro si lo hay, que es lo interesante; si no, el que más sale
+				Component a = d.animales().get(0);
+				for (Component o : d.animales()) {
+					if (FichasCliente.raro(o)) {
+						a = Component.literal("✦ ").append(o);
+						break;
+					}
+				}
+				int[] c = Geo.centroDucado(d.dcx(), d.dcz(), sal);
+				bichos.add(new Object[] {c, a.getVisualOrderText(), font.width(a), a.getString().startsWith("✦")});
+			}
+		}
+		for (Object[] b : bichos) {
+			int[] c = (int[]) b[0];
+			int w = (Integer) b[2];
+			int x = pantallaX(c[0]) - w / 2;
+			int y = pantallaY(c[1]) + 6;
+			if (x + w < x0 || x > x1 || y + 9 < y0 || y > y1 || !libre(x - 2, y - 1, x + w + 2, y + 10)) {
+				continue;
+			}
+			FormattedCharSequence t = (FormattedCharSequence) b[1];
+			for (int[] d : HALO) {
+				g.drawString(font, t, x + d[0], y + d[1], HALO_COLOR, false);
+			}
+			g.drawString(font, t, x, y, (Boolean) b[3] ? 0xFF8A5A00 : 0xFF24401C, false);
+		}
+	}
+
+	private final List<Object[]> bichos = new ArrayList<>();
+	private int bichosVersion = -1;
 	private static final int HALO_COLOR = 0xB0E3D3AE;
 
 	private void pintaJugador(GuiGraphics g) {
@@ -1280,7 +1557,9 @@ public final class PantallaMapa extends Screen {
 		if (x + w + 8 > x1) {
 			x = mx - 12 - w - 8;
 		}
-		y = Math.max(y0, Math.min(y1 - h, y));
+		// que no se salga de la pantalla por ningún lado
+		x = Math.max(2, Math.min(width - w - 10, x));
+		y = Math.max(2, Math.min(height - h - 2, Math.max(y0, Math.min(y1 - h, y))));
 		g.fill(x - 1, y - 1, x + w + 9, y + h + 1, 0xFF8A6D3F);
 		g.fill(x, y, x + w + 8, y + h, 0xF0120F0B);
 		int yy = y + 4;
