@@ -12,6 +12,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -94,6 +96,13 @@ public final class PantallaMapa extends Screen {
 	private Identifier lienzo;
 	private LienzoMapa.Hecho lienzoHecho;
 	private CompletableFuture<Object[]> pintandoLienzo;
+	/** El relieve de cerca de cada zona en dos tamaños (4 y 8 píxeles por casilla), del menos al más usado. */
+	@SuppressWarnings("unchecked")
+	private final LinkedHashMap<Long, Detalle>[] detalles = new LinkedHashMap[] {new LinkedHashMap<>(64, 0.75f, true),
+		new LinkedHashMap<>(64, 0.75f, true)};
+	/** Los que se están pintando en otro hilo; dan {zona, vecinas, imagen}. */
+	@SuppressWarnings("unchecked")
+	private final Map<Long, CompletableFuture<Object[]>>[] haciendoDetalle = new Map[] {new HashMap<>(), new HashMap<>()};
 	private int cambiosPintados;
 	private ModoMapa modoPintado;
 	private final List<Boton> botones = new ArrayList<>();
@@ -139,6 +148,10 @@ public final class PantallaMapa extends Screen {
 	private int panelX;
 	private boolean arrastra;
 	private double arrastrado;
+
+	/** El relieve de cerca de una zona, hecho con la zona y las vecinas que había entonces. */
+	private record Detalle(PaqueteTerritorio zona, int vecinas, Identifier id) {
+	}
 
 	/** Una zona ya preparada: trozos de frontera, lo que aporta al centro de cada reino y los datos de sus casillas. */
 	private static final class Pintura {
@@ -796,11 +809,17 @@ public final class PantallaMapa extends Screen {
 		// hacer imágenes cuesta (al abrir o al cambiar de modo hay que hacerlas todas): unas pocas por frame, y las
 		// zonas que aún no la tienen se quedan en niebla un instante
 		int presupuesto = IMAGENES_POR_FRAME;
+		// en Relieve de cerca, cada zona con su relieve detallado (RelieveMapa) en vez de un píxel por casilla
+		int nivel = modo == ModoMapa.RELIEVE && s >= CERCA ? (s >= DETALLE_FINO ? 1 : 0) : -1;
+		int vistas = 0;
 		for (Pintura p : pinturas.values()) {
 			if (!visible(p)) {
 				continue;
 			}
-			if (p.imagen == null) {
+			vistas++;
+			Identifier detalle = nivel >= 0 ? detalle(p.zona, nivel) : null;
+			int lado = nivel == 1 ? NUCLEO * 8 : NUCLEO * 4;
+			if (detalle == null && p.imagen == null) {
 				if (presupuesto-- <= 0) {
 					continue;
 				}
@@ -810,19 +829,87 @@ public final class PantallaMapa extends Screen {
 			int ya = pantallaY((double) p.oz() * CASILLA);
 			int xb = pantallaX((double) (p.ox() + NUCLEO) * CASILLA);
 			int yb = pantallaY((double) (p.oz() + NUCLEO) * CASILLA);
-			g.blit(RenderPipelines.GUI_TEXTURED, p.imagen, xa, ya, 0, 0, xb - xa, yb - ya, NUCLEO, NUCLEO, NUCLEO, NUCLEO);
+			if (detalle != null) {
+				g.blit(RenderPipelines.GUI_TEXTURED, detalle, xa, ya, 0, 0, xb - xa, yb - ya, lado, lado, lado, lado);
+			} else {
+				g.blit(RenderPipelines.GUI_TEXTURED, p.imagen, xa, ya, 0, 0, xb - xa, yb - ya, NUCLEO, NUCLEO, NUCLEO, NUCLEO);
+			}
 			if (s >= CERCA) {
-				pintaBordes(g, p, s);
+				pintaBordes(g, p, s, detalle != null);
 				if (modo == ModoMapa.RELIEVE) {
-					pintaDetalles(g, p, s);
+					pintaDetalles(g, p, s, detalle != null);
 				}
 			}
+		}
+		if (nivel >= 0) {
+			// que quepan todas las que se ven y unas cuantas más, para moverse sin rehacerlas
+			recorta(detalles[nivel], Math.max(MAX_DETALLES, vistas * 3 / 2));
+		}
+	}
+
+	/**
+	 * El relieve detallado de la zona a este nivel, si ya está; si no (o si es de una versión vieja de la zona o de sus
+	 * vecinas), lo pide a otro hilo y mientras tanto da el viejo o null.
+	 */
+	private Identifier detalle(PaqueteTerritorio z, int nivel) {
+		long clave = Geo.clave(z.wx(), z.wz());
+		Detalle d = detalles[nivel].get(clave);
+		int vecinas = RelieveMapa.Rejilla.vecinas(z);
+		if (d != null && d.zona() == z && d.vecinas() == vecinas) {
+			return d.id();
+		}
+		Map<Long, CompletableFuture<Object[]>> haciendo = haciendoDetalle[nivel];
+		CompletableFuture<Object[]> f = haciendo.get(clave);
+		if (f != null && f.isDone()) {
+			haciendo.remove(clave);
+			Object[] r = f.getNow(null);
+			if (r != null) {
+				Detalle nuevo = new Detalle((PaqueteTerritorio) r[0], (Integer) r[1], sube((NativeImage) r[2]));
+				Detalle viejo = detalles[nivel].put(clave, nuevo);
+				if (viejo != null) {
+					Minecraft.getInstance().getTextureManager().release(viejo.id());
+				}
+				d = nuevo;
+				if (nuevo.zona() == z && nuevo.vecinas() == vecinas) {
+					return nuevo.id();
+				}
+			}
+			f = null;
+		}
+		if (f == null && haciendo.size() < DETALLES_EN_VUELO) {
+			RelieveMapa.Rejilla rejilla = RelieveMapa.Rejilla.de(z);
+			int k = nivel == 1 ? 8 : 4;
+			haciendo.put(clave, CompletableFuture.supplyAsync(() -> {
+				int lado = NUCLEO * k;
+				int[] px = RelieveMapa.pinta(rejilla, k);
+				NativeImage img = new NativeImage(lado, lado, false);
+				for (int y = 0; y < lado; y++) {
+					for (int x = 0; x < lado; x++) {
+						img.setPixel(x, y, px[x + y * lado]);
+					}
+				}
+				return new Object[] {z, vecinas, img};
+			}).exceptionally(e -> {
+				DestinosCore.LOG.warn("Destinos Core: no se pudo pintar el relieve de una zona", e);
+				return null;
+			}));
+		}
+		return d == null ? null : d.id();
+	}
+
+	/** Suelta los relieves menos usados hasta que queden como mucho max. */
+	private static void recorta(LinkedHashMap<Long, Detalle> m, int max) {
+		Iterator<Detalle> it = m.values().iterator();
+		while (m.size() > max && it.hasNext()) {
+			Minecraft.getInstance().getTextureManager().release(it.next().id());
+			it.remove();
 		}
 	}
 
 	/** Ríos como rayas de centro a centro de casilla y cumbres con su altura (en Relieve, de cerca). */
-	private void pintaDetalles(GuiGraphics g, Pintura p, double s) {
-		int[] r = p.rios;
+	private void pintaDetalles(GuiGraphics g, Pintura p, double s, boolean detallado) {
+		// con el relieve detallado los ríos ya van dentro de la imagen
+		int[] r = detallado ? new int[0] : p.rios;
 		int grosor = s >= 16 ? 3 : 2;
 		for (int k = 0; k < r.length; k += 4) {
 			double ax = pantallaX((p.ox() + r[k] + 0.5) * CASILLA);
@@ -865,6 +952,11 @@ public final class PantallaMapa extends Screen {
 
 	/** Cuántas imágenes de zona se hacen como mucho en un frame. */
 	private static final int IMAGENES_POR_FRAME = 40;
+	/** Píxeles por casilla desde los que el relieve de cerca va a 8 píxeles por casilla en vez de 4. */
+	private static final double DETALLE_FINO = 12;
+	/** Relieves detallados que se guardan como mínimo, y cuántos se pintan a la vez en otros hilos. */
+	private static final int MAX_DETALLES = 48;
+	private static final int DETALLES_EN_VUELO = 6;
 	/** Tipos de raya de cerca además de las lindes: curva de nivel (Relieve) y límite de hábitat (Fauna). */
 	private static final int CURVA_NIVEL = 5;
 	private static final int HABITAT = 6;
@@ -997,10 +1089,14 @@ public final class PantallaMapa extends Screen {
 	}
 
 	/** Las lindes de la zona como rayas encima de la imagen (solo de cerca). */
-	private void pintaBordes(GuiGraphics g, Pintura p, double s) {
+	private void pintaBordes(GuiGraphics g, Pintura p, double s, boolean detallado) {
 		int[] b = p.bordes();
 		for (int k = 0; k < b.length; k += 4) {
 			int tipo = b[k + 3];
+			// con el relieve detallado la costa y las curvas de nivel ya van dentro de la imagen, y sin cuadros
+			if (detallado && (tipo == 2 || tipo == CURVA_NIVEL)) {
+				continue;
+			}
 			if (tipo == 1 && s < 6) {
 				continue;
 			}
@@ -1047,6 +1143,17 @@ public final class PantallaMapa extends Screen {
 		pinturas.values().forEach(Pintura::suelta);
 		pinturas.clear();
 		soltarLienzo();
+		for (int n = 0; n < 2; n++) {
+			recorta(detalles[n], 0);
+			for (CompletableFuture<Object[]> f : haciendoDetalle[n].values()) {
+				f.thenAccept(r -> {
+					if (r != null) {
+						Minecraft.getInstance().execute(((NativeImage) r[2])::close);
+					}
+				});
+			}
+			haciendoDetalle[n].clear();
+		}
 		if (pintandoLienzo != null) {
 			// si acaba después de cerrar, que no se quede la imagen colgando
 			pintandoLienzo.thenAccept(r -> {

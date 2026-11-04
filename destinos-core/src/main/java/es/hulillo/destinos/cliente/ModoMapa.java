@@ -132,34 +132,40 @@ enum ModoMapa {
 		}
 	}
 
-	/** Tintes de altura de atlas, con sombra del noroeste y los ríos en azul. */
+	/** Tintes de altura de atlas, con sombra del noroeste y los ríos en azul (de lejos; de cerca va RelieveMapa). */
 	private static int relieve(PaqueteTerritorio z, int i, int j) {
 		PaqueteTerritorio.Ducado d = z.ducado(i, j);
 		int h = z.altura(i, j);
 		if (d.oceano()) {
-			// cuanto más hondo, más oscuro
-			double t = Math.max(0, Math.min(1, (62 - h) / 40.0));
-			return mezcla(0xFF9CC3D0, 0xFF2F5F80, t);
+			return agua(Math.max(0, Math.min(1, (62 - h) / 40.0)));
 		}
 		if (z.rio(i, j)) {
 			return 0xFF5E9CC9;
 		}
-		int c;
-		if (h < 80) {
-			c = mezcla(0xFF7FA65A, 0xFFA9C06E, (h - 62) / 18.0);
-		} else if (h < 120) {
-			c = mezcla(0xFFA9C06E, 0xFFD9CF8A, (h - 80) / 40.0);
-		} else if (h < 180) {
-			c = mezcla(0xFFD9CF8A, 0xFFB48A5A, (h - 120) / 60.0);
-		} else if (h < 260) {
-			c = mezcla(0xFFB48A5A, 0xFF8C7A70, (h - 180) / 80.0);
-		} else {
-			c = mezcla(0xFF8C7A70, 0xFFF4F4F4, Math.min(1, (h - 260) / 120.0));
-		}
+		int c = tierra(h);
 		// sombreado: la casilla del noroeste más alta la oscurece, más baja la aclara
 		int hn = i > 0 && j > 0 ? z.altura(i - 1, j - 1) : h;
 		double s = Math.max(-1, Math.min(1, (h - hn) / 24.0));
 		return s >= 0 ? mezcla(c, 0xFFFFFFFF, s * 0.25) : mezcla(c, 0xFF000000, -s * 0.3);
+	}
+
+	/** Color del mar según lo hondo (0 en la orilla, 1 a 40 bloques o más). */
+	static int agua(double hondo) {
+		return mezcla(0xFF9CC3D0, 0xFF2F5F80, hondo);
+	}
+
+	/** Tinte de atlas de la tierra a la altura h: verde abajo, ocre, pardo, gris y nieve arriba. */
+	static int tierra(int h) {
+		if (h < 80) {
+			return mezcla(0xFF7FA65A, 0xFFA9C06E, Math.max(0, h - 62) / 18.0);
+		} else if (h < 120) {
+			return mezcla(0xFFA9C06E, 0xFFD9CF8A, (h - 80) / 40.0);
+		} else if (h < 180) {
+			return mezcla(0xFFD9CF8A, 0xFFB48A5A, (h - 120) / 60.0);
+		} else if (h < 260) {
+			return mezcla(0xFFB48A5A, 0xFF8C7A70, (h - 180) / 80.0);
+		}
+		return mezcla(0xFF8C7A70, 0xFFF4F4F4, Math.min(1, (h - 260) / 120.0));
 	}
 
 	/** La leyenda del modo: pares color, texto. */
