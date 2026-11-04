@@ -77,6 +77,8 @@ public final class PantallaMapa extends Screen {
 	/** Cómo se pinta cada zona, por su clave (wx, wz); se rehace la zona que llega nueva y sus vecinas (por los bordes). */
 	private final Map<Long, Pintura> pinturas = new HashMap<>();
 	private final Map<Long, double[]> centros = new HashMap<>();
+	/** El color de cada reino que sale en el mapa (para el cuadrito de la ficha). */
+	private final Map<Long, Integer> coloresReino = new HashMap<>();
 	private int zonasPintadas = -1;
 	private int turnoPintado = Integer.MIN_VALUE;
 	private ModoMapa modoPintado;
@@ -88,6 +90,13 @@ public final class PantallaMapa extends Screen {
 	private String buscadoAntes = null;
 	private List<GeografiaMapa.Rotulo> rotulos = List.of();
 	private int zonasGeo = -1;
+	private List<FormattedCharSequence> pistaLineas;
+	private int pistaAncho;
+	private int pistaX;
+	private int pistaZ;
+	private ModoMapa pistaModo;
+	private int pistaTurno;
+	private PaqueteTerritorio.Ducado pistaDucado;
 	private int tickGeo = -REHACE_GEO;
 	private int ticks;
 	private int x0;
@@ -534,6 +543,7 @@ public final class PantallaMapa extends Screen {
 			for (int i = 0; i < NUCLEO; i++) {
 				PaqueteTerritorio.Ducado d = z.ducado(i, j);
 				if (!d.salvaje() && !d.oceano()) {
+					coloresReino.put(Geo.clave(d.kx(), d.kz()), d.color());
 					double[] s = centros.computeIfAbsent(Geo.clave(d.kx(), d.kz()), k -> new double[3]);
 					s[0] += ox + i + 0.5;
 					s[1] += oz + j + 0.5;
@@ -922,19 +932,8 @@ public final class PantallaMapa extends Screen {
 		int kx = r.kx();
 		int kz = r.kz();
 		g.fill(tx, y, tx + 10, y + 14, 0xFF000000);
-		PaqueteTerritorio.Ducado algun = null;
-		for (PaqueteTerritorio z : TerritoriosCliente.zonasRecibidas()) {
-			for (PaqueteTerritorio.Ducado d : z.paleta()) {
-				if (!d.salvaje() && d.kx() == kx && d.kz() == kz) {
-					algun = d;
-					break;
-				}
-			}
-			if (algun != null) {
-				break;
-			}
-		}
-		g.fill(tx + 1, y + 1, tx + 9, y + 13, algun == null ? 0xFF888888 : 0xFF000000 | algun.color());
+		Integer colorReino = coloresReino.get(Geo.clave(kx, kz));
+		g.fill(tx + 1, y + 1, tx + 9, y + 13, colorReino == null ? 0xFF888888 : 0xFF000000 | colorReino);
 		y = linea(g, r.nombre().copy().withStyle(ChatFormatting.BOLD), tx + 14, y + 3, w - 14, TEXTO) + 6;
 		if (fijado != Long.MIN_VALUE) {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.fijada", "(ficha fija: clic fuera para soltarla)"), tx, y, w,
@@ -1018,6 +1017,47 @@ public final class PantallaMapa extends Screen {
 
 	/** El cartelito junto al ratón: ducado, reino y si está en guerra. */
 	private void pista(GuiGraphics g, PaqueteTerritorio.Ducado d, int mx, int my) {
+		int bx = (int) Math.floor(bloqueX(mx));
+		int bz = (int) Math.floor(bloqueZ(my));
+		int tx = Math.floorDiv(bx, CASILLA);
+		int tz = Math.floorDiv(bz, CASILLA);
+		// las líneas solo se rehacen al cambiar de casilla, de modo o de turno (traducir y medir cada frame cuesta)
+		if (pistaLineas == null || tx != pistaX || tz != pistaZ || modo != pistaModo || FichasCliente.turno() != pistaTurno
+				|| d != pistaDucado) {
+			pistaX = tx;
+			pistaZ = tz;
+			pistaModo = modo;
+			pistaTurno = FichasCliente.turno();
+			pistaDucado = d;
+			List<Component> l = lineasPista(d, tx, tz);
+			pistaLineas = new ArrayList<>();
+			pistaAncho = 0;
+			for (Component c : l) {
+				pistaLineas.add(c.getVisualOrderText());
+				pistaAncho = Math.max(pistaAncho, font.width(c));
+			}
+		}
+		FormattedCharSequence coords = Component.literal(bx + ", " + bz).withStyle(ChatFormatting.DARK_GRAY).getVisualOrderText();
+		int w = Math.max(pistaAncho, font.width(coords));
+		int h = (pistaLineas.size() + 1) * 10 + 6;
+		int x = mx + 12;
+		int y = my - 4;
+		if (x + w + 8 > x1) {
+			x = mx - 12 - w - 8;
+		}
+		y = Math.max(y0, Math.min(y1 - h, y));
+		g.fill(x - 1, y - 1, x + w + 9, y + h + 1, 0xFF8A6D3F);
+		g.fill(x, y, x + w + 8, y + h, 0xF0120F0B);
+		int yy = y + 4;
+		for (FormattedCharSequence c : pistaLineas) {
+			g.drawString(font, c, x + 4, yy, TEXTO, false);
+			yy += 10;
+		}
+		g.drawString(font, coords, x + 4, yy, TEXTO, false);
+	}
+
+	/** Lo que dice la pista de la casilla (tx, tz), sin las coordenadas. */
+	private static List<Component> lineasPista(PaqueteTerritorio.Ducado d, int tx, int tz) {
 		List<Component> lineas = new ArrayList<>();
 		if (d.oceano()) {
 			lineas.add(d.deNadie()
@@ -1047,28 +1087,8 @@ public final class PantallaMapa extends Screen {
 				}
 			}
 		}
-		int bx = (int) Math.floor(bloqueX(mx));
-		int bz = (int) Math.floor(bloqueZ(my));
-		extras(lineas, d, Math.floorDiv(bx, CASILLA), Math.floorDiv(bz, CASILLA));
-		lineas.add(Component.literal(bx + ", " + bz).withStyle(ChatFormatting.DARK_GRAY));
-		int w = 0;
-		for (Component c : lineas) {
-			w = Math.max(w, font.width(c));
-		}
-		int h = lineas.size() * 10 + 6;
-		int x = mx + 12;
-		int y = my - 4;
-		if (x + w + 8 > x1) {
-			x = mx - 12 - w - 8;
-		}
-		y = Math.max(y0, Math.min(y1 - h, y));
-		g.fill(x - 1, y - 1, x + w + 9, y + h + 1, 0xFF8A6D3F);
-		g.fill(x, y, x + w + 8, y + h, 0xF0120F0B);
-		int yy = y + 4;
-		for (Component c : lineas) {
-			g.drawString(font, c, x + 4, yy, TEXTO, false);
-			yy += 10;
-		}
+		extras(lineas, d, tx, tz);
+		return lineas;
 	}
 
 	/** Lo que añade a la pista cada modo: el peligro, los bichos o la altura. */
