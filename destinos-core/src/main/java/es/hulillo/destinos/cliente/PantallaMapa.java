@@ -59,11 +59,11 @@ public final class PantallaMapa extends Screen {
 	/** Por debajo de estos píxeles por casilla se pinta de lejos, a bloques de casillas. */
 	private static final double LEJOS = 2;
 	/** De lejos, más o menos cuántos cuadritos como mucho caben en el mapa (cada uno es un fill). */
-	private static final double CUADROS_LEJOS = 20000;
+	private static final double CUADROS_LEJOS = 12000;
 	/** Ancho de la columna de modos, a la izquierda. */
 	private static final int COLUMNA = 74;
 	/** Cada cuánto, como mucho, se vuelven a buscar los accidentes del relieve (son caros). */
-	private static final int REHACE_GEO = 100;
+	private static final int REHACE_GEO = 400;
 
 	/** Lo que se queda de una vista a otra mientras dura la conexión. */
 	private static double vistaX = Double.NaN;
@@ -564,7 +564,10 @@ public final class PantallaMapa extends Screen {
 
 	private void pintaZonas(GuiGraphics g) {
 		double s = escala * CASILLA;
-		if (s < LEJOS) {
+		// de lejos, o si caben tantas casillas que pintarlas una a una sería un montón de fills (en Relieve y Fauna
+		// cada casilla tiene su color y no se juntan en tiras)
+		double casillas = (double) (x1 - x0) * (y1 - y0) / (s * s);
+		if (s < LEJOS || casillas > CUADROS_LEJOS) {
 			pintaLejos(g, s);
 			return;
 		}
@@ -624,7 +627,7 @@ public final class PantallaMapa extends Screen {
 	 */
 	private void pintaLejos(GuiGraphics g, double s) {
 		// el tamaño del cuadrito crece si el mapa es grande, para no pasar de CUADROS_LEJOS fills
-		double lado = Math.max(2, Math.sqrt((double) (x1 - x0) * (y1 - y0) / CUADROS_LEJOS));
+		double lado = Math.max(s < LEJOS ? 2 : 0, Math.sqrt((double) (x1 - x0) * (y1 - y0) / CUADROS_LEJOS));
 		int k = 1;
 		while (k * s < lado && k < NUCLEO) {
 			k *= 2;
