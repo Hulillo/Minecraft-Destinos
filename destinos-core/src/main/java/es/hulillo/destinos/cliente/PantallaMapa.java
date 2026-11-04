@@ -50,8 +50,8 @@ public final class PantallaMapa extends Screen {
 	private static final int LINDE = 0x552B2015;
 	private static final int CASILLA = MapaTerreno.CASILLA;
 	private static final int NUCLEO = MapaTerreno.NUCLEO;
-	/** Píxeles de pantalla por bloque: de 1 px por casilla a 32 px por casilla. */
-	private static final double ESCALA_MIN = 1.0 / CASILLA;
+	/** Píxeles de pantalla por bloque: de 1 px cada 8 casillas (512 bloques) a 32 px por casilla. */
+	private static final double ESCALA_MIN = 1.0 / (CASILLA * 8);
 	private static final double ESCALA_MAX = 0.5;
 	/** Cada cuánto se piden más zonas al servidor mientras el mapa está abierto, y cada cuánto las fichas. */
 	private static final int PIDE_ZONAS = 40;
@@ -377,6 +377,10 @@ public final class PantallaMapa extends Screen {
 
 	private void pintaZonas(GuiGraphics g) {
 		double s = escala * CASILLA;
+		if (s < 1) {
+			pintaLejos(g, s);
+			return;
+		}
 		for (Pintura p : pinturas.values()) {
 			int zx0 = pantallaX((double) p.ox() * CASILLA);
 			int zy0 = pantallaY((double) p.oz() * CASILLA);
@@ -421,6 +425,42 @@ public final class PantallaMapa extends Screen {
 				} else {
 					int xb = pantallaX((double) (i + 1) * CASILLA);
 					g.fill(xa, ya - grosor / 2, Math.max(xb, xa + 1), ya - grosor / 2 + grosor, color);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Muy alejado (menos de un píxel por casilla): un píxel por cada bloque de k×k casillas, con el color de la casilla
+	 * de en medio, y en negro (o rojo, si hay guerra) donde cambia de reino respecto al de la izquierda o el de arriba.
+	 */
+	private void pintaLejos(GuiGraphics g, double s) {
+		int k = (int) Math.ceil(1 / s);
+		for (PaqueteTerritorio z : pinturas.keySet()) {
+			int ox = z.wx() * NUCLEO;
+			int oz = z.wz() * NUCLEO;
+			if (pantallaX((double) (ox + NUCLEO) * CASILLA) < x0 || pantallaX((double) ox * CASILLA) > x1
+					|| pantallaY((double) (oz + NUCLEO) * CASILLA) < y0 || pantallaY((double) oz * CASILLA) > y1) {
+				continue;
+			}
+			for (int bj = 0; bj < NUCLEO; bj += k) {
+				int ya = pantallaY((double) (oz + bj) * CASILLA);
+				int yb = Math.max(ya + 1, pantallaY((double) (oz + Math.min(NUCLEO, bj + k)) * CASILLA));
+				int mj = Math.min(NUCLEO - 1, bj + k / 2);
+				for (int bi = 0; bi < NUCLEO; bi += k) {
+					int xa = pantallaX((double) (ox + bi) * CASILLA);
+					int xb = Math.max(xa + 1, pantallaX((double) (ox + Math.min(NUCLEO, bi + k)) * CASILLA));
+					PaqueteTerritorio.Ducado d = z.ducado(Math.min(NUCLEO - 1, bi + k / 2), mj);
+					int color = color(d);
+					int izq = bi >= k ? linde(d, z.ducado(Math.min(NUCLEO - 1, bi - k + k / 2), mj)) : 0;
+					int arr = bj >= k ? linde(d, z.ducado(Math.min(NUCLEO - 1, bi + k / 2), Math.min(NUCLEO - 1, bj - k + k / 2))) : 0;
+					int l = Math.max(izq, arr);
+					if (l == 4) {
+						color = FRENTE;
+					} else if (l == 3) {
+						color = FRONTERA;
+					}
+					g.fill(xa, ya, xb, yb, color);
 				}
 			}
 		}
