@@ -929,7 +929,7 @@ MAPA = {
     "pista_altura": ("Altura: y=%s", "Height: y=%s"),
     "pista_fondo": ("Fondo a y=%s", "Seabed at y=%s"),
     "pista_rio": ("Pasa un río", "A river runs here"),
-    "pista_terreno": ("Terreno: %s", "Terrain: %s"),
+    "pista_bioma": ("Bioma: %s", "Biome: %s"),
     "terreno.campo": ("Campo abierto", "Open country"),
     "terreno.mar": ("Mar", "Sea"),
     "terreno.ribera": ("Ribera", "Riverside"),

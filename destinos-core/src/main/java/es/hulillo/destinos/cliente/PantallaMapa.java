@@ -1817,13 +1817,33 @@ public final class PantallaMapa extends Screen {
 		}
 	}
 
-	/** El tipo de terreno de la casilla (la familia de su bioma), para Fauna y Relieve. */
+	/**
+	 * El bioma de la casilla (con su nombre del juego o del mod que lo pone, como sale en F3), para Fauna y Relieve; si el
+	 * servidor no lo sabe, su familia (bosque, taiga…).
+	 */
 	private static void terreno(List<Component> lineas, PaqueteTerritorio.Ducado d, int tx, int tz) {
 		PaqueteTerritorio z = TerritoriosCliente.zona(tx, tz);
-		if (z != null && !d.oceano()) {
-			lineas.add(Component.translatableWithFallback("destinos.mapa.pista_terreno", "Terreno: %s",
-					ModoMapa.terreno(z.familia(tx - z.wx() * NUCLEO, tz - z.wz() * NUCLEO))).withStyle(ChatFormatting.DARK_GREEN));
+		if (z == null) {
+			return;
 		}
+		int i = tx - z.wx() * NUCLEO;
+		int j = tz - z.wz() * NUCLEO;
+		String b = z.bioma(i, j);
+		Component nombre;
+		if (!b.isEmpty()) {
+			int dos = b.indexOf(':');
+			String ns = dos < 0 ? "minecraft" : b.substring(0, dos);
+			String ruta = b.substring(dos + 1);
+			// si el mod no trae traducción, el nombre a partir del id: "dark_forest" → "Dark forest"
+			String crudo = ruta.substring(ruta.lastIndexOf('/') + 1).replace('_', ' ');
+			String respaldo = crudo.isEmpty() ? b : Character.toUpperCase(crudo.charAt(0)) + crudo.substring(1);
+			nombre = Component.translatableWithFallback("biome." + ns + "." + ruta.replace('/', '.'), respaldo);
+		} else if (!d.oceano()) {
+			nombre = ModoMapa.terreno(z.familia(i, j));
+		} else {
+			return;
+		}
+		lineas.add(Component.translatableWithFallback("destinos.mapa.pista_bioma", "Bioma: %s", nombre).withStyle(ChatFormatting.DARK_GREEN));
 	}
 
 	@Override

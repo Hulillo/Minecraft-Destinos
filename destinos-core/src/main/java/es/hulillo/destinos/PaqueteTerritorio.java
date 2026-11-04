@@ -11,7 +11,8 @@ import net.minecraft.resources.Identifier;
  * Servidor → cliente: los ducados de una zona ya calculada (núcleo de una ventana de MapaTerreno), para que
  * los mapas del cliente (JourneyMap, Diorama) pinten los reinos. Solo lo reciben clientes con Destinos Core.
  */
-public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, short[] indice, short[] altura, byte[] tipo)
+public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, short[] indice, short[] altura, byte[] tipo,
+		List<String> biomas, short[] bioma)
 		implements CustomPacketPayload {
 	public static final CustomPacketPayload.Type<PaqueteTerritorio> TIPO =
 			new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "territorio"));
@@ -63,7 +64,18 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 		for (MapaTerreno.Entrada e : z.paleta()) {
 			paleta.add(Ducado.de(e, sal, politica));
 		}
-		return new PaqueteTerritorio(sal, z.wx(), z.wz(), paleta, z.indice(), z.altura(), z.tipo());
+		// los biomas van por nombre, con su propia paleta en cada zona
+		List<String> biomas = new ArrayList<>();
+		java.util.Map<Integer, Integer> local = new java.util.HashMap<>();
+		short[] bioma = new short[CASILLAS];
+		for (int k = 0; k < CASILLAS; k++) {
+			int b = z.bioma()[k];
+			bioma[k] = (short) (b < 0 ? -1 : local.computeIfAbsent(b, n -> {
+				biomas.add(Biomas.nombre(n));
+				return biomas.size() - 1;
+			}));
+		}
+		return new PaqueteTerritorio(sal, z.wx(), z.wz(), paleta, z.indice(), z.altura(), z.tipo(), biomas, bioma);
 	}
 
 	/** Ducado de la casilla (i, j) del núcleo, contando desde la esquina noroeste. */
@@ -73,6 +85,12 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 
 	public int altura(int i, int j) {
 		return altura[i + j * MapaTerreno.NUCLEO];
+	}
+
+	/** El bioma de la casilla ("minecraft:taiga"), o "" si no se sabe. */
+	public String bioma(int i, int j) {
+		int b = bioma[i + j * MapaTerreno.NUCLEO];
+		return b < 0 || b >= biomas.size() ? "" : biomas.get(b);
 	}
 
 	/** Si por la casilla pasa un río. */
@@ -112,6 +130,13 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 			buf.writeShort(altura[k]);
 		}
 		buf.writeByteArray(tipo);
+		buf.writeVarInt(biomas.size());
+		for (String b : biomas) {
+			buf.writeUtf(b);
+		}
+		for (int k = 0; k < CASILLAS; k++) {
+			buf.writeVarInt(bioma[k] + 1);
+		}
 	}
 
 	private static PaqueteTerritorio lee(FriendlyByteBuf buf) {
@@ -143,7 +168,16 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 		if (tipo.length != CASILLAS) {
 			throw new IllegalArgumentException("Destinos Core: zona con el terreno incompleto");
 		}
-		return new PaqueteTerritorio(sal, wx, wz, paleta, indice, altura, tipo);
+		int nb = buf.readVarInt();
+		List<String> biomas = new ArrayList<>(nb);
+		for (int k = 0; k < nb; k++) {
+			biomas.add(buf.readUtf());
+		}
+		short[] bioma = new short[CASILLAS];
+		for (int k = 0; k < CASILLAS; k++) {
+			bioma[k] = (short) (buf.readVarInt() - 1);
+		}
+		return new PaqueteTerritorio(sal, wx, wz, paleta, indice, altura, tipo, biomas, bioma);
 	}
 
 	@Override

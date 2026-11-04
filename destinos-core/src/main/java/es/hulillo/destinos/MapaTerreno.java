@@ -52,16 +52,26 @@ public final class MapaTerreno {
 	 * Lo que se sabe del terreno en el centro de una casilla. familia: tipo de bioma (desierto, selva, bosque…) para
 	 * que las fronteras prefieran los cambios de paisaje.
 	 */
-	public record Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia) {
-		/** altura + 1024 en los bits 0-11, mar 12, río 13, montaña 14, familia + 1 en 15-20, y el bit 30 de "leída". */
+	public record Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia, int bioma) {
+		/** Sin saber el bioma exacto (bioma: número de Biomas, o -1). */
+		public Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia) {
+			this(altura, oceano, rio, montana, familia, -1);
+		}
+
+		/**
+		 * altura + 1024 en los bits 0-11, mar 12, río 13, montaña 14, familia + 1 en 15-20, bioma + 1 en 21-29 y el
+		 * bit 30 de "leída".
+		 */
 		int empaqueta() {
 			int a = Math.max(0, Math.min(4095, altura + 1024));
 			int f = Math.max(0, Math.min(63, familia + 1));
-			return a | (oceano ? 1 << 12 : 0) | (rio ? 1 << 13 : 0) | (montana ? 1 << 14 : 0) | f << 15 | 1 << 30;
+			int b = Math.max(0, Math.min(511, bioma + 1));
+			return a | (oceano ? 1 << 12 : 0) | (rio ? 1 << 13 : 0) | (montana ? 1 << 14 : 0) | f << 15 | b << 21 | 1 << 30;
 		}
 
 		static Casilla desempaqueta(int v) {
-			return new Casilla((v & 4095) - 1024, (v & 1 << 12) != 0, (v & 1 << 13) != 0, (v & 1 << 14) != 0, (v >> 15 & 63) - 1);
+			return new Casilla((v & 4095) - 1024, (v & 1 << 12) != 0, (v & 1 << 13) != 0, (v & 1 << 14) != 0, (v >> 15 & 63) - 1,
+					(v >> 21 & 511) - 1);
 		}
 	}
 
@@ -116,7 +126,7 @@ public final class MapaTerreno {
 	 * núcleo donde sale un pueblo.
 	 */
 	private record Ventana(int[] dueno, boolean[] isla, boolean[] oceano, boolean[] dificil, int[] mar, int[] altura,
-			byte[] recurso, byte[] tipo, List<Semilla> semillas, int[] pueblos) {
+			byte[] recurso, byte[] tipo, short[] bioma, List<Semilla> semillas, int[] pueblos) {
 	}
 
 	/**
@@ -143,7 +153,8 @@ public final class MapaTerreno {
 	 * El núcleo de una ventana, listo para pintarlo en un mapa: cada casilla (i + j * NUCLEO, empezando en la
 	 * casilla wx * NUCLEO, wz * NUCLEO) apunta a una entrada de la paleta y lleva la altura del suelo.
 	 */
-	public record Zona(int wx, int wz, List<Entrada> paleta, short[] indice, short[] altura, byte[] tipo) {
+	/** bioma: número de Biomas de cada casilla (-1 si no se sabe). */
+	public record Zona(int wx, int wz, List<Entrada> paleta, short[] indice, short[] altura, byte[] tipo, short[] bioma) {
 	}
 
 	private final Muestreador muestreador;
@@ -251,6 +262,7 @@ public final class MapaTerreno {
 		short[] indice = new short[NUCLEO * NUCLEO];
 		short[] altura = new short[NUCLEO * NUCLEO];
 		byte[] tipo = new byte[NUCLEO * NUCLEO];
+		short[] bioma = new short[NUCLEO * NUCLEO];
 		for (int j = 0; j < NUCLEO; j++) {
 			for (int i = 0; i < NUCLEO; i++) {
 				int x = (wx * NUCLEO + i) * CASILLA;
@@ -261,9 +273,10 @@ public final class MapaTerreno {
 				indice[i + j * NUCLEO] = (short) (int) paleta.computeIfAbsent(e, c -> paleta.size());
 				altura[i + j * NUCLEO] = (short) v.altura()[k];
 				tipo[i + j * NUCLEO] = v.tipo()[k];
+				bioma[i + j * NUCLEO] = v.bioma()[k];
 			}
 		}
-		return new Zona(wx, wz, List.copyOf(paleta.keySet()), indice, altura, tipo);
+		return new Zona(wx, wz, List.copyOf(paleta.keySet()), indice, altura, tipo, bioma);
 	}
 
 	/** Claves de las ventanas ya calculadas (sin error). */
@@ -407,8 +420,10 @@ public final class MapaTerreno {
 		boolean[] dificil = new boolean[total];
 		byte[] recurso = new byte[total];
 		byte[] tipo = new byte[total];
+		short[] bioma = new short[total];
 		for (int k = 0; k < total; k++) {
 			tipo[k] = tipo(terreno[k]);
+			bioma[k] = (short) terreno[k].bioma();
 			isla[k] = !terreno[k].oceano() && mar[k] >= MAR_ISLA;
 			oceano[k] = terreno[k].oceano();
 			altura[k] = terreno[k].altura();
@@ -423,7 +438,7 @@ public final class MapaTerreno {
 		for (int p = 0; p < pueblos.length; p++) {
 			pueblos[p] = (Math.floorDiv(sitios.get(p)[0], CASILLA) - bx) + (Math.floorDiv(sitios.get(p)[1], CASILLA) - bz) * N;
 		}
-		return new Ventana(dueno, isla, oceano, dificil, mar, altura, recurso, tipo, semillas, pueblos);
+		return new Ventana(dueno, isla, oceano, dificil, mar, altura, recurso, tipo, bioma, semillas, pueblos);
 	}
 
 	// ------------------------------------------------------------------ capitales
