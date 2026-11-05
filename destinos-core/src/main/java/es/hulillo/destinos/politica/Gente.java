@@ -82,8 +82,6 @@ public final class Gente {
 
 	/** Mayoría de edad. */
 	public static final int ADULTO = 16;
-	/** Por encima de tantas personas se olvidan los muertos que ya no nombra nadie. */
-	private static final int MAX_PERSONAS = 3000;
 
 	private final TreeMap<Integer, Persona> personas = new TreeMap<>();
 	private int siguiente = 1;
@@ -347,7 +345,7 @@ public final class Gente {
 			}
 			int edad = x.edad(anio);
 			double prob = edad < 1 ? 0.002 : edad < 40 ? 0.0004 : edad < 55 ? 0.001 : edad < 65 ? 0.003 : edad < 75 ? 0.007 : 0.02;
-			prob *= 96.0 / Math.max(8, p.turnosPorAnio());
+			prob *= escala(p);
 			boolean enGuerra = (x.rol == Persona.Rol.general || x.rol == Persona.Rol.rey || x.rol == Persona.Rol.duque)
 					&& p.enGuerra(x.reino);
 			double guerra = !enGuerra ? 0 : x.rol == Persona.Rol.general ? 0.012 : x.rol == Persona.Rol.rey && x.tiene(Persona.Rasgo.valiente) ? 0.004
@@ -545,19 +543,35 @@ public final class Gente {
 
 	/** Duques, general y consejero vivos del reino. */
 	private List<Persona> nobles(long reino) {
-		List<Persona> res = new ArrayList<>();
+		return noblesPorReino().getOrDefault(reino, List.of());
+	}
+
+	/** Duques, general y consejero vivos de cada reino, de una pasada. */
+	private Map<Long, List<Persona>> noblesPorReino() {
+		Map<Long, List<Persona>> res = new java.util.HashMap<>();
 		for (Integer id : duques.values()) {
 			Persona d = personas.get(id);
-			if (d != null && d.vivo() && d.reino == reino) {
-				res.add(d);
+			if (d != null && d.vivo()) {
+				res.computeIfAbsent(d.reino, k -> new ArrayList<>()).add(d);
 			}
 		}
-		for (Persona x : new Persona[] {general(reino), consejero(reino)}) {
-			if (x != null && x.vivo()) {
-				res.add(x);
-			}
+		for (TreeMap<Long, Integer> cargo : List.of(generales, consejeros)) {
+			cargo.forEach((reino, id) -> {
+				Persona x = personas.get(id);
+				if (x != null && x.vivo()) {
+					res.computeIfAbsent(reino, k -> new ArrayList<>()).add(x);
+				}
+			});
 		}
 		return res;
+	}
+
+	/**
+	 * Cuántas veces más probable es cada cosa por turno que con años de estaciones (96 días): en las pruebas el año
+	 * dura TURNOS_POR_ANIO, así que todo pasa más a menudo y la gente vive los mismos años.
+	 */
+	private static double escala(Politica p) {
+		return (double) Politica.TURNOS_POR_ANIO_ESTACIONES / Math.max(Politica.TURNOS_POR_ANIO, p.turnosPorAnio());
 	}
 
 	/** La persona pasa a reinar en el reino: deja su cargo, y su cónyuge pasa a consorte. */
@@ -693,7 +707,7 @@ public final class Gente {
 
 	/** Los reyes y sus herederos casados tienen hijos de vez en cuando. */
 	private void nacimientos(Politica p, Fuente f, SplittableRandom rnd, Consumer<Suceso> anota, int anio) {
-		double escala = 96.0 / Math.max(8, p.turnosPorAnio());
+		double escala = escala(p);
 		for (Persona x : new ArrayList<>(personas.values())) {
 			if (!x.vivo() || !x.mujer || (x.rol != Persona.Rol.rey && x.rol != Persona.Rol.consorte && x.rol != Persona.Rol.familia)) {
 				continue;
@@ -728,7 +742,7 @@ public final class Gente {
 	 * con alguien de su nobleza.
 	 */
 	private void bodas(Politica p, Map<Long, List<Long>> ducadosDe, Fuente f, SplittableRandom rnd, Consumer<Suceso> anota, int anio) {
-		double escala = 96.0 / Math.max(8, p.turnosPorAnio());
+		double escala = escala(p);
 		for (Politica.Par par : new ArrayList<>(p.alianzas())) {
 			if (rnd.nextDouble() >= 0.02 * escala) {
 				continue;
@@ -810,7 +824,7 @@ public final class Gente {
 					golpista = x;
 				}
 			}
-			if (golpista == null || rnd.nextDouble() >= 0.03 * 96.0 / Math.max(8, p.turnosPorAnio()) / 4) {
+			if (golpista == null || rnd.nextDouble() >= 0.0075 * escala(p)) {
 				continue;
 			}
 			if (rnd.nextDouble() < 0.5) {
@@ -836,21 +850,7 @@ public final class Gente {
 	/** La lealtad de los nobles va hacia lo que se merece su rey (justo y generoso suben, cruel y codicioso bajan). */
 	private void lealtades(Politica p, SplittableRandom rnd) {
 		// los nobles de cada reino de una pasada (mirarlos reino a reino recorre todos los duques cada vez)
-		Map<Long, List<Persona>> nobles = new java.util.HashMap<>();
-		for (Integer id : duques.values()) {
-			Persona d = personas.get(id);
-			if (d != null && d.vivo()) {
-				nobles.computeIfAbsent(d.reino, k -> new ArrayList<>()).add(d);
-			}
-		}
-		for (TreeMap<Long, Integer> cargo : List.of(generales, consejeros)) {
-			cargo.forEach((reino, id) -> {
-				Persona x = personas.get(id);
-				if (x != null && x.vivo()) {
-					nobles.computeIfAbsent(reino, k -> new ArrayList<>()).add(x);
-				}
-			});
-		}
+		Map<Long, List<Persona>> nobles = noblesPorReino();
 		for (Map.Entry<Long, Integer> en : reyes.entrySet()) {
 			Persona rey = personas.get(en.getValue());
 			Politica.Reino e = p.reinos().get(en.getKey());
@@ -904,11 +904,11 @@ public final class Gente {
 		}
 	}
 
-	/** Se olvidan los muertos que ya no nombra nadie (ni la crónica, ni el linaje, ni sus descendientes). */
+	/**
+	 * Se olvidan los muertos que ya no nombra nadie (ni la crónica, ni el linaje, ni un vivo como padre o cónyuge):
+	 * así lo guardado con la partida no crece sin parar.
+	 */
 	private void olvida(Politica p) {
-		if (personas.size() <= MAX_PERSONAS) {
-			return;
-		}
 		Set<Integer> guarda = new HashSet<>();
 		for (Reinado r : reinados) {
 			guarda.add(r.persona());

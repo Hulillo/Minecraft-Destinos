@@ -277,29 +277,43 @@ final class NombresPolitica {
 		return res;
 	}
 
+	/** Quién gobierna hoy un ducado: su duque, o el rey en la capital. */
+	record Senor(long ducado, Persona persona, boolean rey) {
+	}
+
 	/**
-	 * El señor vivo del ducado (un duque de la gente) pasa al registro del datapack, para que el título al entrar
-	 * lo nombre. Solo si el registro ya existe y el ducado tiene señor.
+	 * Los señores vivos de los ducados (la gente) pasan a los registros del datapack, para que el título al entrar
+	 * los nombre. Solo los ducados con registro y con señor; el storage se lee y se escribe una vez para todos.
 	 */
-	void fijaSenor(MinecraftServer server, long ducado, Persona x, boolean rey) {
+	void fijaSenores(MinecraftServer server, List<Senor> senores) {
+		if (senores.isEmpty()) {
+			return;
+		}
 		CompoundTag mundo = server.getCommandStorage().get(MUNDO);
 		CompoundTag ducados = mundo.getCompoundOrEmpty("ducados");
-		String clave = "d" + Grafo.x(ducado) + "_" + Grafo.z(ducado);
-		if (!ducados.contains(clave)) {
-			return;
+		boolean cambia = false;
+		for (Senor s : senores) {
+			String clave = "d" + Grafo.x(s.ducado()) + "_" + Grafo.z(s.ducado());
+			if (!ducados.contains(clave)) {
+				continue;
+			}
+			CompoundTag d = ducados.getCompoundOrEmpty(clave);
+			Persona x = s.persona();
+			// en la capital manda el rey: el título lo dice con destinos.titulo.<tipo>.rey_m / rey_f
+			String senor = s.rey() ? x.nombreCorto() : x.nombre;
+			String g = (s.rey() ? "rey_" : "") + (x.mujer ? "f" : "m");
+			if (d.getBooleanOr("salvaje", false) || (senor.equals(d.getStringOr("senor", "")) && g.equals(d.getStringOr("g", "")))) {
+				continue;
+			}
+			d.putString("senor", senor);
+			d.putString("g", g);
+			ducados.put(clave, d);
+			cambia = true;
 		}
-		CompoundTag d = ducados.getCompoundOrEmpty(clave);
-		// en la capital manda el rey: el título lo dice con destinos.titulo.<tipo>.rey_m / rey_f
-		String senor = rey ? x.nombreCorto() : x.nombre;
-		String g = (rey ? "rey_" : "") + (x.mujer ? "f" : "m");
-		if (d.getBooleanOr("salvaje", false) || (senor.equals(d.getStringOr("senor", "")) && g.equals(d.getStringOr("g", "")))) {
-			return;
+		if (cambia) {
+			mundo.put("ducados", ducados);
+			server.getCommandStorage().set(MUNDO, mundo);
 		}
-		d.putString("senor", senor);
-		d.putString("g", g);
-		ducados.put(clave, d);
-		mundo.put("ducados", ducados);
-		server.getCommandStorage().set(MUNDO, mundo);
 	}
 
 	/** "Aldric II el Bravo" (con su mote si lo tiene), con la casa, la edad y el carácter al pasar el ratón. */
