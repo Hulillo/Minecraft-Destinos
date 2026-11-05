@@ -119,22 +119,24 @@ final class GuardadoPolitica {
 			c.putInt("nace", x.nace);
 			c.putString("rol", x.rol.name());
 			c.putLong("reino", x.reino);
-			c.putLong("ducado", x.ducado);
-			c.putInt("padre", x.padre);
-			c.putInt("madre", x.madre);
-			c.putInt("conyuge", x.conyuge);
+			if (x.ducado != Politica.NADIE) {
+				c.putLong("ducado", x.ducado);
+			}
+			intSi(c, "padre", x.padre, Persona.NADIE);
+			intSi(c, "madre", x.madre, Persona.NADIE);
+			intSi(c, "conyuge", x.conyuge, Persona.NADIE);
 			c.putString("r1", x.rasgo1.name());
 			c.putString("r2", x.rasgo2.name());
 			c.putInt("guerra", x.guerra);
 			c.putInt("diplomacia", x.diplomacia);
 			c.putInt("intriga", x.intriga);
-			c.putInt("fama", x.fama);
-			c.putInt("lealtad", x.lealtad);
-			c.putInt("ordinal", x.ordinal);
+			intSi(c, "fama", x.fama, 0);
+			intSi(c, "lealtad", x.lealtad, 60);
+			intSi(c, "ordinal", x.ordinal, 0);
 			if (x.mote != null) {
 				c.putString("mote", x.mote);
 			}
-			c.putInt("muere", x.muere);
+			intSi(c, "muere", x.muere, 0);
 			if (x.causa != null) {
 				c.putString("causa", x.causa.name());
 			}
@@ -156,6 +158,13 @@ final class GuardadoPolitica {
 		}
 		t.put("reinados", reinados);
 		return t;
+	}
+
+	/** Solo guarda el valor si no es el de por defecto (el mismo que pone la carga): la gente ocupa casi un cuarto menos. */
+	private static void intSi(CompoundTag c, String clave, int valor, int porDefecto) {
+		if (valor != porDefecto) {
+			c.putInt(clave, valor);
+		}
 	}
 
 	private static ListTag cargos(Map<Long, Integer> mapa) {

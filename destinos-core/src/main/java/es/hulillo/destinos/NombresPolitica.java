@@ -229,8 +229,8 @@ final class NombresPolitica {
 
 	// ------------------------------------------------------------------ gente (v0.7)
 
-	/** Tablas de nombres de cada cultura (del storage destinos:tablas), para no leerlas cada vez. */
-	private final Map<String, CompoundTag> tablas = new HashMap<>();
+	/** Listas de nombres de cada cultura ("norte/m", "norte/casas"…, del storage destinos:tablas), para no leerlas cada vez. */
+	private final Map<String, List<String>> tablas = new HashMap<>();
 
 	/** Los nombres de la gente salen de las tablas del datapack y de los registros de los reinos. */
 	Gente.Fuente fuente(MinecraftServer server) {
@@ -258,23 +258,25 @@ final class NombresPolitica {
 	}
 
 	private List<String> lista(MinecraftServer server, String cultura, String campo) {
-		CompoundTag t = tablas.get(cultura);
-		if (t == null) {
-			t = server.getCommandStorage().get(Identifier.fromNamespaceAndPath("destinos", "tablas")).getCompoundOrEmpty(cultura).copy();
-			// vacías si el datapack aún no las ha cargado: entonces no se guardan, para volver a mirar
-			if (!t.isEmpty()) {
-				tablas.put(cultura, t);
-			}
+		String clave = cultura + "/" + campo;
+		List<String> res = tablas.get(clave);
+		if (res != null) {
+			return res;
 		}
-		net.minecraft.nbt.ListTag l = t.getListOrEmpty(campo);
-		List<String> res = new java.util.ArrayList<>(l.size());
+		net.minecraft.nbt.ListTag l = server.getCommandStorage().get(Identifier.fromNamespaceAndPath("destinos", "tablas"))
+				.getCompoundOrEmpty(cultura).getListOrEmpty(campo);
+		List<String> leida = new java.util.ArrayList<>(l.size());
 		for (int i = 0; i < l.size(); i++) {
 			String v = l.getStringOr(i, "");
 			if (!v.isEmpty()) {
-				res.add(v);
+				leida.add(v);
 			}
 		}
-		return res;
+		// vacía si el datapack aún no la ha cargado: entonces no se guarda, para volver a mirar
+		if (!leida.isEmpty()) {
+			tablas.put(clave, List.copyOf(leida));
+		}
+		return leida;
 	}
 
 	/** Quién gobierna hoy un ducado: su duque, o el rey en la capital. */

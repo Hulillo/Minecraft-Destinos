@@ -43,6 +43,12 @@ jobs:
           javac -d prueba-politica -sourcepath destinos-core/src/main/java destinos-core/src/main/java/es/hulillo/destinos/politica/*.java herramientas/PruebaPolitica.java
           java -cp prueba-politica PruebaPolitica
 
+      - name: Probar que guardar y cargar la política (y la gente) no pierde nada
+        run: |
+          mkdir -p prueba-guardado
+          javac -d prueba-guardado -sourcepath destinos-core/src/main/java herramientas/nbt-falso/*.java herramientas/PruebaPolitica.java destinos-core/src/main/java/es/hulillo/destinos/GuardadoPolitica.java
+          java -cp prueba-guardado es.hulillo.destinos.PruebaGuardado
+
       - name: Compilar Destinos Core
         working-directory: destinos-core
         run: ./gradlew build --no-daemon
