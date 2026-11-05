@@ -14,17 +14,20 @@ final class Estaciones {
 	private static final Method ESTADO;
 	private static final Method CICLO;
 	private static final Method EN_CICLO;
+	private static final Method ESTACION;
 
 	static {
 		Method estado = null;
 		Method ciclo = null;
 		Method enCiclo = null;
+		Method estacion = null;
 		try {
 			Class<?> ayuda = Class.forName("sereneseasons.api.season.SeasonHelper");
 			Class<?> iEstado = Class.forName("sereneseasons.api.season.ISeasonState");
 			estado = ayuda.getMethod("getSeasonState", net.minecraft.world.level.Level.class);
 			ciclo = iEstado.getMethod("getCycleDuration");
 			enCiclo = iEstado.getMethod("getSeasonCycleTicks");
+			estacion = iEstado.getMethod("getSeason");
 			DestinosCore.LOG.info("Destinos Core: el año del mundo sigue las estaciones de Serene Seasons");
 		} catch (ClassNotFoundException e) {
 			// sin Serene Seasons
@@ -35,9 +38,23 @@ final class Estaciones {
 		ESTADO = estado;
 		CICLO = ciclo;
 		EN_CICLO = enCiclo;
+		ESTACION = estacion;
 	}
 
 	private Estaciones() {
+	}
+
+	/** La estación de Serene Seasons (SPRING, SUMMER, AUTUMN o WINTER), o null sin Serene Seasons. */
+	static String estacion(ServerLevel mundo) {
+		if (ESTADO == null || ESTACION == null) {
+			return null;
+		}
+		try {
+			Object e = ESTACION.invoke(ESTADO.invoke(null, mundo));
+			return e instanceof Enum<?> en ? en.name() : null;
+		} catch (ReflectiveOperationException | ClassCastException e) {
+			return null;
+		}
 	}
 
 	/** Año del mundo, desde 1. */
