@@ -116,6 +116,8 @@ public final class PantallaMapa extends Screen {
 	private EditBox buscador;
 	/** El cuadro para poner nombre a una marca nueva (clic derecho), y dónde va la marca (en bloques). */
 	private EditBox nombrando;
+	/** El tutorial de la primera vez (o el que se pide con H): tapa el mapa hasta un clic o una tecla. */
+	private static Boolean tutorial;
 	private int marcaX;
 	private int marcaZ;
 	/** Rutas entre capitales (puntos en casillas), la que se calcula en otro hilo y con qué capitales se hizo. */
@@ -237,6 +239,9 @@ public final class PantallaMapa extends Screen {
 	@Override
 	protected void init() {
 		Minecraft mc = Minecraft.getInstance();
+		if (tutorial == null) {
+			tutorial = !Ajustes.tutorialVisto();
+		}
 		if (Double.isNaN(vistaX) && mc.player != null) {
 			vistaX = mc.player.getX();
 			vistaZ = mc.player.getZ();
@@ -467,6 +472,10 @@ public final class PantallaMapa extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent e, boolean doble) {
+		if (tutorial) {
+			cierraTutorial();
+			return true;
+		}
 		if (e.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
 			for (Boton b : botones) {
 				if (b.dentro(e.x(), e.y())) {
@@ -575,6 +584,14 @@ public final class PantallaMapa extends Screen {
 			// mientras se escribe, las letras y los números son del buscador (Escape sí cierra)
 			return super.keyPressed(e);
 		}
+		if (tutorial) {
+			cierraTutorial();
+			return true;
+		}
+		if (e.key() == GLFW.GLFW_KEY_H) {
+			tutorial = true;
+			return true;
+		}
 		if (e.key() >= GLFW.GLFW_KEY_1 && e.key() < GLFW.GLFW_KEY_1 + ModoMapa.values().length) {
 			cambiaModo(ModoMapa.values()[e.key() - GLFW.GLFW_KEY_1]);
 			return true;
@@ -672,10 +689,55 @@ public final class PantallaMapa extends Screen {
 		g.drawString(font, Component.translatableWithFallback("destinos.mapa.modos", "Modos"), 10, y0 - 11, TEXTO_SUAVE, false);
 		pintaBotones(g, mx, my);
 		super.render(g, mx, my, pt);
-		if (d != null && !arrastra) {
+		if (tutorial) {
+			g.nextStratum();
+			pintaTutorial(g);
+		} else if (d != null && !arrastra) {
 			g.nextStratum();
 			pista(g, d, mx, my);
 		}
+	}
+
+	/** Las claves de las líneas del tutorial y su texto por si el idioma no las tiene. */
+	private static final String[][] TUTORIAL = {
+			{"reinos", "Cada color es un reino; las rayas finas parten sus ducados. ♛ es su capital."},
+			{"ficha", "Pasa el ratón por un reino para ver su ficha a la derecha (estandarte, poder, guerras, uniones). Clic: la dejas fija."},
+			{"mover", "Arrastra para moverte, rueda para acercarte. Espacio te devuelve a donde estás."},
+			{"modos", "Teclas 1-9 o los botones de la izquierda: reinos, diplomacia, guerras, poder, cultura, seguridad, fauna, relieve y biomas."},
+			{"marcas", "Clic derecho: pones una marca con nombre. Clic en una marca: la haces destino y sale la línea de viaje."},
+			{"chat", "En el chat, los nombres de reinos, ducados y capitales se pueden pulsar: abren el mapa ahí."},
+			{"buscar", "Arriba a la derecha puedes buscar un reino o un ducado por su nombre."}};
+
+	private void pintaTutorial(GuiGraphics g) {
+		int w = Math.min(320, x1 - x0 - 20);
+		int tx = (int) cx() - w / 2;
+		List<FormattedCharSequence> lineas = new ArrayList<>();
+		for (String[] t : TUTORIAL) {
+			lineas.addAll(font.split(Component.literal("• ").append(Component.translatableWithFallback("destinos.mapa.tutorial." + t[0], t[1])), w));
+			lineas.add(null);
+		}
+		int alto = 16 + 14 + lineas.size() * 10 - 4 + 18;
+		int ty = (int) cy() - alto / 2;
+		g.fill(tx - 10, ty - 8, tx + w + 10, ty + alto, MARCO);
+		g.fill(tx - 8, ty - 6, tx + w + 8, ty + alto - 2, PANEL);
+		g.drawString(font, Component.translatableWithFallback("destinos.mapa.tutorial.titulo", "Cómo se usa el mapa político")
+				.withStyle(ChatFormatting.BOLD), tx, ty, ORO, false);
+		int y = ty + 16;
+		for (FormattedCharSequence l : lineas) {
+			if (l != null) {
+				g.drawString(font, l, tx, y, TEXTO, false);
+				y += 10;
+			} else {
+				y += 4;
+			}
+		}
+		g.drawString(font, Component.translatableWithFallback("destinos.mapa.tutorial.cerrar", "Clic o cualquier tecla para empezar · H: volver a verlo"),
+				tx, y + 4, TEXTO_SUAVE, false);
+	}
+
+	private void cierraTutorial() {
+		tutorial = false;
+		Ajustes.marcaTutorial();
 	}
 
 	@Override
@@ -1877,7 +1939,7 @@ public final class PantallaMapa extends Screen {
 			}
 			x = muestra(g, x, y, (Integer) m[0], (FormattedCharSequence) m[1], (Integer) m[2]);
 		}
-		Component ayuda = Component.translatableWithFallback("destinos.mapa.ayuda", "Arrastra · rueda: zoom · 1-9: modos · espacio: a ti · clic: fijar · clic der.: marca");
+		Component ayuda = Component.translatableWithFallback("destinos.mapa.ayuda", "Arrastra · rueda: zoom · 1-9: modos · espacio: a ti · clic: fijar · clic der.: marca · H: ayuda");
 		if (x + font.width(ayuda) < x1) {
 			g.drawString(font, ayuda, x1 - font.width(ayuda), y, TEXTO_SUAVE, false);
 		}
