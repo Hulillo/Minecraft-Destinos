@@ -286,6 +286,18 @@ final class MazmorrasMundo {
 	}
 
 	/** Las despertadas solas de noche a menos de r bloques de p, de la más cercana a la más lejana. */
+	/** Dónde están las mazmorras despiertas (x, z), para el modo Seguridad del mapa político. */
+	List<int[]> despiertasXZ() {
+		List<int[]> l = new ArrayList<>();
+		for (long c : despiertas) {
+			Mazmorra m = conocidas.get(c);
+			if (m != null) {
+				l.add(new int[] {m.x(), m.z()});
+			}
+		}
+		return l;
+	}
+
 	List<Mazmorra> nocturnas(ServerPlayer p, int r, int max) {
 		List<Mazmorra> l = new ArrayList<>();
 		for (long c : despiertas) {

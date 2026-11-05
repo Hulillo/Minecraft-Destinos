@@ -58,6 +58,18 @@ public final class HudEncargos {
 		t.append(Component.literal(" · ").withColor(0x9E9E9E));
 		t.append(Component.translatableWithFallback("destinos.encargo.hud", "%s m %s · %s d", d,
 				Component.translatableWithFallback("destinos.rumbo." + RUMBOS[rumbo], RUMBOS[rumbo].toUpperCase()), dias).withColor(0xD0D0D0));
+		if (a.y0() != PaqueteEncargos.SIN_ALTURA) {
+			// si está más arriba o más abajo que tú (con un margen, que la caja de la estructura es grande)
+			int py = mc.player.getBlockY();
+			t.append(Component.literal(" · ").withColor(0x9E9E9E));
+			if (py < a.y0() - 2) {
+				t.append(Component.translatableWithFallback("destinos.encargo.hud_arriba", "▲ %s m arriba", a.y0() - py).withColor(0x8FD0FF));
+			} else if (py > a.y1() + 2) {
+				t.append(Component.translatableWithFallback("destinos.encargo.hud_abajo", "▼ %s m abajo", py - a.y1()).withColor(0xFFB070));
+			} else {
+				t.append(Component.translatableWithFallback("destinos.encargo.hud_nivel", "● a tu altura").withColor(0x9FD08A));
+			}
+		}
 		return t;
 	}
 }

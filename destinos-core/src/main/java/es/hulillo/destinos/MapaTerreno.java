@@ -52,16 +52,26 @@ public final class MapaTerreno {
 	 * Lo que se sabe del terreno en el centro de una casilla. familia: tipo de bioma (desierto, selva, bosque…) para
 	 * que las fronteras prefieran los cambios de paisaje.
 	 */
-	public record Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia) {
-		/** altura + 1024 en los bits 0-11, mar 12, río 13, montaña 14, familia + 1 en 15-20, y el bit 30 de "leída". */
+	public record Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia, int bioma) {
+		/** Sin saber el bioma exacto (bioma: número de Biomas, o -1). */
+		public Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia) {
+			this(altura, oceano, rio, montana, familia, -1);
+		}
+
+		/**
+		 * altura + 1024 en los bits 0-11, mar 12, río 13, montaña 14, familia + 1 en 15-20, bioma + 1 en 21-29 y el
+		 * bit 30 de "leída".
+		 */
 		int empaqueta() {
 			int a = Math.max(0, Math.min(4095, altura + 1024));
 			int f = Math.max(0, Math.min(63, familia + 1));
-			return a | (oceano ? 1 << 12 : 0) | (rio ? 1 << 13 : 0) | (montana ? 1 << 14 : 0) | f << 15 | 1 << 30;
+			int b = Math.max(0, Math.min(511, bioma + 1));
+			return a | (oceano ? 1 << 12 : 0) | (rio ? 1 << 13 : 0) | (montana ? 1 << 14 : 0) | f << 15 | b << 21 | 1 << 30;
 		}
 
 		static Casilla desempaqueta(int v) {
-			return new Casilla((v & 4095) - 1024, (v & 1 << 12) != 0, (v & 1 << 13) != 0, (v & 1 << 14) != 0, (v >> 15 & 63) - 1);
+			return new Casilla((v & 4095) - 1024, (v & 1 << 12) != 0, (v & 1 << 13) != 0, (v & 1 << 14) != 0, (v >> 15 & 63) - 1,
+					(v >> 21 & 511) - 1);
 		}
 	}
 
@@ -116,7 +126,7 @@ public final class MapaTerreno {
 	 * núcleo donde sale un pueblo.
 	 */
 	private record Ventana(int[] dueno, boolean[] isla, boolean[] oceano, boolean[] dificil, int[] mar, int[] altura,
-			byte[] recurso, List<Semilla> semillas, int[] pueblos) {
+			byte[] recurso, byte[] tipo, short[] bioma, List<Semilla> semillas, int[] pueblos) {
 	}
 
 	/**
@@ -143,7 +153,8 @@ public final class MapaTerreno {
 	 * El núcleo de una ventana, listo para pintarlo en un mapa: cada casilla (i + j * NUCLEO, empezando en la
 	 * casilla wx * NUCLEO, wz * NUCLEO) apunta a una entrada de la paleta y lleva la altura del suelo.
 	 */
-	public record Zona(int wx, int wz, List<Entrada> paleta, short[] indice, short[] altura) {
+	/** bioma: número de Biomas de cada casilla (-1 si no se sabe). */
+	public record Zona(int wx, int wz, List<Entrada> paleta, short[] indice, short[] altura, byte[] tipo, short[] bioma) {
 	}
 
 	private final Muestreador muestreador;
@@ -164,6 +175,76 @@ public final class MapaTerreno {
 
 	public int sal() {
 		return sal;
+	}
+
+	/** Versión del fichero del terreno leído (si cambia el formato de Casilla, se sube y se ignoran los viejos). */
+	private static final int VERSION_FICHERO = 1;
+
+	/**
+	 * Guarda el terreno ya leído del generador (lo más caro de calcular), para que al volver a entrar en el mundo no
+	 * haya que leerlo otra vez. Los biomas van por nombre, porque sus números solo valen mientras el juego está abierto.
+	 */
+	public void guardaTerreno(java.nio.file.Path fichero) throws java.io.IOException {
+		java.nio.file.Files.createDirectories(fichero.getParent());
+		java.nio.file.Path temporal = fichero.resolveSibling(fichero.getFileName() + ".tmp");
+		try (java.io.DataOutputStream out = new java.io.DataOutputStream(new java.io.BufferedOutputStream(
+				new java.util.zip.GZIPOutputStream(java.nio.file.Files.newOutputStream(temporal))))) {
+			out.writeInt(VERSION_FICHERO);
+			out.writeInt(sal);
+			List<String> biomas = new ArrayList<>();
+			for (int n = 0; !Biomas.nombre(n).isEmpty(); n++) {
+				biomas.add(Biomas.nombre(n));
+			}
+			out.writeInt(biomas.size());
+			for (String b : biomas) {
+				out.writeUTF(b);
+			}
+			List<Map.Entry<Long, int[]>> regiones = new ArrayList<>(terrenoLeido.entrySet());
+			out.writeInt(regiones.size());
+			for (Map.Entry<Long, int[]> e : regiones) {
+				out.writeLong(e.getKey());
+				int[] r = e.getValue().clone();
+				for (int v : r) {
+					out.writeInt(v);
+				}
+			}
+		}
+		java.nio.file.Files.move(temporal, fichero, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+	}
+
+	/** Carga el terreno guardado por guardaTerreno, si es de este mundo (misma sal). Devuelve cuántas regiones. */
+	public int cargaTerreno(java.nio.file.Path fichero) throws java.io.IOException {
+		if (!java.nio.file.Files.exists(fichero)) {
+			return 0;
+		}
+		try (java.io.DataInputStream in = new java.io.DataInputStream(new java.io.BufferedInputStream(
+				new java.util.zip.GZIPInputStream(java.nio.file.Files.newInputStream(fichero))))) {
+			if (in.readInt() != VERSION_FICHERO || in.readInt() != sal) {
+				return 0;
+			}
+			int nb = in.readInt();
+			int[] numero = new int[nb];
+			for (int k = 0; k < nb; k++) {
+				numero[k] = Biomas.numero(in.readUTF());
+			}
+			int n = in.readInt();
+			for (int k = 0; k < n; k++) {
+				long clave = in.readLong();
+				int[] r = new int[NUCLEO * NUCLEO];
+				for (int c = 0; c < r.length; c++) {
+					int v = in.readInt();
+					// el bioma, al número que tiene ahora
+					int b = (v >> 21 & 511) - 1;
+					if (b >= 0) {
+						int nuevo = b < nb ? numero[b] : -1;
+						v = (v & ~(511 << 21)) | (Math.max(0, Math.min(511, nuevo + 1)) << 21);
+					}
+					r[c] = v;
+				}
+				terrenoLeido.putIfAbsent(clave, r);
+			}
+			return n;
+		}
 	}
 
 	/** Territorio de un punto. Bloquea hasta que su zona esté calculada (para pruebas y herramientas). */
@@ -250,6 +331,8 @@ public final class MapaTerreno {
 		LinkedHashMap<Entrada, Integer> paleta = new LinkedHashMap<>();
 		short[] indice = new short[NUCLEO * NUCLEO];
 		short[] altura = new short[NUCLEO * NUCLEO];
+		byte[] tipo = new byte[NUCLEO * NUCLEO];
+		short[] bioma = new short[NUCLEO * NUCLEO];
 		for (int j = 0; j < NUCLEO; j++) {
 			for (int i = 0; i < NUCLEO; i++) {
 				int x = (wx * NUCLEO + i) * CASILLA;
@@ -259,9 +342,11 @@ public final class MapaTerreno {
 				Entrada e = new Entrada(r, r.oceano() && v.mar()[k] > AGUAS_TERRITORIALES);
 				indice[i + j * NUCLEO] = (short) (int) paleta.computeIfAbsent(e, c -> paleta.size());
 				altura[i + j * NUCLEO] = (short) v.altura()[k];
+				tipo[i + j * NUCLEO] = v.tipo()[k];
+				bioma[i + j * NUCLEO] = v.bioma()[k];
 			}
 		}
-		return new Zona(wx, wz, List.copyOf(paleta.keySet()), indice, altura);
+		return new Zona(wx, wz, List.copyOf(paleta.keySet()), indice, altura, tipo, bioma);
 	}
 
 	/** Claves de las ventanas ya calculadas (sin error). */
@@ -360,6 +445,11 @@ public final class MapaTerreno {
 		return new Resultado(g[0], g[1], g[2], g[3], g[4] == 1, oceano);
 	}
 
+	/** Lo que el mapa político necesita del terreno de una casilla, en un byte: bit 0 río, bit 1 montaña, del 2 al 5 la familia del bioma. */
+	static byte tipo(Casilla c) {
+		return (byte) ((c.rio() ? 1 : 0) | (c.montana() ? 2 : 0) | (Math.min(15, c.familia()) << 2));
+	}
+
 	/** Ventana cuyo núcleo contiene la coordenada de bloque (en un eje). */
 	public static int indiceVentana(int bloque) {
 		return Math.floorDiv(Math.floorDiv(bloque, CASILLA), NUCLEO);
@@ -399,7 +489,11 @@ public final class MapaTerreno {
 		int[] altura = new int[total];
 		boolean[] dificil = new boolean[total];
 		byte[] recurso = new byte[total];
+		byte[] tipo = new byte[total];
+		short[] bioma = new short[total];
 		for (int k = 0; k < total; k++) {
+			tipo[k] = tipo(terreno[k]);
+			bioma[k] = (short) terreno[k].bioma();
 			isla[k] = !terreno[k].oceano() && mar[k] >= MAR_ISLA;
 			oceano[k] = terreno[k].oceano();
 			altura[k] = terreno[k].altura();
@@ -414,7 +508,7 @@ public final class MapaTerreno {
 		for (int p = 0; p < pueblos.length; p++) {
 			pueblos[p] = (Math.floorDiv(sitios.get(p)[0], CASILLA) - bx) + (Math.floorDiv(sitios.get(p)[1], CASILLA) - bz) * N;
 		}
-		return new Ventana(dueno, isla, oceano, dificil, mar, altura, recurso, semillas, pueblos);
+		return new Ventana(dueno, isla, oceano, dificil, mar, altura, recurso, tipo, bioma, semillas, pueblos);
 	}
 
 	// ------------------------------------------------------------------ capitales

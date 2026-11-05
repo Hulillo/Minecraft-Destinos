@@ -140,6 +140,11 @@ final class NombresPolitica {
 				.withStyle(st -> st.withHoverEvent(new HoverEvent.ShowText(coordenadas(c[0], c[1]))));
 	}
 
+	/** La cultura del reino ("norte", "desierto"…, como en culturas.py), o "" si el datapack aún no lo conoce. */
+	String cultura(MinecraftServer server, long reino) {
+		return registroReino(server, reino).getStringOr("cultura", "");
+	}
+
 	/** Nombre a secas de un reino ("Valmora"), con su color. */
 	private Component nombre(MinecraftServer server, long reino) {
 		CompoundTag r = registroReino(server, reino);

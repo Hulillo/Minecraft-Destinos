@@ -1177,8 +1177,11 @@ final class EncargosMundo {
 		Jugador j = jugadores.get(p.getUUID());
 		if (j != null && pol != null) {
 			for (Encargo e : j.activos) {
+				// en las mazmorras va también de qué altura a qué altura es la estructura (en cuevas importa subir o bajar)
+				Mazmorra m = e.tipo == Encargo.Tipo.mazmorra ? MazmorrasMundo.de(server).get(e.mazmorra) : null;
 				l.add(new PaqueteEncargos.Activo(titulo(server, pol, e.tipo, e.ducado, e.objetivo()), e.x, e.z, e.vence,
-						e.tipo == Encargo.Tipo.mazmorra ? PaqueteEncargos.CALAVERA : PaqueteEncargos.ROMBO));
+						e.tipo == Encargo.Tipo.mazmorra ? PaqueteEncargos.CALAVERA : PaqueteEncargos.ROMBO,
+						m == null ? PaqueteEncargos.SIN_ALTURA : m.minY, m == null ? PaqueteEncargos.SIN_ALTURA : m.maxY));
 			}
 		}
 		// las mazmorras despertadas solas de noche cerca, aunque no lleves su encargo
@@ -1187,7 +1190,8 @@ final class EncargosMundo {
 				if (j != null && j.activos.stream().anyMatch(e -> e.tipo == Encargo.Tipo.mazmorra && e.mazmorra == m.clave)) {
 					continue;
 				}
-				l.add(new PaqueteEncargos.Activo(MazmorrasMundo.nombre(server, m), m.x(), m.z(), m.hasta, PaqueteEncargos.CALAVERA_NOCHE));
+				l.add(new PaqueteEncargos.Activo(MazmorrasMundo.nombre(server, m), m.x(), m.z(), m.hasta, PaqueteEncargos.CALAVERA_NOCHE, m.minY,
+						m.maxY));
 			}
 		}
 		if (ServerPlayNetworking.canSend(p, PaqueteEncargos.TIPO)) {

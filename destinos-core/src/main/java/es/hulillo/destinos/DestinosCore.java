@@ -103,6 +103,7 @@ public final class DestinosCore implements ModInitializer {
 		});
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			Vigia.para();
+			guardaTerreno(server);
 			TiemposPiezas.escribe();
 			if (politica != null) {
 				politica.guarda(server);
@@ -119,6 +120,7 @@ public final class DestinosCore implements ModInitializer {
 			TablonesPueblos.olvida();
 			EncargosMundo.olvida();
 			MazmorrasMundo.olvida();
+			FaunaDucados.olvida();
 			mapaEnviado = null;
 			ENVIO.olvidaTodo();
 		});
@@ -214,6 +216,7 @@ public final class DestinosCore implements ModInitializer {
 		MapaTerreno m = mapa;
 		if (m == null || m.sal() != sal) {
 			m = new MapaTerreno(new MuestreadorMundo(server.overworld()), sal, HILO);
+			cargaTerreno(server, m);
 			mapa = m;
 		}
 		if (politica == null || politica.sal() != sal) {
@@ -246,7 +249,39 @@ public final class DestinosCore implements ModInitializer {
 		}
 		int sal = guardada != null ? guardada : salDeSemilla(level.getSeed());
 		// en un mundo nuevo el storage aún no existe aquí: la sal se guarda en SERVER_STARTED, antes del primer tick
-		mapa = new MapaTerreno(new MuestreadorMundo(level), sal, HILO);
+		MapaTerreno m = new MapaTerreno(new MuestreadorMundo(level), sal, HILO);
+		cargaTerreno(server, m);
+		mapa = m;
+	}
+
+	/** Dónde se guarda el terreno ya leído del generador, dentro de la carpeta del mundo. */
+	private static java.nio.file.Path ficheroTerreno(MinecraftServer server) {
+		return server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("data").resolve("destinos_terreno.dat");
+	}
+
+	/** Lee el terreno guardado: así el mapa de lo ya explorado sale al momento al volver a entrar. */
+	private static void cargaTerreno(MinecraftServer server, MapaTerreno m) {
+		try {
+			long t = System.nanoTime();
+			int n = m.cargaTerreno(ficheroTerreno(server));
+			if (n > 0) {
+				LOG.info("Destinos Core: terreno guardado cargado ({} regiones, {} ms)", n, (System.nanoTime() - t) / 1_000_000);
+			}
+		} catch (java.io.IOException | RuntimeException e) {
+			LOG.warn("Destinos Core: no se pudo leer el terreno guardado; se leerá otra vez del generador", e);
+		}
+	}
+
+	private static void guardaTerreno(MinecraftServer server) {
+		MapaTerreno m = mapa;
+		if (m == null) {
+			return;
+		}
+		try {
+			m.guardaTerreno(ficheroTerreno(server));
+		} catch (java.io.IOException | RuntimeException e) {
+			LOG.warn("Destinos Core: no se pudo guardar el terreno leído", e);
+		}
 	}
 
 	private static int salDeSemilla(long semilla) {

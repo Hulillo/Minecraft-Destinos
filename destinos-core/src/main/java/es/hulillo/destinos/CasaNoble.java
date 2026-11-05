@@ -153,9 +153,9 @@ public final class CasaNoble extends PiezaObra {
 		o.pon(-4, 1, v, Obra.mira(Blocks.SMOKER, Direction.NORTH));
 		o.pon(-3, 1, v, Obra.mira(Blocks.FURNACE, Direction.NORTH));
 		o.pon(-2, 1, v, Blocks.WATER_CAULDRON.defaultBlockState().setValue(BlockStateProperties.LEVEL_CAULDRON, 3));
-		o.pon(-1, 1, v, Blocks.BARREL);
+		o.tonel(-1, 1, v);
 		o.pon(0, 1, v, Blocks.CRAFTING_TABLE);
-		o.pon(1, 1, v, Blocks.BARREL);
+		o.tonel(1, 1, v);
 		o.pon(1, 2, v, Blocks.FLOWER_POT);
 		o.pon(-4, 1, 2, Blocks.HAY_BLOCK);
 		o.pon(-4, 2, 2, Blocks.PUMPKIN);
@@ -175,11 +175,11 @@ public final class CasaNoble extends PiezaObra {
 		o.caja(-2, y, -5, 1, y, -3, o.tinte("carpet", Blocks.RED_CARPET));
 		o.cama(-4, y, -4, Direction.WEST, o.tinte("bed", Blocks.RED_BED));
 		o.cama(-4, y, -3, Direction.WEST, o.tinte("bed", Blocks.RED_BED));
-		o.pon(-4, y, -5, Blocks.BARREL);
+		o.tonel(-4, y, -5);
 		o.pon(-4, y + 1, -5, Obra.velas(2));
-		o.pon(-4, y, -2, Blocks.BARREL);
+		o.tonel(-4, y, -2);
 		o.pon(-4, y + 1, -2, Blocks.LANTERN);
-		o.caja(4, y, -6, 4, y + 1, -5, Blocks.BARREL);
+		o.toneles(4, y, -6, 4, y + 1, -5);
 		o.pon(4, y, -3, Obra.mira(Blocks.CHEST, Direction.WEST));
 		o.mesa(1, -6, 2, -6, y, false);
 		o.silla(1, y, -5, Direction.SOUTH);
@@ -188,7 +188,7 @@ public final class CasaNoble extends PiezaObra {
 		o.caja(-4, y, 1, 0, y, 3, Blocks.BROWN_CARPET);
 		o.cama(-3, y, 5, Direction.SOUTH, Blocks.WHITE_BED);
 		o.cama(-1, y, 5, Direction.SOUTH, Blocks.WHITE_BED);
-		o.pon(-2, y, 5, Blocks.BARREL);
+		o.tonel(-2, y, 5);
 		o.pon(-2, y + 1, 5, Obra.velas(3));
 		o.pon(-4, y, 5, Obra.mira(Blocks.CHEST, Direction.EAST));
 		for (int v = 1; v <= PISO - 3; v++) {
@@ -203,14 +203,14 @@ public final class CasaNoble extends PiezaObra {
 		BlockState escala = Obra.mira(Blocks.LADDER, Direction.NORTH);
 		// pegada al poste de en medio de la pared de atrás, no delante de una ventana
 		o.caja(0, PISO + 1, LARGO - 1, 0, TEJADO, LARGO - 1, escala);
-		o.pon(-2, y, -5, Blocks.BARREL);
-		o.pon(-2, y + 1, -5, Blocks.BARREL);
-		o.pon(-1, y, -5, Blocks.BARREL);
+		o.tonel(-2, y, -5);
+		o.tonel(-2, y + 1, -5);
+		o.tonel(-1, y, -5);
 		o.pon(1, y, -5, Obra.mira(Blocks.CHEST, Direction.SOUTH));
 		o.pon(2, y, -4, Blocks.HAY_BLOCK);
 		o.pon(-2, y, -2, Obra.mira(Blocks.DECORATED_POT, Direction.EAST));
 		o.cama(0, y, 3, Direction.SOUTH, Blocks.WHITE_BED);
-		o.pon(-1, y, 3, Blocks.BARREL);
+		o.tonel(-1, y, 3);
 		o.pon(-1, y + 1, 3, Obra.velas(1));
 		o.caja(-1, y, -1, 1, y, 1, Blocks.BROWN_CARPET);
 		o.pon(0, TEJADO + 4, -3, Obra.farolColgado());

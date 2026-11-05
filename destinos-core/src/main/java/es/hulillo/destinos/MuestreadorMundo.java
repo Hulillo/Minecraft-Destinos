@@ -128,7 +128,7 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 		boolean oceano = b.is(BiomeTags.IS_OCEAN);
 		boolean rio = b.is(BiomeTags.IS_RIVER) || hayRioCerca(x, y, z);
 		boolean montana = b.is(BiomeTags.IS_MOUNTAIN) || suelo > nivelMar + 60;
-		return new MapaTerreno.Casilla(y, oceano, rio, montana, familia(b));
+		return new MapaTerreno.Casilla(y, oceano, rio, montana, familia(b), Biomas.numero(b.getRegisteredName()));
 	}
 
 	@Override
