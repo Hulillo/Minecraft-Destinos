@@ -18,6 +18,9 @@ final class RelieveMapa {
 	static final int LADO = N + 2 * ANILLO;
 	static final byte OCEANO = 1;
 	static final byte RIO = 2;
+	/** Casillas de río que en realidad son un lago (muchas juntas): se pintan como agua, no como rayas. */
+	static final byte LAGO = 4;
+	static final byte AGUA = OCEANO | LAGO;
 
 	/** Cada cuántos bloques va una curva de nivel, y cada cuántas una más marcada. */
 	private static final int CURVA = 24;
@@ -70,7 +73,56 @@ final class RelieveMapa {
 					m[c] = (byte) ((q.ducado(qi, qj).oceano() ? OCEANO : 0) | (q.rio(qi, qj) ? RIO : 0));
 				}
 			}
+			marcaLagos(m);
 			return new Rejilla(z.wx(), z.wz(), h, m);
+		}
+
+		/**
+		 * Un lago es un montón de casillas de río juntas: las que tienen río en 5 o más de sus 8 vecinas, y las de río
+		 * pegadas a esas (la orilla).
+		 */
+		private static void marcaLagos(byte[] m) {
+			boolean[] centro = new boolean[LADO * LADO];
+			for (int b = 0; b < LADO; b++) {
+				for (int a = 0; a < LADO; a++) {
+					if ((m[a + b * LADO] & RIO) != 0 && vecinasDeRio(m, a, b) >= 5) {
+						centro[a + b * LADO] = true;
+					}
+				}
+			}
+			for (int b = 0; b < LADO; b++) {
+				for (int a = 0; a < LADO; a++) {
+					int c = a + b * LADO;
+					if ((m[c] & RIO) == 0) {
+						continue;
+					}
+					boolean lago = centro[c];
+					for (int db = -1; db <= 1 && !lago; db++) {
+						for (int da = -1; da <= 1 && !lago; da++) {
+							int na = a + da;
+							int nb = b + db;
+							lago = na >= 0 && nb >= 0 && na < LADO && nb < LADO && centro[na + nb * LADO];
+						}
+					}
+					if (lago) {
+						m[c] |= LAGO;
+					}
+				}
+			}
+		}
+
+		private static int vecinasDeRio(byte[] m, int a, int b) {
+			int n = 0;
+			for (int db = -1; db <= 1; db++) {
+				for (int da = -1; da <= 1; da++) {
+					int na = a + da;
+					int nb = b + db;
+					if ((da != 0 || db != 0) && na >= 0 && nb >= 0 && na < LADO && nb < LADO && (m[na + nb * LADO] & RIO) != 0) {
+						n++;
+					}
+				}
+			}
+			return n;
 		}
 
 		/** Cuántas vecinas había al copiarla (si cambia, hay que rehacerla para que case en los bordes). */
@@ -187,24 +239,24 @@ final class RelieveMapa {
 		int holgura = (int) Math.ceil((TUERCE + TUERCE_FINO + MEANDRO) / CASILLA * k) + 2;
 		for (int b = 0; b < LADO; b++) {
 			for (int a = 0; a < LADO; a++) {
-				if (!r.es(a, b, RIO) || r.es(a, b, OCEANO)) {
+				if (!r.es(a, b, RIO) || r.es(a, b, AGUA)) {
 					continue;
 				}
 				boolean solo = true;
 				for (int[] d : new int[][] {{1, 0}, {0, 1}, {1, 1}, {-1, 1}, {-1, 0}, {0, -1}, {-1, -1}, {1, -1}}) {
 					int na = a + d[0];
 					int nb = b + d[1];
-					if (na < 0 || nb < 0 || na >= LADO || nb >= LADO || !(r.es(na, nb, RIO) || r.es(na, nb, OCEANO))) {
+					if (na < 0 || nb < 0 || na >= LADO || nb >= LADO || !(r.es(na, nb, RIO) || r.es(na, nb, AGUA))) {
 						continue;
 					}
 					solo = false;
-					boolean haciaMar = !r.es(na, nb, RIO);
+					boolean haciaMar = r.es(na, nb, AGUA) || !r.es(na, nb, RIO);
 					// hacia otro río solo en la mitad de las direcciones (la otra la pone el vecino)
 					if (!haciaMar && (d[1] < 0 || (d[1] == 0 && d[0] < 0))) {
 						continue;
 					}
 					// en diagonal solo si no hay ya un camino recto, para no hacer triángulos
-					if (d[0] != 0 && d[1] != 0 && (r.es(a + d[0], b, RIO) || r.es(a, b + d[1], RIO))) {
+					if (d[0] != 0 && d[1] != 0 && (r.es(a + d[0], b, (byte) (RIO | AGUA)) || r.es(a, b + d[1], (byte) (RIO | AGUA)))) {
 						continue;
 					}
 					// al mar se llega hasta la mitad, que de ahí sigue la costa
@@ -283,10 +335,10 @@ final class RelieveMapa {
 		int b0 = Math.max(0, Math.min(LADO - 2, (int) Math.floor(v)));
 		double tu = suave(Math.max(0, Math.min(1, u - a0)));
 		double tv = suave(Math.max(0, Math.min(1, v - b0)));
-		double m00 = r.es(a0, b0, OCEANO) ? 1 : 0;
-		double m10 = r.es(a0 + 1, b0, OCEANO) ? 1 : 0;
-		double m01 = r.es(a0, b0 + 1, OCEANO) ? 1 : 0;
-		double m11 = r.es(a0 + 1, b0 + 1, OCEANO) ? 1 : 0;
+		double m00 = r.es(a0, b0, AGUA) ? 1 : 0;
+		double m10 = r.es(a0 + 1, b0, AGUA) ? 1 : 0;
+		double m01 = r.es(a0, b0 + 1, AGUA) ? 1 : 0;
+		double m11 = r.es(a0 + 1, b0 + 1, AGUA) ? 1 : 0;
 		return (m00 * (1 - tu) + m10 * tu) * (1 - tv) + (m01 * (1 - tu) + m11 * tu) * tv;
 	}
 
