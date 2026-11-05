@@ -1,6 +1,8 @@
 package es.hulillo.destinos;
 
+import es.hulillo.destinos.politica.Gente;
 import es.hulillo.destinos.politica.Grafo;
+import es.hulillo.destinos.politica.Persona;
 import es.hulillo.destinos.politica.Politica;
 import es.hulillo.destinos.politica.Suceso;
 import java.util.HashMap;
@@ -46,7 +48,17 @@ final class NombresPolitica {
 			Map.entry(Suceso.Tipo.expansion, "⚜ Año %1$s · El %2$s reclama %4$s, antes tierra salvaje."),
 			Map.entry(Suceso.Tipo.capital, "♛ Año %1$s · ¡El %2$s toma %4$s, la capital del %3$s!"),
 			Map.entry(Suceso.Tipo.union, "❖ Año %1$s · El %2$s y el %3$s se unen: nace la %4$s."),
-			Map.entry(Suceso.Tipo.fin_union, "✧ Año %1$s · Se rompe la %4$s: el %2$s y el %3$s vuelven a ir cada uno por su lado."));
+			Map.entry(Suceso.Tipo.fin_union, "✧ Año %1$s · Se rompe la %4$s: el %2$s y el %3$s vuelven a ir cada uno por su lado."),
+			Map.entry(Suceso.Tipo.muerte, "✝ Año %1$s · Muere %5$s del %2$s (%7$s)."),
+			Map.entry(Suceso.Tipo.sucesion, "♛ Año %1$s · Sube al trono del %2$s %5$s."),
+			Map.entry(Suceso.Tipo.crisis, "⚠ Año %1$s · Sin heredero, el %2$s se tambalea: %5$s se hace con la corona."),
+			Map.entry(Suceso.Tipo.boda, "💍 Año %1$s · Boda de %5$s del %2$s y %6$s del %3$s: la alianza queda sellada."),
+			Map.entry(Suceso.Tipo.golpe, "⚔ Año %1$s · Golpe en el %2$s: %5$s derroca a %6$s."),
+			Map.entry(Suceso.Tipo.caido, "✝ Año %1$s · Cae en la guerra %5$s, del %2$s."),
+			Map.entry(Suceso.Tipo.herencia, "❖ Año %1$s · Una sola corona para el %2$s y el %3$s: la hereda %5$s."),
+			Map.entry(Suceso.Tipo.renombre, "★ Año %1$s · Nace una leyenda en el %2$s: %5$s."),
+			Map.entry(Suceso.Tipo.nacimiento, "✦ Año %1$s · Nace %5$s en la familia real del %2$s."),
+			Map.entry(Suceso.Tipo.asesinato, "☠ Año %1$s · Asesinato en el %2$s: %8$s mata a %5$s."));
 	/** Los mismos sucesos cuando han ayudado jugadores (%5$s: quiénes). */
 	private static final Map<Suceso.Tipo, String> RESPALDO_AYUDA = Map.of(
 			Suceso.Tipo.conquista, "⚑ Año %1$s · Con la ayuda de %5$s, el %2$s toma %4$s al %3$s.",
@@ -209,9 +221,138 @@ final class NombresPolitica {
 
 	// ------------------------------------------------------------------ sucesos
 
-	/** Alianzas, rupturas y expansiones: se escriben en gris y no suenan a cuerno. */
+	/** Alianzas, rupturas, expansiones, bodas y nacimientos: se escriben en gris y no suenan a cuerno. */
 	static boolean menor(Suceso.Tipo t) {
-		return t == Suceso.Tipo.alianza || t == Suceso.Tipo.ruptura || t == Suceso.Tipo.expansion;
+		return t == Suceso.Tipo.alianza || t == Suceso.Tipo.ruptura || t == Suceso.Tipo.expansion || t == Suceso.Tipo.boda
+				|| t == Suceso.Tipo.nacimiento || t == Suceso.Tipo.caido;
+	}
+
+	// ------------------------------------------------------------------ gente (v0.7)
+
+	/** Listas de nombres de cada cultura ("norte/m", "norte/casas"…, del storage destinos:tablas), para no leerlas cada vez. */
+	private final Map<String, List<String>> tablas = new HashMap<>();
+
+	/** Los nombres de la gente salen de las tablas del datapack y de los registros de los reinos. */
+	Gente.Fuente fuente(MinecraftServer server) {
+		return new Gente.Fuente() {
+			@Override
+			public String cultura(long reino) {
+				return NombresPolitica.this.cultura(server, reino);
+			}
+
+			@Override
+			public String casa(long reino) {
+				return registroReino(server, reino).getStringOr("casa", "");
+			}
+
+			@Override
+			public List<String> nombres(String cultura, boolean mujer) {
+				return lista(server, cultura, mujer ? "f" : "m");
+			}
+
+			@Override
+			public List<String> casas(String cultura) {
+				return lista(server, cultura, "casas");
+			}
+		};
+	}
+
+	private List<String> lista(MinecraftServer server, String cultura, String campo) {
+		String clave = cultura + "/" + campo;
+		List<String> res = tablas.get(clave);
+		if (res != null) {
+			return res;
+		}
+		net.minecraft.nbt.ListTag l = server.getCommandStorage().get(Identifier.fromNamespaceAndPath("destinos", "tablas"))
+				.getCompoundOrEmpty(cultura).getListOrEmpty(campo);
+		List<String> leida = new java.util.ArrayList<>(l.size());
+		for (int i = 0; i < l.size(); i++) {
+			String v = l.getStringOr(i, "");
+			if (!v.isEmpty()) {
+				leida.add(v);
+			}
+		}
+		// vacía si el datapack aún no la ha cargado: entonces no se guarda, para volver a mirar
+		if (!leida.isEmpty()) {
+			tablas.put(clave, List.copyOf(leida));
+		}
+		return leida;
+	}
+
+	/** Quién gobierna hoy un ducado: su duque, o el rey en la capital. */
+	record Senor(long ducado, Persona persona, boolean rey) {
+	}
+
+	/**
+	 * Los señores vivos de los ducados (la gente) pasan a los registros del datapack, para que el título al entrar
+	 * los nombre. Solo los ducados con registro y con señor; el storage se lee y se escribe una vez para todos.
+	 */
+	void fijaSenores(MinecraftServer server, List<Senor> senores) {
+		if (senores.isEmpty()) {
+			return;
+		}
+		CompoundTag mundo = server.getCommandStorage().get(MUNDO);
+		CompoundTag ducados = mundo.getCompoundOrEmpty("ducados");
+		boolean cambia = false;
+		for (Senor s : senores) {
+			String clave = "d" + Grafo.x(s.ducado()) + "_" + Grafo.z(s.ducado());
+			if (!ducados.contains(clave)) {
+				continue;
+			}
+			CompoundTag d = ducados.getCompoundOrEmpty(clave);
+			Persona x = s.persona();
+			// en la capital manda el rey: el título lo dice con destinos.titulo.<tipo>.rey_m / rey_f
+			String senor = s.rey() ? x.nombreCorto() : x.nombre;
+			String g = (s.rey() ? "rey_" : "") + (x.mujer ? "f" : "m");
+			if (d.getBooleanOr("salvaje", false) || (senor.equals(d.getStringOr("senor", "")) && g.equals(d.getStringOr("g", "")))) {
+				continue;
+			}
+			d.putString("senor", senor);
+			d.putString("g", g);
+			ducados.put(clave, d);
+			cambia = true;
+		}
+		if (cambia) {
+			mundo.put("ducados", ducados);
+			server.getCommandStorage().set(MUNDO, mundo);
+		}
+	}
+
+	/** "Aldric II el Bravo" (con su mote si lo tiene), con la casa, la edad y el carácter al pasar el ratón. */
+	static MutableComponent persona(Persona x, int anio) {
+		Component pista = pista(x, anio);
+		return nombre(x).withStyle(st -> st.withHoverEvent(new HoverEvent.ShowText(pista)).withColor(0xE8D9A8));
+	}
+
+	/** "Aldric II el Bravo": el nombre con su número y su mote, sin más. */
+	static MutableComponent nombre(Persona x) {
+		MutableComponent nombre = Component.literal(x.nombreCorto());
+		return x.mote == null ? nombre
+				: Component.translatableWithFallback("destinos.gente.nombre_mote", "%s %s", nombre,
+						Component.translatableWithFallback("destinos.gente.mote." + x.mote + "." + (x.mujer ? "f" : "m"), x.mote));
+	}
+
+	/** Lo que sale al pasar el ratón por alguien: casa, edad y carácter (o de qué murió). */
+	static Component pista(Persona x, int anio) {
+		return x.vivo()
+				? Component.translatableWithFallback("destinos.gente.pista", "Casa %s · %s años · %s y %s\nGuerra %s · Diplomacia %s · Intriga %s",
+						x.casa, x.edad(anio), rasgo(x, x.rasgo1), rasgo(x, x.rasgo2), x.guerra, x.diplomacia, x.intriga)
+				: Component.translatableWithFallback("destinos.gente.pista_muerto", "Casa %s · murió con %s años, %s", x.casa, x.edad(anio),
+						causa(x));
+	}
+
+	/** "el rey Aldric II", "la duquesa Elvira"… con el cargo de hoy (o el último que tuvo). */
+	static MutableComponent conTitulo(Persona x, int anio) {
+		return Component.translatableWithFallback("destinos.gente.titulo." + x.rol.name() + "." + (x.mujer ? "f" : "m"), "%s", persona(x, anio));
+	}
+
+	static Component rasgo(Persona x, Persona.Rasgo r) {
+		return Component.translatableWithFallback("destinos.gente.rasgo." + r.name() + "." + (x.mujer ? "f" : "m"), r.name());
+	}
+
+	static Component causa(Persona x) {
+		String c = x.causa == null ? "enfermedad" : x.causa.name();
+		return Component.translatableWithFallback("destinos.gente.causa." + c, c);
 	}
 
 	/** El texto de un suceso: "⚔ Año 3 · El Reino de A declara la guerra al Reino de B." */
@@ -221,6 +362,9 @@ final class NombresPolitica {
 		Component d = s.tipo() == Suceso.Tipo.union || s.tipo() == Suceso.Tipo.fin_union
 				? nombreUnion(server, s.reinoA(), s.reinoB())
 				: s.ducado() == Politica.NADIE ? Component.empty() : ducado(server, s.ducado());
+		if (s.personaA() != Persona.NADIE) {
+			return textoGente(server, s, a, b, d);
+		}
 		String ayuda = s.ayuda() != null ? RESPALDO_AYUDA.get(s.tipo()) : null;
 		MutableComponent t = ayuda != null
 				// sucesos en los que han ayudado jugadores (campamentos arrasados, cartas entregadas): sale quién
@@ -228,6 +372,36 @@ final class NombresPolitica {
 						Component.literal(s.ayuda()).withStyle(ChatFormatting.GOLD))
 				: Component.translatableWithFallback("destinos.politica." + s.tipo().name(), RESPALDO.get(s.tipo()), s.anio(), a, b, d);
 		return t.withStyle(menor(s.tipo()) ? ChatFormatting.GRAY : ChatFormatting.WHITE);
+	}
+
+	/** La política del mundo, para pintar la gente de la crónica; null hasta que se fija. */
+	private Politica politica;
+
+	void fijaPolitica(Politica politica) {
+		this.politica = politica;
+	}
+
+	/** Un suceso con personas: %5$s y %6$s son la gente con su título, %7$s la causa de la muerte y %8$s quién (jugadores). */
+	private Component textoGente(MinecraftServer server, Suceso s, Component a, Component b, Component d) {
+		Gente gente = politica == null ? null : politica.gente();
+		int anio = politica == null ? s.anio() : politica.anio();
+		Persona pa = gente == null ? null : gente.persona(s.personaA());
+		Persona pb = gente == null || s.personaB() == Persona.NADIE ? null : gente.persona(s.personaB());
+		Component x = pa == null ? Component.literal("?") : conTitulo(pa, anio);
+		Component y = pb == null ? Component.empty() : conTitulo(pb, anio);
+		Component causa = pa == null ? Component.empty() : causa(pa);
+		Component quien = Component.literal(s.ayuda() == null ? "?" : s.ayuda()).withStyle(ChatFormatting.GOLD);
+		String clave = s.tipo().name();
+		String respaldo = RESPALDO.get(s.tipo());
+		if (s.tipo() == Suceso.Tipo.boda && s.reinoB() == Politica.NADIE) {
+			clave = "boda_noble";
+			respaldo = "💍 Año %1$s · Boda en el %2$s: %5$s se casa con %6$s.";
+		} else if (s.tipo() == Suceso.Tipo.caido && s.ducado() != Politica.NADIE) {
+			clave = "caido_ducado";
+			respaldo = "✝ Año %1$s · Cae %5$s, del %2$s, luchando por %4$s.";
+		}
+		return Component.translatableWithFallback("destinos.politica." + clave, respaldo, s.anio(), a, b, d, x, y, causa, quien)
+				.withStyle(menor(s.tipo()) ? ChatFormatting.GRAY : ChatFormatting.WHITE);
 	}
 
 	/** " (a 1800 bloques al NE)" desde el jugador hasta donde pasa el suceso; vacío si no está en el mundo normal. */

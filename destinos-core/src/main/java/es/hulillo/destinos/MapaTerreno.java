@@ -184,7 +184,8 @@ public final class MapaTerreno {
 	 * Guarda el terreno ya leído del generador (lo más caro de calcular), para que al volver a entrar en el mundo no
 	 * haya que leerlo otra vez. Los biomas van por nombre, porque sus números solo valen mientras el juego está abierto.
 	 */
-	public void guardaTerreno(java.nio.file.Path fichero) throws java.io.IOException {
+	public synchronized void guardaTerreno(java.nio.file.Path fichero) throws java.io.IOException {
+		long leidasAhora = leidas.get();
 		java.nio.file.Files.createDirectories(fichero.getParent());
 		java.nio.file.Path temporal = fichero.resolveSibling(fichero.getFileName() + ".tmp");
 		try (java.io.DataOutputStream out = new java.io.DataOutputStream(new java.io.BufferedOutputStream(
@@ -210,6 +211,23 @@ public final class MapaTerreno {
 			}
 		}
 		java.nio.file.Files.move(temporal, fichero, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+		guardadas = leidasAhora;
+	}
+
+	/** Casillas leídas del generador desde que se abrió el mundo, y cuántas había en el último guardado. */
+	private final java.util.concurrent.atomic.AtomicLong leidas = new java.util.concurrent.atomic.AtomicLong();
+	private long guardadas;
+
+	/**
+	 * Guarda el terreno solo si se ha leído algo nuevo desde la última vez (para el guardado cada pocos minutos, que
+	 * así no se pierde lo explorado si el juego se cierra de golpe). Devuelve si ha escrito.
+	 */
+	public synchronized boolean guardaSiCambia(java.nio.file.Path fichero) throws java.io.IOException {
+		if (leidas.get() == guardadas) {
+			return false;
+		}
+		guardaTerreno(fichero);
+		return true;
 	}
 
 	/** Carga el terreno guardado por guardaTerreno, si es de este mundo (misma sal). Devuelve cuántas regiones. */
@@ -242,6 +260,16 @@ public final class MapaTerreno {
 					r[c] = v;
 				}
 				terrenoLeido.putIfAbsent(clave, r);
+				// una región leída entera es el núcleo de una ventana que ya se había calculado: se rehará sola
+				int llenas = 0;
+				for (int v : r) {
+					if (v != 0) {
+						llenas++;
+					}
+				}
+				if (llenas * 10 >= r.length * 9) {
+					porRehacer.add(clave);
+				}
 			}
 			return n;
 		}
@@ -275,6 +303,32 @@ public final class MapaTerreno {
 		for (int ox = -1; ox <= 1; ox++) {
 			for (int oz = -1; oz <= 1; oz++) {
 				ventana(wx + ox, wz + oz);
+			}
+		}
+	}
+
+	/** Ventanas que ya se habían calculado en otra partida (su terreno está guardado), por rehacer al volver. */
+	private final java.util.concurrent.ConcurrentLinkedQueue<Long> porRehacer = new java.util.concurrent.ConcurrentLinkedQueue<>();
+
+	/**
+	 * Al volver a entrar en el mundo, el mapa de lo ya explorado: rehace de una en una (y solo cuando no hay otra
+	 * calculándose, para no quitar sitio a lo de alrededor del jugador) las ventanas cuyo terreno estaba guardado.
+	 * Con el terreno ya leído van rápidas. Se llama cada pocos segundos.
+	 */
+	public void rehaceGuardadas() {
+		if (porRehacer.isEmpty()) {
+			return;
+		}
+		for (CompletableFuture<Ventana> f : ventanas.values()) {
+			if (!f.isDone()) {
+				return;
+			}
+		}
+		Long clave;
+		while ((clave = porRehacer.poll()) != null) {
+			if (!ventanas.containsKey(clave)) {
+				ventana(Geo.claveX(clave), Geo.claveZ(clave));
+				return;
 			}
 		}
 	}
@@ -586,6 +640,7 @@ public final class MapaTerreno {
 		Casilla c = muestreador.muestra(ti * CASILLA + CASILLA / 2, tj * CASILLA + CASILLA / 2);
 		// dos hilos pueden leer la misma casilla a la vez: escriben lo mismo
 		region[k] = c.empaqueta();
+		leidas.incrementAndGet();
 		return c;
 	}
 

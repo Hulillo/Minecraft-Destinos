@@ -28,6 +28,7 @@ public final class PruebaPolitica {
 			empujon(sal);
 			embajada(sal);
 		}
+		gente();
 		System.out.println("OK: política reproducible, reino protegido a salvo y mapa vivo sin caos");
 	}
 
@@ -113,7 +114,76 @@ public final class PruebaPolitica {
 		if (reinosDespues * 2 < reinosAntes) {
 			falla("sal " + sal + ": han desaparecido más de la mitad de los reinos (caos)");
 		}
-		return String.join("\n", registro) + p.cambios();
+		StringBuilder gente = new StringBuilder();
+		p.gente().todas().forEach(x -> gente.append(x).append('\n'));
+		return String.join("\n", registro) + p.cambios() + gente + p.gente().reyes();
+	}
+
+	/**
+	 * v0.7 Gente: en 40 años cada reino vivo tiene siempre un rey vivo, los reyes mueren y heredan según su ley,
+	 * hay bodas, y los muertos no siguen reinando ni gobernando ducados.
+	 */
+	private static void gente() {
+		Map<Suceso.Tipo, Integer> total = new EnumMap<>(Suceso.Tipo.class);
+		for (int sal : new int[] {184467221, 99, 1999999999, -123456}) {
+			Grafo g = grafo(sal);
+			Politica p = new Politica(sal);
+			List<Suceso> todos = new ArrayList<>();
+			for (int t = 1; t <= 40 * Politica.TURNOS_POR_ANIO; t++) {
+				p.turno(g, s -> {
+					total.merge(s.tipo(), 1, Integer::sum);
+					todos.add(s);
+				});
+				for (long reino : p.reinosVivos(g)) {
+					es.hulillo.destinos.politica.Persona rey = p.gente().rey(reino);
+					if (rey == null || !rey.vivo() || rey.rol != es.hulillo.destinos.politica.Persona.Rol.rey) {
+						falla("sal " + sal + ", turno " + t + ": el reino " + reino + " se ha quedado sin rey vivo (" + rey + ")");
+					}
+				}
+				p.gente().duques().forEach((d, id) -> {
+					es.hulillo.destinos.politica.Persona x = p.gente().persona(id);
+					if (x == null || !x.vivo() || x.ducado != d || p.dueno(g.ducado(d)) != x.reino) {
+						falla("sal " + sal + ": el ducado " + d + " tiene un duque que no vale (" + x + ")");
+					}
+				});
+			}
+			// el árbol de cada rey: él en el centro, sin repetidos, sus hijos debajo y sus padres encima
+			for (long reino : p.reinosVivos(g)) {
+				es.hulillo.destinos.politica.Persona rey = p.gente().rey(reino);
+				List<es.hulillo.destinos.politica.Gente.Rama> arbol = p.gente().arbol(rey.id);
+				java.util.Set<Integer> vistos = new java.util.HashSet<>();
+				boolean esta = false;
+				for (es.hulillo.destinos.politica.Gente.Rama r : arbol) {
+					es.hulillo.destinos.politica.Persona x = r.persona();
+					if (!vistos.add(x.id)) {
+						falla("sal " + sal + ": el árbol de " + rey + " repite a " + x);
+					}
+					esta |= x.id == rey.id && r.generacion() == 0;
+					if (r.generacion() == 1 && x.padre != rey.id && x.madre != rey.id) {
+						falla("sal " + sal + ": en el árbol de " + rey + " sale como hijo " + x);
+					}
+					if (r.generacion() == -1 && x.id != rey.padre && x.id != rey.madre) {
+						falla("sal " + sal + ": en el árbol de " + rey + " sale como padre " + x);
+					}
+				}
+				if (!esta || arbol.size() > es.hulillo.destinos.politica.Gente.MAX_ARBOL) {
+					falla("sal " + sal + ": el árbol de " + rey + " no vale (" + arbol.size() + " personas)");
+				}
+			}
+			for (Suceso s : p.cronica()) {
+				if (s.personaA() != es.hulillo.destinos.politica.Persona.NADIE && p.gente().persona(s.personaA()) == null) {
+					falla("sal " + sal + ": la crónica nombra a alguien olvidado (" + s + ")");
+				}
+			}
+			System.out.println("sal " + sal + ": " + p.gente().personas().size() + " personas, " + p.gente().reinados().size()
+					+ " reinados en 40 años");
+		}
+		System.out.println("gente: " + total);
+		for (Suceso.Tipo t : new Suceso.Tipo[] {Suceso.Tipo.muerte, Suceso.Tipo.sucesion, Suceso.Tipo.boda, Suceso.Tipo.nacimiento}) {
+			if (total.getOrDefault(t, 0) == 0) {
+				falla("en 40 años no ha habido ningún suceso de " + t);
+			}
+		}
 	}
 
 	/**

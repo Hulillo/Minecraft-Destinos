@@ -1,5 +1,7 @@
 package es.hulillo.destinos;
 
+import es.hulillo.destinos.politica.Gente;
+import es.hulillo.destinos.politica.Persona;
 import es.hulillo.destinos.politica.Politica;
 import es.hulillo.destinos.politica.Suceso;
 import java.util.Map;
@@ -72,6 +74,12 @@ final class GuardadoPolitica {
 			if (s.ayuda() != null) {
 				c.putString("ayuda", s.ayuda());
 			}
+			if (s.personaA() != Persona.NADIE) {
+				c.putInt("pa", s.personaA());
+			}
+			if (s.personaB() != Persona.NADIE) {
+				c.putInt("pb", s.personaB());
+			}
 			cronica.add(c);
 		}
 		t.put("cronica", cronica);
@@ -93,7 +101,131 @@ final class GuardadoPolitica {
 			embajadas.add(c);
 		});
 		t.put("embajadas", embajadas);
+		t.put("gente", guardaGente(p.gente()));
 		return t;
+	}
+
+	private static CompoundTag guardaGente(Gente g) {
+		CompoundTag t = new CompoundTag();
+		t.putInt("siguiente", g.siguiente());
+		ListTag personas = new ListTag();
+		for (Persona x : g.personas().values()) {
+			CompoundTag c = new CompoundTag();
+			c.putInt("id", x.id);
+			c.putString("nombre", x.nombre);
+			c.putString("casa", x.casa);
+			c.putString("cultura", x.cultura);
+			c.putBoolean("mujer", x.mujer);
+			c.putInt("nace", x.nace);
+			c.putString("rol", x.rol.name());
+			c.putLong("reino", x.reino);
+			if (x.ducado != Politica.NADIE) {
+				c.putLong("ducado", x.ducado);
+			}
+			intSi(c, "padre", x.padre, Persona.NADIE);
+			intSi(c, "madre", x.madre, Persona.NADIE);
+			intSi(c, "conyuge", x.conyuge, Persona.NADIE);
+			c.putString("r1", x.rasgo1.name());
+			c.putString("r2", x.rasgo2.name());
+			c.putInt("guerra", x.guerra);
+			c.putInt("diplomacia", x.diplomacia);
+			c.putInt("intriga", x.intriga);
+			intSi(c, "fama", x.fama, 0);
+			intSi(c, "lealtad", x.lealtad, 60);
+			intSi(c, "ordinal", x.ordinal, 0);
+			if (x.mote != null) {
+				c.putString("mote", x.mote);
+			}
+			intSi(c, "muere", x.muere, 0);
+			if (x.causa != null) {
+				c.putString("causa", x.causa.name());
+			}
+			personas.add(c);
+		}
+		t.put("personas", personas);
+		t.put("reyes", cargos(g.reyes()));
+		t.put("duques", cargos(g.duques()));
+		t.put("generales", cargos(g.generales()));
+		t.put("consejeros", cargos(g.consejeros()));
+		ListTag reinados = new ListTag();
+		for (Gente.Reinado r : g.reinados()) {
+			CompoundTag c = new CompoundTag();
+			c.putLong("reino", r.reino());
+			c.putInt("p", r.persona());
+			c.putInt("desde", r.desde());
+			c.putInt("hasta", r.hasta());
+			reinados.add(c);
+		}
+		t.put("reinados", reinados);
+		return t;
+	}
+
+	/** Solo guarda el valor si no es el de por defecto (el mismo que pone la carga): la gente ocupa casi un cuarto menos. */
+	private static void intSi(CompoundTag c, String clave, int valor, int porDefecto) {
+		if (valor != porDefecto) {
+			c.putInt(clave, valor);
+		}
+	}
+
+	private static ListTag cargos(Map<Long, Integer> mapa) {
+		ListTag l = new ListTag();
+		mapa.forEach((k, id) -> {
+			CompoundTag c = new CompoundTag();
+			c.putLong("k", k);
+			c.putInt("p", id);
+			l.add(c);
+		});
+		return l;
+	}
+
+	private static void leeCargos(ListTag l, Map<Long, Integer> mapa) {
+		for (int i = 0; i < l.size(); i++) {
+			CompoundTag c = l.getCompoundOrEmpty(i);
+			mapa.put(c.getLongOr("k", 0), c.getIntOr("p", Persona.NADIE));
+		}
+	}
+
+	private static <E extends Enum<E>> E enumeracion(Class<E> tipo, String nombre, E porDefecto) {
+		try {
+			return Enum.valueOf(tipo, nombre);
+		} catch (IllegalArgumentException e) {
+			return porDefecto;
+		}
+	}
+
+	private static void cargaGente(CompoundTag t, Gente g) {
+		ListTag personas = t.getListOrEmpty("personas");
+		for (int i = 0; i < personas.size(); i++) {
+			CompoundTag c = personas.getCompoundOrEmpty(i);
+			Persona x = new Persona(c.getIntOr("id", 0), c.getStringOr("nombre", "?"), c.getStringOr("casa", "?"),
+					c.getStringOr("cultura", "llanura"), c.getBooleanOr("mujer", false), c.getIntOr("nace", 0),
+					enumeracion(Persona.Rol.class, c.getStringOr("rol", ""), Persona.Rol.sin_cargo), c.getLongOr("reino", Politica.NADIE),
+					enumeracion(Persona.Rasgo.class, c.getStringOr("r1", ""), Persona.Rasgo.justo),
+					enumeracion(Persona.Rasgo.class, c.getStringOr("r2", ""), Persona.Rasgo.astuto), c.getIntOr("guerra", 5),
+					c.getIntOr("diplomacia", 5), c.getIntOr("intriga", 5));
+			x.ducado = c.getLongOr("ducado", Politica.NADIE);
+			x.padre = c.getIntOr("padre", Persona.NADIE);
+			x.madre = c.getIntOr("madre", Persona.NADIE);
+			x.conyuge = c.getIntOr("conyuge", Persona.NADIE);
+			x.fama = c.getIntOr("fama", 0);
+			x.lealtad = c.getIntOr("lealtad", 60);
+			x.ordinal = c.getIntOr("ordinal", 0);
+			x.mote = c.getString("mote").orElse(null);
+			x.muere = c.getIntOr("muere", 0);
+			x.causa = c.getString("causa").map(n -> enumeracion(Persona.Muerte.class, n, Persona.Muerte.enfermedad)).orElse(null);
+			g.restaura(x);
+		}
+		g.fijaSiguiente(t.getIntOr("siguiente", 1));
+		leeCargos(t.getListOrEmpty("reyes"), g.reyes());
+		leeCargos(t.getListOrEmpty("duques"), g.duques());
+		leeCargos(t.getListOrEmpty("generales"), g.generales());
+		leeCargos(t.getListOrEmpty("consejeros"), g.consejeros());
+		ListTag reinados = t.getListOrEmpty("reinados");
+		for (int i = 0; i < reinados.size(); i++) {
+			CompoundTag c = reinados.getCompoundOrEmpty(i);
+			g.reinados().add(new Gente.Reinado(c.getLongOr("reino", 0), c.getIntOr("p", Persona.NADIE), c.getIntOr("desde", 1),
+					c.getIntOr("hasta", 0)));
+		}
 	}
 
 	/** Null si no hay nada guardado para esta sal. */
@@ -138,7 +270,7 @@ final class GuardadoPolitica {
 			try {
 				p.cronica().addLast(new Suceso(Suceso.Tipo.valueOf(c.getStringOr("tipo", "")), c.getIntOr("anio", 1),
 						c.getLongOr("a", Politica.NADIE), c.getLongOr("b", Politica.NADIE), c.getLongOr("ducado", Politica.NADIE),
-						c.getString("ayuda").orElse(null)));
+						c.getString("ayuda").orElse(null), c.getIntOr("pa", Persona.NADIE), c.getIntOr("pb", Persona.NADIE)));
 			} catch (IllegalArgumentException e) {
 				// suceso de otra versión: se salta
 			}
@@ -154,6 +286,7 @@ final class GuardadoPolitica {
 			CompoundTag c = embajadas.getCompoundOrEmpty(i);
 			p.embajadas().put(Politica.Par.de(c.getLongOr("a", 0), c.getLongOr("b", 0)), c.getStringOr("ayuda", "?"));
 		}
+		cargaGente(t.getCompoundOrEmpty("gente"), p.gente());
 		return new Cargado(p, t.getLongOr("siguiente", 0), t.getIntOr("ticks_turno", 0));
 	}
 

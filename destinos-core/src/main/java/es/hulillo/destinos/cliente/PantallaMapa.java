@@ -5,7 +5,9 @@ import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.Estandarte;
 import es.hulillo.destinos.Geo;
 import es.hulillo.destinos.MapaTerreno;
+import es.hulillo.destinos.PaqueteArbol;
 import es.hulillo.destinos.PaqueteFichas;
+import es.hulillo.destinos.PaquetePedirArbol;
 import es.hulillo.destinos.PaquetePedirMapa;
 import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTerritorio;
@@ -19,6 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.ChatFormatting;
@@ -491,6 +494,33 @@ public final class PantallaMapa extends Screen {
 				}
 			}
 		}
+		if (e.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT && e.x() >= panelX) {
+			for (BotonFicha b : botonesFicha) {
+				if (b.dentro(e.x(), e.y())) {
+					b.accion().run();
+					clic();
+					return true;
+				}
+			}
+		}
+		if (arbolAbierto && e.x() >= x0 && e.x() < x1 && e.y() >= y0 && e.y() < y1) {
+			// el árbol tapa el mapa: sus clics son suyos
+			if (e.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+				if (dentro(cerrarArbol, e.x(), e.y())) {
+					cierraArbol();
+					clic();
+				} else {
+					for (Caja c : cajas) {
+						if (c.dentro(e.x(), e.y()) && arbol != null && c.m().id() != arbol.centro()) {
+							ClientPlayNetworking.send(new PaquetePedirArbol(arbol.kx(), arbol.kz(), c.m().id()));
+							clic();
+							break;
+						}
+					}
+				}
+			}
+			return true;
+		}
 		if (super.mouseClicked(e, doble)) {
 			return true;
 		}
@@ -554,8 +584,12 @@ public final class PantallaMapa extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mx, double my, double sx, double sy) {
+		if (arbolAbierto && mx < panelX) {
+			return true;
+		}
 		if (mx >= panelX && sy != 0) {
-			// la rueda sobre la ficha pasa la crónica: arriba lo más reciente
+			// la rueda sobre la ficha pasa la crónica (y salta a su pestaña): arriba lo más reciente
+			pestanaFicha = 2;
 			scrollCronica = Math.max(0, Math.min(Math.max(0, cronicaTotal - 1), scrollCronica - (int) Math.signum(sy)));
 			return true;
 		}
@@ -595,6 +629,10 @@ public final class PantallaMapa extends Screen {
 		}
 		if (tutorial) {
 			cierraTutorial();
+			return true;
+		}
+		if (arbolAbierto && e.key() == GLFW.GLFW_KEY_ESCAPE) {
+			cierraArbol();
 			return true;
 		}
 		if (e.key() == GLFW.GLFW_KEY_H) {
@@ -693,14 +731,18 @@ public final class PantallaMapa extends Screen {
 			g.drawString(font, c, (int) cx() - font.width(c) / 2, (int) cy(), TINTA, false);
 		}
 		leyenda(g);
-		PaqueteTerritorio.Ducado d = bajo(mx, my);
-		ficha(g, d);
+		Caja enArbol = arbolAbierto ? pintaArbol(g, mx, my) : null;
+		PaqueteTerritorio.Ducado d = arbolAbierto ? null : bajo(mx, my);
+		ficha(g, d, mx, my);
 		g.drawString(font, Component.translatableWithFallback("destinos.mapa.modos", "Modos"), 10, y0 - 11, TEXTO_SUAVE, false);
 		pintaBotones(g, mx, my);
 		super.render(g, mx, my, pt);
 		if (tutorial) {
 			g.nextStratum();
 			pintaTutorial(g);
+		} else if (enArbol != null) {
+			g.nextStratum();
+			pistaArbol(g, enArbol, mx, my);
 		} else if (d != null && !arrastra) {
 			g.nextStratum();
 			pista(g, d, mx, my);
@@ -1339,6 +1381,7 @@ public final class PantallaMapa extends Screen {
 
 	@Override
 	public void removed() {
+		cierraArbol();
 		focoX = Double.NaN;
 		focoZ = Double.NaN;
 		pinturas.values().forEach(Pintura::suelta);
@@ -2007,7 +2050,7 @@ public final class PantallaMapa extends Screen {
 		return d == null || d.salvaje() || d.deNadie() ? null : FichasCliente.reino(d.kx(), d.kz());
 	}
 
-	private void ficha(GuiGraphics g, PaqueteTerritorio.Ducado bajo) {
+	private void ficha(GuiGraphics g, PaqueteTerritorio.Ducado bajo, int mx, int my) {
 		int x = panelX;
 		int ancho = width - 8 - panelX;
 		g.fill(x - 2, y0 - 3, x + ancho + 2, y1 + 3, MARCO);
@@ -2016,11 +2059,13 @@ public final class PantallaMapa extends Screen {
 		int w = ancho - 14;
 		int y = y0 + 7;
 		if (!FichasCliente.hay()) {
+			sinBotonesFicha();
 			g.drawString(font, Component.translatableWithFallback("destinos.mapa.cargando", "Cargando fichas…"), tx, y, TEXTO_SUAVE, false);
 			return;
 		}
 		PaqueteFichas.Reino r = reinoFicha(bajo);
 		if (r == null) {
+			sinBotonesFicha();
 			for (FormattedCharSequence l : font.split(Component.translatableWithFallback("destinos.mapa.sin_ficha",
 					"Pasa el ratón por un reino para ver su ficha, o haz clic para dejarla fija."), w)) {
 				g.drawString(font, l, tx, y, TEXTO_SUAVE, false);
@@ -2038,18 +2083,228 @@ public final class PantallaMapa extends Screen {
 			scrollCronica = 0;
 		}
 		cronicaTotal = r.cronica().size();
-		String clave = kx + "," + kz + "," + scrollCronica + "," + (fijado != Long.MIN_VALUE) + "," + tx + "," + w + "," + y1 + "," + FichasCliente.version();
+		String clave = kx + "," + kz + "," + scrollCronica + "," + pestanaFicha + "," + (fijado != Long.MIN_VALUE) + "," + tx + "," + w + "," + y1 + "," + FichasCliente.version();
 		if (clave.equals(fichaClave)) {
 			for (Trazo t : fichaTrazos) {
 				g.drawString(font, t.texto(), t.x(), t.y(), t.color(), false);
 			}
-			return;
+		} else {
+			fichaClave = clave;
+			fichaTrazos.clear();
+			grabando = fichaTrazos;
+			fichaReino(g, r, tx, y, w);
+			grabando = null;
 		}
-		fichaClave = clave;
-		fichaTrazos.clear();
-		grabando = fichaTrazos;
-		fichaReino(g, r, tx, y, w);
-		grabando = null;
+		// las pestañas y botones de la ficha no se graban con el texto: se pintan cada frame (cambian con el ratón)
+		pintaBotonesFicha(g, mx, my);
+	}
+
+	// ------------------------------------------------------------------ árbol familiar (v0.7 Gente)
+
+	/** El árbol que ha mandado el servidor (null mientras llega), y si está abierto encima del mapa. */
+	private static PaqueteArbol arbol;
+	private static boolean arbolAbierto;
+	/** Las cajas del árbol pintadas este frame, para los clics y la pista. */
+	private final List<Caja> cajas = new ArrayList<>();
+	/** El botón de cerrar el árbol (x, y, w, h). */
+	private final int[] cerrarArbol = new int[4];
+	private static final int ARBOL_HUECO = 6;
+	private static final int ARBOL_LINEA = 0xFF9C7A45;
+
+	/** Una persona pintada en el árbol. */
+	private record Caja(PaqueteArbol.Miembro m, int x, int y, int w, int h) {
+		boolean dentro(double mx, double my) {
+			return mx >= x && mx < x + w && my >= y && my < y + h;
+		}
+
+		int centro() {
+			return x + w / 2;
+		}
+	}
+
+	public static void recibeArbol(PaqueteArbol p) {
+		if (arbolAbierto) {
+			arbol = p;
+		}
+	}
+
+	private static void abreArbol(int kx, int kz) {
+		arbolAbierto = true;
+		arbol = null;
+		ClientPlayNetworking.send(PaquetePedirArbol.delRey(kx, kz));
+	}
+
+	private static void cierraArbol() {
+		arbolAbierto = false;
+		arbol = null;
+	}
+
+	private static boolean dentro(int[] r, double mx, double my) {
+		return mx >= r[0] && mx < r[0] + r[2] && my >= r[1] && my < r[1] + r[3];
+	}
+
+	/**
+	 * El árbol encima del mapa: una fila por generación (abuelos arriba, nietos abajo), cada hijo unido a sus padres
+	 * y cada pareja con una raya. Corona dorada: reina hoy; corona clara: reinó. En gris, los muertos. Devuelve la
+	 * caja que hay bajo el ratón (para su pista), o null.
+	 */
+	private Caja pintaArbol(GuiGraphics g, int mx, int my) {
+		cajas.clear();
+		g.fill(x0, y0, x1, y1, 0xF2181410);
+		Component titulo = arbol == null ? Component.translatableWithFallback("destinos.gente.arbol.cargando", "Buscando el árbol…")
+				: Component.translatableWithFallback("destinos.gente.arbol.titulo", "Árbol familiar · casa %s", arbol.casa());
+		g.drawString(font, titulo.copy().withStyle(ChatFormatting.BOLD), x0 + 8, y0 + 8, ORO, false);
+		g.drawString(font, Component.translatableWithFallback("destinos.gente.arbol.ayuda",
+				"Clic en alguien: su árbol · ♚ reina hoy · ♛ reinó · Esc: cerrar"), x0 + 8, y0 + 20, TEXTO_SUAVE, false);
+		cerrarArbol[0] = x1 - 20;
+		cerrarArbol[1] = y0 + 5;
+		cerrarArbol[2] = 15;
+		cerrarArbol[3] = 15;
+		boolean sobreCerrar = dentro(cerrarArbol, mx, my);
+		pintaCaja(g, cerrarArbol[0], cerrarArbol[1], 15, 15, false, sobreCerrar);
+		g.drawString(font, "✕", cerrarArbol[0] + 4, cerrarArbol[1] + 4, sobreCerrar ? TEXTO : TEXTO_SUAVE, false);
+		if (arbol == null || arbol.miembros().isEmpty()) {
+			return null;
+		}
+		TreeMap<Integer, List<PaqueteArbol.Miembro>> filas = new TreeMap<>();
+		for (PaqueteArbol.Miembro m : arbol.miembros()) {
+			filas.computeIfAbsent(m.generacion(), k -> new ArrayList<>()).add(m);
+		}
+		int arriba = y0 + 38;
+		int alto = Math.max(10, Math.min(46, (y1 - arriba - 8) / filas.size()));
+		int h = Math.min(24, alto - 10);
+		Map<Integer, Caja> donde = new HashMap<>();
+		int fila = 0;
+		for (List<PaqueteArbol.Miembro> l : filas.values()) {
+			int k = l.size();
+			int w = Math.max(16, Math.min(96, (x1 - x0 - 16 - (k - 1) * ARBOL_HUECO) / k));
+			int x = (x0 + x1) / 2 - (k * w + (k - 1) * ARBOL_HUECO) / 2;
+			int y = arriba + fila * alto + (alto - h) / 2;
+			for (PaqueteArbol.Miembro m : l) {
+				Caja c = new Caja(m, x, y, w, h);
+				cajas.add(c);
+				donde.put(m.id(), c);
+				x += w + ARBOL_HUECO;
+			}
+			fila++;
+		}
+		// primero las rayas (debajo de las cajas): de cada hijo a sus padres, y entre las parejas
+		for (Caja c : cajas) {
+			Caja padre = padreArriba(donde, c, c.m().padre());
+			Caja madre = padreArriba(donde, c, c.m().madre());
+			if (padre != null || madre != null) {
+				int medio = c.y() - (alto - h) / 2;
+				int px;
+				int py;
+				if (padre != null && madre != null) {
+					px = (padre.centro() + madre.centro()) / 2;
+					py = padre.y() + h / 2;
+				} else {
+					Caja p = padre != null ? padre : madre;
+					px = p.centro();
+					py = p.y() + h;
+				}
+				g.fill(c.centro(), medio, c.centro() + 1, c.y(), ARBOL_LINEA);
+				g.fill(Math.min(c.centro(), px), medio, Math.max(c.centro(), px) + 1, medio + 1, ARBOL_LINEA);
+				g.fill(px, py, px + 1, medio, ARBOL_LINEA);
+			}
+			Caja pareja = donde.get(c.m().conyuge());
+			if (pareja != null && pareja.y() == c.y() && pareja.x() > c.x()) {
+				g.fill(c.x() + c.w(), c.y() + h / 2, pareja.x(), c.y() + h / 2 + 1, ORO);
+			}
+		}
+		Caja bajo = null;
+		for (Caja c : cajas) {
+			PaqueteArbol.Miembro m = c.m();
+			boolean encima = c.dentro(mx, my);
+			if (encima) {
+				bajo = c;
+			}
+			boolean vivo = m.muere() == 0;
+			g.fill(c.x(), c.y(), c.x() + c.w(), c.y() + h, m.rey() ? ORO : m.reino() ? 0xFFB08A4A : encima ? 0xFF9C7A45 : MARCO);
+			g.fill(c.x() + 1, c.y() + 1, c.x() + c.w() - 1, c.y() + h - 1,
+					m.id() == arbol.centro() ? 0xFF5A4122 : encima ? 0xFF4A3B28 : 0xFF2A2117);
+			String nombre = (m.rey() ? "♚ " : m.reino() ? "♛ " : "") + m.nombre().getString();
+			g.drawString(font, recorta(nombre, c.w() - 6), c.x() + 3, c.y() + 3, vivo ? TEXTO : 0xFF8F846C, false);
+			if (h >= 20) {
+				Component anios = vivo ? Component.translatableWithFallback("destinos.gente.arbol.vive", "n. %s", m.nace())
+						: Component.translatableWithFallback("destinos.gente.arbol.vida", "%s–%s", m.nace(), m.muere());
+				g.drawString(font, recorta(anios.getString(), c.w() - 6), c.x() + 3, c.y() + 13, vivo ? TEXTO_SUAVE : 0xFF6F6654, false);
+			}
+		}
+		return bajo;
+	}
+
+	/** El padre (o la madre) de la caja si está pintado en la fila de encima. */
+	private static Caja padreArriba(Map<Integer, Caja> donde, Caja hijo, int id) {
+		Caja p = donde.get(id);
+		return p != null && p.m().generacion() == hijo.m().generacion() - 1 ? p : null;
+	}
+
+	/** El texto cortado con "…" si no cabe en w píxeles. */
+	private String recorta(String t, int w) {
+		if (font.width(t) <= w) {
+			return t;
+		}
+		return font.plainSubstrByWidth(t, Math.max(0, w - font.width("…"))) + "…";
+	}
+
+	/** La pista de una persona del árbol: su nombre entero, su casa, su edad y su carácter (o de qué murió). */
+	private void pistaArbol(GuiGraphics g, Caja c, int mx, int my) {
+		List<FormattedCharSequence> l = new ArrayList<>();
+		l.add(c.m().nombre().copy().withStyle(ChatFormatting.BOLD).getVisualOrderText());
+		l.addAll(font.split(c.m().pista(), 240));
+		int w = 0;
+		for (FormattedCharSequence s : l) {
+			w = Math.max(w, font.width(s));
+		}
+		int hh = l.size() * 10 + 6;
+		int x = Math.max(2, Math.min(width - w - 10, mx + 12));
+		int y = Math.max(2, Math.min(height - hh - 2, my - 4));
+		g.fill(x - 1, y - 1, x + w + 9, y + hh + 1, 0xFF8A6D3F);
+		g.fill(x, y, x + w + 8, y + hh, 0xF0120F0B);
+		int yy = y + 4;
+		for (FormattedCharSequence s : l) {
+			g.drawString(font, s, x + 4, yy, TEXTO, false);
+			yy += 10;
+		}
+	}
+
+	/** Pestaña de la ficha: 0 el reino, 1 la corte (rey, familia y linaje), 2 la crónica. */
+	private static int pestanaFicha;
+
+	/** Un botón de la ficha (una pestaña, "Ver el árbol"…): se pone al rehacer la ficha y se pinta cada frame. */
+	private record BotonFicha(int x, int y, int w, int h, Component texto, boolean elegido, Runnable accion) {
+		boolean dentro(double mx, double my) {
+			return mx >= x && mx < x + w && my >= y && my < y + h;
+		}
+	}
+
+	private final List<BotonFicha> botonesFicha = new ArrayList<>();
+
+	/** Sin ficha no hay botones; y la ficha se rehará entera cuando vuelva (con sus botones). */
+	private void sinBotonesFicha() {
+		botonesFicha.clear();
+		fichaClave = null;
+	}
+
+	/** Como los botones de los modos: caja de pergamino oscuro, dorada la elegida, más clara al pasar el ratón. */
+	private void pintaBotonesFicha(GuiGraphics g, int mx, int my) {
+		for (BotonFicha b : botonesFicha) {
+			pintaCaja(g, b.x(), b.y(), b.w(), b.h(), b.elegido(), b.dentro(mx, my));
+			int color = b.elegido() ? 0xFFFFE9A8 : b.dentro(mx, my) ? TEXTO : TEXTO_SUAVE;
+			g.drawString(font, b.texto(), b.x() + (b.w() - font.width(b.texto())) / 2, b.y() + (b.h() - 8) / 2, color, b.elegido());
+		}
+	}
+
+	private static void pintaCaja(GuiGraphics g, int x, int y, int w, int h, boolean elegida, boolean encima) {
+		g.fill(x, y, x + w, y + h, elegida ? ORO : encima ? 0xFF9C7A45 : MARCO);
+		g.fill(x + 1, y + 1, x + w - 1, y + h - 1, elegida ? 0xFF6B4A1E : encima ? 0xFF4A3B28 : 0xFF2E251A);
+	}
+
+	private static void clic() {
+		Minecraft.getInstance().getSoundManager().play(
+				net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1));
 	}
 
 	/** Lo escrito en la ficha de un reino (se graba en fichaTrazos para los frames siguientes). */
@@ -2061,6 +2316,31 @@ public final class PantallaMapa extends Screen {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.fijada", "(ficha fija: clic fuera para soltarla)"), tx, y, w,
 					TEXTO_SUAVE) + 2;
 		}
+		// las pestañas, como botones (se pintan aparte, cada frame)
+		botonesFicha.clear();
+		String[][] nombres = {{"destinos.mapa.pestana.reino", "Reino"}, {"destinos.mapa.pestana.corte", "Corte"},
+			{"destinos.mapa.pestana.cronica", "Crónica"}};
+		int px = tx;
+		for (int i = 0; i < 3; i++) {
+			Component c = Component.translatableWithFallback(nombres[i][0], nombres[i][1]);
+			int an = font.width(c) + 14;
+			int n = i;
+			botonesFicha.add(new BotonFicha(px, y, an, 15, c, i == pestanaFicha, () -> {
+				pestanaFicha = n;
+				scrollCronica = 0;
+			}));
+			px += an + 3;
+		}
+		y += 22;
+		switch (pestanaFicha) {
+			case 1 -> fichaCorte(g, r, tx, y, w);
+			case 2 -> fichaCronica(g, r, tx, y, w);
+			default -> fichaDatos(g, r, tx, y, w);
+		}
+	}
+
+	/** Pestaña Reino: poder, gente, cultura, capital, lazos y tu reputación. */
+	private void fichaDatos(GuiGraphics g, PaqueteFichas.Reino r, int tx, int y, int w) {
 		y = linea(g, Component.translatableWithFallback("destinos.mapa.poder", "Poder %s · puesto %s de %s", r.poder(), r.puesto(),
 				FichasCliente.vivos()), tx, y, w, ORO);
 		y = linea(g, Component.translatableWithFallback("destinos.mapa.gente", "Unos %s habitantes · %s ducados", r.habitantes(),
@@ -2076,6 +2356,10 @@ public final class PantallaMapa extends Screen {
 			y = linea(g, Component.translatableWithFallback(r.capitalPerdida() ? "destinos.mapa.capital_perdida" : "destinos.mapa.capital",
 					r.capitalPerdida() ? "♛ Capital perdida: %s" : "♛ Capital: %s", r.capital()), tx, y, w,
 					r.capitalPerdida() ? 0xFFFF7A6A : TEXTO);
+		}
+		// quién reina, en una línea (el resto, en la pestaña Corte)
+		if (!r.corte().isEmpty()) {
+			y = linea(g, r.corte().get(0), tx, y, w, ORO);
 		}
 		if (r.senor() != null) {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.vasallo", "Vasallo del %s", nombre(r.senor())), tx, y, w,
@@ -2104,28 +2388,72 @@ public final class PantallaMapa extends Screen {
 				: "Tu reputación: %s";
 		y = linea(g, Component.translatableWithFallback(clave, respaldo, (rep > 0 ? "+" : "") + rep), tx, y, w,
 				rep >= 20 ? 0xFF9FD08A : rep <= -20 ? 0xFFFF7A6A : TEXTO);
-		if (!r.cronica().isEmpty() && y + 36 < y1) {
+		// lo último de la crónica, para que se vea algo sin cambiar de pestaña
+		if (!r.cronica().isEmpty() && y + 40 < y1) {
 			y += 6;
-			y = linea(g, Component.translatableWithFallback("destinos.mapa.cronica", "Crónica").withStyle(ChatFormatting.BOLD), tx, y, w, ORO)
+			y = linea(g, Component.translatableWithFallback("destinos.mapa.ultimo", "Lo último").withStyle(ChatFormatting.BOLD), tx, y, w, ORO)
 					+ 2;
-			if (scrollCronica > 0) {
-				y = linea(g, Component.translatableWithFallback("destinos.mapa.cronica_recientes", "▲ %s más recientes (rueda)", scrollCronica),
-						tx, y, w, ORO) + 2;
-			}
-			// solo los sucesos que caben enteros en el panel (los más recientes primero); la rueda pasa al resto
-			List<Component> lista = r.cronica();
-			int i = Math.min(scrollCronica, lista.size());
-			for (; i < lista.size(); i++) {
-				Component l = Component.literal("· ").append(lista.get(i));
-				if (y + font.split(l, w).size() * 10 > y1 - 16) {
+			for (int i = 0; i < r.cronica().size(); i++) {
+				Component l = Component.literal("· ").append(r.cronica().get(i));
+				if (y + font.split(l, w).size() * 10 > y1 - 6) {
 					break;
 				}
 				y = linea(g, l, tx, y, w, TEXTO_SUAVE) + 2;
 			}
-			if (i < lista.size()) {
-				linea(g, Component.translatableWithFallback("destinos.mapa.cronica_antiguos", "▼ %s más antiguos (rueda)", lista.size() - i),
-						tx, y1 - 13, w, ORO);
+		}
+	}
+
+	/** Pestaña Corte: el rey, su familia, la ley, sus nobles y todo el linaje (cuanto quepa). */
+	private void fichaCorte(GuiGraphics g, PaqueteFichas.Reino r, int tx, int y, int w) {
+		if (r.corte().isEmpty()) {
+			linea(g, Component.translatableWithFallback("destinos.mapa.sin_corte", "Aún no se sabe quién reina aquí."), tx, y, w, TEXTO_SUAVE);
+			return;
+		}
+		for (int i = 0; i < r.corte().size(); i++) {
+			y = linea(g, r.corte().get(i), tx, y, w, i == 0 ? ORO : TEXTO) + 1;
+		}
+		Component verArbol = Component.translatableWithFallback("destinos.gente.ver_arbol", "⚘ Ver el árbol familiar");
+		botonesFicha.add(new BotonFicha(tx, y + 4, font.width(verArbol) + 14, 15, verArbol, false,
+				() -> abreArbol(r.kx(), r.kz())));
+		y += 24;
+		if (r.linaje().isEmpty()) {
+			return;
+		}
+		y += 6;
+		y = linea(g, Component.translatableWithFallback("destinos.gente.linaje", "Linaje").withStyle(ChatFormatting.BOLD), tx, y, w, ORO) + 2;
+		for (Component c : r.linaje()) {
+			Component l = Component.literal("· ").append(c);
+			if (y + font.split(l, w).size() * 10 > y1 - 6) {
+				break;
 			}
+			y = linea(g, l, tx, y, w, TEXTO_SUAVE) + 1;
+		}
+	}
+
+	/** Pestaña Crónica: todo lo que ha pasado con el reino, lo más reciente primero, con la rueda. */
+	private void fichaCronica(GuiGraphics g, PaqueteFichas.Reino r, int tx, int y, int w) {
+		if (r.cronica().isEmpty()) {
+			linea(g, Component.translatableWithFallback("destinos.mapa.sin_cronica", "Aún no ha pasado nada en este reino."), tx, y, w,
+					TEXTO_SUAVE);
+			return;
+		}
+		if (scrollCronica > 0) {
+			y = linea(g, Component.translatableWithFallback("destinos.mapa.cronica_recientes", "▲ %s más recientes (rueda)", scrollCronica),
+					tx, y, w, ORO) + 2;
+		}
+		// solo los sucesos que caben enteros en el panel (los más recientes primero); la rueda pasa al resto
+		List<Component> lista = r.cronica();
+		int i = Math.min(scrollCronica, lista.size());
+		for (; i < lista.size(); i++) {
+			Component l = Component.literal("· ").append(lista.get(i));
+			if (y + font.split(l, w).size() * 10 > y1 - 16) {
+				break;
+			}
+			y = linea(g, l, tx, y, w, TEXTO_SUAVE) + 2;
+		}
+		if (i < lista.size()) {
+			linea(g, Component.translatableWithFallback("destinos.mapa.cronica_antiguos", "▼ %s más antiguos (rueda)", lista.size() - i),
+					tx, y1 - 13, w, ORO);
 		}
 	}
 

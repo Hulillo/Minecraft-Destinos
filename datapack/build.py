@@ -407,15 +407,20 @@ def bossbar(nombre, lugar, color):
     """Bossbar del jugador: "<nombre> · <lugar>" """
     return ["$bossbar set destinos:t$(id) name " + snbt(T("destinos.bossbar", "%s · %s", [nombre, lugar], color=color))]
 
+GOBIERNA_CORTO = T("destinos.gobierna_corto", "Gobierna %s", [T("destinos.titulo.$(tipo).$(g)", "$(senor)", ["$(senor)"])],
+                   color="gray", italic=True)
 fn("hud/noble", [
     "# Macro: registro de ducado noble",
     "$title @s subtitle " + snbt(con(NOMBRE_REINO, color="$(color)")),
     "$title @s title " + snbt(con(NOMBRE_DUCADO, color="$(color)")),
+    "# quién manda hoy (con Destinos Core, el duque vivo o el rey en la capital), debajo del título",
+    "$title @s actionbar " + snbt(GOBIERNA_CORTO),
 ])
 fn("hud/noble_conquista", [
     "# Macro: registro de ducado noble ganado en una guerra (política viva)",
     "$title @s subtitle " + snbt(con(T("destinos.reino_conquista", "Ahora del Reino de %s", ["$(rnombre)"]), color="$(color)")),
     "$title @s title " + snbt(con(NOMBRE_DUCADO, color="$(color)")),
+    "$title @s actionbar " + snbt(GOBIERNA_CORTO),
 ])
 fn("hud/salvaje", [
     "# Macro: registro de tierra salvaje",
@@ -659,6 +664,91 @@ POLITICA = {
                   "✧ Year %1$s · The %4$s breaks apart: the %2$s and the %3$s go their separate ways again."),
 }
 for k, (a, b) in POLITICA.items(): L(f"destinos.politica.{k}", a, b)
+# v0.7 Gente: sucesos con personas (%5$s y %6$s: la gente con su título; %7$s: la causa de la muerte; %8$s: quién)
+GENTE_SUCESOS = {
+    "muerte": ("✝ Año %1$s · Muere %5$s del %2$s (%7$s).", "✝ Year %1$s · %5$s of the %2$s has died (%7$s)."),
+    "sucesion": ("♛ Año %1$s · Sube al trono del %2$s %5$s.", "♛ Year %1$s · %5$s ascends the throne of the %2$s."),
+    "crisis": ("⚠ Año %1$s · Sin heredero, el %2$s se tambalea: %5$s se hace con la corona.",
+               "⚠ Year %1$s · With no heir, the %2$s totters: %5$s seizes the crown."),
+    "boda": ("💍 Año %1$s · Boda de %5$s del %2$s y %6$s del %3$s: la alianza queda sellada.",
+             "💍 Year %1$s · %5$s of the %2$s weds %6$s of the %3$s: the alliance is sealed."),
+    "boda_noble": ("💍 Año %1$s · Boda en el %2$s: %5$s se casa con %6$s.", "💍 Year %1$s · Wedding in the %2$s: %5$s marries %6$s."),
+    "golpe": ("⚔ Año %1$s · Golpe en el %2$s: %5$s derroca a %6$s.", "⚔ Year %1$s · Coup in the %2$s: %5$s overthrows %6$s."),
+    "caido": ("✝ Año %1$s · Cae en la guerra %5$s, del %2$s.", "✝ Year %1$s · %5$s of the %2$s falls in battle."),
+    "caido_ducado": ("✝ Año %1$s · Cae %5$s, del %2$s, luchando por %4$s.", "✝ Year %1$s · %5$s of the %2$s falls fighting for %4$s."),
+    "herencia": ("❖ Año %1$s · Una sola corona para el %2$s y el %3$s: la hereda %5$s.",
+                 "❖ Year %1$s · One crown for the %2$s and the %3$s: %5$s inherits it."),
+    "renombre": ("★ Año %1$s · Nace una leyenda en el %2$s: %5$s.", "★ Year %1$s · A legend is born in the %2$s: %5$s."),
+    "nacimiento": ("✦ Año %1$s · Nace %5$s en la familia real del %2$s.", "✦ Year %1$s · %5$s is born to the royal family of the %2$s."),
+    "asesinato": ("☠ Año %1$s · Asesinato en el %2$s: %8$s mata a %5$s.", "☠ Year %1$s · Murder in the %2$s: %8$s kills %5$s."),
+}
+for k, (a, b) in GENTE_SUCESOS.items(): L(f"destinos.politica.{k}", a, b)
+GENTE_TITULOS = {
+    "rey": (("el rey %s", "la reina %s"), ("King %s", "Queen %s")),
+    "consorte": (("el rey consorte %s", "la reina %s"), ("Prince Consort %s", "Queen %s")),
+    "familia": (("el príncipe %s", "la princesa %s"), ("Prince %s", "Princess %s")),
+    "duque": (("el duque %s", "la duquesa %s"), ("Duke %s", "Duchess %s")),
+    "general": (("el general %s", "la generala %s"), ("General %s", "General %s")),
+    "consejero": (("el consejero %s", "la consejera %s"), ("Councillor %s", "Councillor %s")),
+    "sin_cargo": (("%s", "%s"), ("%s", "%s")),
+}
+for k, ((em, ef), (nm, nf)) in GENTE_TITULOS.items():
+    L(f"destinos.gente.titulo.{k}.m", em, nm); L(f"destinos.gente.titulo.{k}.f", ef, nf)
+GENTE_RASGOS = {
+    "valiente": ("valiente", "valiente", "brave"), "cobarde": ("cobarde", "cobarde", "craven"), "cruel": ("cruel", "cruel", "cruel"),
+    "justo": ("justo", "justa", "just"), "ambicioso": ("ambicioso", "ambiciosa", "ambitious"), "humilde": ("humilde", "humilde", "humble"),
+    "codicioso": ("codicioso", "codiciosa", "greedy"), "generoso": ("generoso", "generosa", "generous"),
+    "piadoso": ("piadoso", "piadosa", "pious"), "astuto": ("astuto", "astuta", "cunning"),
+}
+for k, (m, f, en_) in GENTE_RASGOS.items():
+    L(f"destinos.gente.rasgo.{k}.m", m, en_); L(f"destinos.gente.rasgo.{k}.f", f, en_)
+GENTE_MOTES = {
+    "conquistador": (("el Conquistador", "la Conquistadora"), "the Conqueror"), "terrible": (("el Terrible", "la Terrible"), "the Terrible"),
+    "justo": (("el Justo", "la Justa"), "the Just"), "cruel": (("el Cruel", "la Cruel"), "the Cruel"),
+    "piadoso": (("el Piadoso", "la Piadosa"), "the Pious"), "generoso": (("el Generoso", "la Generosa"), "the Generous"),
+    "astuto": (("el Astuto", "la Astuta"), "the Cunning"), "bravo": (("el Bravo", "la Brava"), "the Bold"),
+    "grande": (("el Grande", "la Grande"), "the Great"),
+}
+for k, ((m, f), en_) in GENTE_MOTES.items():
+    L(f"destinos.gente.mote.{k}.m", m, en_); L(f"destinos.gente.mote.{k}.f", f, en_)
+GENTE_CAUSAS = {"vejez": ("de vejez", "of old age"), "enfermedad": ("de enfermedad", "of illness"), "guerra": ("en la guerra", "in battle"),
+                "golpe": ("en un golpe", "in a coup"), "asesinato": ("asesinado", "murdered"), "parto": ("de parto", "in childbirth")}
+for k, (a, b) in GENTE_CAUSAS.items(): L(f"destinos.gente.causa.{k}", a, b)
+GENTE = {
+    "nombre_mote": ("%s %s", "%s %s"),
+    "pista": ("Casa %s · %s años · %s y %s\nGuerra %s · Diplomacia %s · Intriga %s",
+              "House %s · aged %s · %s and %s\nWarfare %s · Diplomacy %s · Intrigue %s"),
+    "pista_muerto": ("Casa %s · murió con %s años, %s", "House %s · died aged %s, %s"),
+    "rey": ("♚ %s, %s años · %s y %s", "♚ %s, aged %s · %s and %s"),
+    "rey_menor": ("♚ %s, %s años (menor: gobierna %s)", "♚ %s, aged %s (a minor: %s rules)"),
+    "consorte": ("Consorte: %s, %s años", "Consort: %s, aged %s"),
+    "heredero": ("Heredero: %s (%s), %s años", "Heir: %s (%s), aged %s"),
+    "sin_heredero": ("Sin heredero: si muere, habrá crisis", "No heir: a crisis looms if they die"),
+    "ley": ("Ley: %s", "Law: %s"),
+    "ley.varon": ("hereda el hijo mayor", "the eldest son inherits"),
+    "ley.absoluta": ("hereda el primogénito", "the firstborn inherits"),
+    "ley.valia": ("hereda el más capaz de la sangre", "the ablest of the blood inherits"),
+    "ley.electiva": ("los nobles eligen al rey", "the nobles elect the ruler"),
+    "corte": ("General: %s · Consejo: %s", "General: %s · Council: %s"),
+    "linaje": ("Linaje", "Lineage"),
+    "reinado": ("%s · años %s-%s, %s", "%s · years %s-%s, %s"),
+    "reinado_hoy": ("%s · desde el año %s", "%s · since year %s"),
+    "fin.golpe": ("derrocado", "overthrown"),
+    "fin.otro": ("dejó el trono", "left the throne"),
+    "ver_arbol": ("⚘ Ver el árbol familiar", "⚘ See the family tree"),
+    "arbol.cargando": ("Buscando el árbol…", "Looking up the tree…"),
+    "arbol.titulo": ("Árbol familiar · casa %s", "Family tree · House %s"),
+    "arbol.ayuda": ("Clic en alguien: su árbol · ♚ reina hoy · ♛ reinó · Esc: cerrar",
+                    "Click someone: their tree · ♚ rules today · ♛ once ruled · Esc: close"),
+    "arbol.vive": ("n. %s", "b. %s"),
+    "arbol.vida": ("%s–%s", "%s–%s"),
+}
+for k, (a, b) in GENTE.items(): L(f"destinos.gente.{k}", a, b)
+GENTE_PARENTESCO = {"hijo": (("hijo", "hija"), ("son", "daughter")), "nieto": (("nieto", "nieta"), ("grandson", "granddaughter")),
+                    "hermano": (("hermano", "hermana"), ("brother", "sister")), "sobrino": (("sobrino", "sobrina"), ("nephew", "niece")),
+                    "noble": (("noble elegido", "noble elegida"), ("elected noble", "elected noble"))}
+for k, ((m, f), (em, ef)) in GENTE_PARENTESCO.items():
+    L(f"destinos.gente.parentesco.{k}.m", m, em); L(f"destinos.gente.parentesco.{k}.f", f, ef)
 L("destinos.politica.coordenadas", "Centro: %s, %s", "Centre: %s, %s")
 L("destinos.politica.ver_mapa", "Clic: verlo en el mapa", "Click: show it on the map")
 L("destinos.politica.donde", " (a %s bloques al %s)", " (%s blocks to the %s)")
@@ -851,6 +941,9 @@ for k, (a, b) in MAZMORRAS.items(): L(f"destinos.mazmorra.{k}", a, b)
 for k, (a, b) in EMBAJADA.items(): L(f"destinos.embajada.{k}", a, b)
 
 MAPA = {
+    "pestana.reino": ("Reino", "Realm"), "pestana.corte": ("Corte", "Court"), "pestana.cronica": ("Crónica", "Chronicle"),
+    "ultimo": ("Lo último", "Latest"), "sin_corte": ("Aún no se sabe quién reina aquí.", "No one knows yet who rules here."),
+    "sin_cronica": ("Aún no ha pasado nada en este reino.", "Nothing has happened in this realm yet."),
     "titulo": ("Mapa político", "Political map"),
     "cerrar": ("Cerrar", "Close"),
     "capa_si": ("Colores en tus mapas: sí", "Colours on your maps: on"),
@@ -982,6 +1075,10 @@ L("item.destinos_core.moneda_plata", "Moneda de plata", "Silver coin")
 L("item.destinos_core.moneda_oro", "Moneda de oro", "Gold coin")
 for k, (m, f) in TITULOS.items():
     L(f"destinos.titulo.{k}.m", *m); L(f"destinos.titulo.{k}.f", *f)
+# v0.7 Gente: el ducado de la capital lo gobierna el rey en persona (Destinos Core pone g = rey_m / rey_f)
+for k in TIPOS:
+    L(f"destinos.titulo.{k}.rey_m", "Rey %s", "King %s"); L(f"destinos.titulo.{k}.rey_f", "Reina %s", "Queen %s")
+L("destinos.gobierna_corto", "Gobierna %s", "Ruled by %s")
 for i, (a, b) in enumerate(LEMAS): L(f"destinos.lema.{i}", a, b)
 for i, (a, b) in enumerate(RASGOS): L(f"destinos.rasgo.{i}", a, b)
 for i, (a, b) in enumerate(FAMAS): L(f"destinos.fama.{i}", a, b)
