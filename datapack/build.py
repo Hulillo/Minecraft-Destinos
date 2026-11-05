@@ -407,15 +407,20 @@ def bossbar(nombre, lugar, color):
     """Bossbar del jugador: "<nombre> · <lugar>" """
     return ["$bossbar set destinos:t$(id) name " + snbt(T("destinos.bossbar", "%s · %s", [nombre, lugar], color=color))]
 
+GOBIERNA_CORTO = T("destinos.gobierna_corto", "Gobierna %s", [T("destinos.titulo.$(tipo).$(g)", "$(senor)", ["$(senor)"])],
+                   color="gray", italic=True)
 fn("hud/noble", [
     "# Macro: registro de ducado noble",
     "$title @s subtitle " + snbt(con(NOMBRE_REINO, color="$(color)")),
     "$title @s title " + snbt(con(NOMBRE_DUCADO, color="$(color)")),
+    "# quién manda hoy (con Destinos Core, el duque vivo o el rey en la capital), debajo del título",
+    "$title @s actionbar " + snbt(GOBIERNA_CORTO),
 ])
 fn("hud/noble_conquista", [
     "# Macro: registro de ducado noble ganado en una guerra (política viva)",
     "$title @s subtitle " + snbt(con(T("destinos.reino_conquista", "Ahora del Reino de %s", ["$(rnombre)"]), color="$(color)")),
     "$title @s title " + snbt(con(NOMBRE_DUCADO, color="$(color)")),
+    "$title @s actionbar " + snbt(GOBIERNA_CORTO),
 ])
 fn("hud/salvaje", [
     "# Macro: registro de tierra salvaje",
@@ -1055,6 +1060,10 @@ L("item.destinos_core.moneda_plata", "Moneda de plata", "Silver coin")
 L("item.destinos_core.moneda_oro", "Moneda de oro", "Gold coin")
 for k, (m, f) in TITULOS.items():
     L(f"destinos.titulo.{k}.m", *m); L(f"destinos.titulo.{k}.f", *f)
+# v0.7 Gente: el ducado de la capital lo gobierna el rey en persona (Destinos Core pone g = rey_m / rey_f)
+for k in TIPOS:
+    L(f"destinos.titulo.{k}.rey_m", "Rey %s", "King %s"); L(f"destinos.titulo.{k}.rey_f", "Reina %s", "Queen %s")
+L("destinos.gobierna_corto", "Gobierna %s", "Ruled by %s")
 for i, (a, b) in enumerate(LEMAS): L(f"destinos.lema.{i}", a, b)
 for i, (a, b) in enumerate(RASGOS): L(f"destinos.rasgo.{i}", a, b)
 for i, (a, b) in enumerate(FAMAS): L(f"destinos.fama.{i}", a, b)

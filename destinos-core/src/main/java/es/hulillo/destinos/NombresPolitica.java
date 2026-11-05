@@ -281,7 +281,7 @@ final class NombresPolitica {
 	 * El señor vivo del ducado (un duque de la gente) pasa al registro del datapack, para que el título al entrar
 	 * lo nombre. Solo si el registro ya existe y el ducado tiene señor.
 	 */
-	void fijaSenor(MinecraftServer server, long ducado, Persona x) {
+	void fijaSenor(MinecraftServer server, long ducado, Persona x, boolean rey) {
 		CompoundTag mundo = server.getCommandStorage().get(MUNDO);
 		CompoundTag ducados = mundo.getCompoundOrEmpty("ducados");
 		String clave = "d" + Grafo.x(ducado) + "_" + Grafo.z(ducado);
@@ -289,11 +289,14 @@ final class NombresPolitica {
 			return;
 		}
 		CompoundTag d = ducados.getCompoundOrEmpty(clave);
-		if (d.getBooleanOr("salvaje", false) || (x.nombre.equals(d.getStringOr("senor", "")) && (x.mujer ? "f" : "m").equals(d.getStringOr("g", "")))) {
+		// en la capital manda el rey: el título lo dice con destinos.titulo.<tipo>.rey_m / rey_f
+		String senor = rey ? x.nombreCorto() : x.nombre;
+		String g = (rey ? "rey_" : "") + (x.mujer ? "f" : "m");
+		if (d.getBooleanOr("salvaje", false) || (senor.equals(d.getStringOr("senor", "")) && g.equals(d.getStringOr("g", "")))) {
 			return;
 		}
-		d.putString("senor", x.nombre);
-		d.putString("g", x.mujer ? "f" : "m");
+		d.putString("senor", senor);
+		d.putString("g", g);
 		ducados.put(clave, d);
 		mundo.put("ducados", ducados);
 		server.getCommandStorage().set(MUNDO, mundo);

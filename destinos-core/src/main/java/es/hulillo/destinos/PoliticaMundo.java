@@ -266,10 +266,20 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 			Persona x = gente.duque(d);
 			if (x != null && grafo.ducado(d) != null) {
 				aseguraDucado(server, d);
-				nombres.fijaSenor(server, d, x);
+				nombres.fijaSenor(server, d, x, false);
 			}
 		}
 		gente.ducadosCambiados().clear();
+		// la capital de cada reino la gobierna su rey (si la tiene él)
+		for (Map.Entry<Long, Integer> en : gente.reyes().entrySet()) {
+			Long capital = grafo.capital(en.getKey());
+			Persona rey = gente.persona(en.getValue());
+			Grafo.Ducado d = capital == null ? null : grafo.ducado(capital);
+			if (rey != null && d != null && politica.dueno(d) == en.getKey()) {
+				aseguraDucado(server, capital);
+				nombres.fijaSenor(server, capital, rey, true);
+			}
+		}
 	}
 
 	private void aseguraDucado(MinecraftServer server, long ducado) {
