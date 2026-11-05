@@ -1,6 +1,8 @@
 package es.hulillo.destinos;
 
+import es.hulillo.destinos.politica.Gente;
 import es.hulillo.destinos.politica.Grafo;
+import es.hulillo.destinos.politica.Persona;
 import es.hulillo.destinos.politica.Politica;
 import es.hulillo.destinos.politica.Suceso;
 import java.util.ArrayList;
@@ -51,6 +53,7 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	private PoliticaMundo(Politica politica, long siguiente, int ticksTurno) {
 		this.politica = politica;
 		this.nombres = new NombresPolitica(politica.sal());
+		this.nombres.fijaPolitica(politica);
 		this.siguiente = siguiente;
 		this.ticksTurno = ticksTurno;
 	}
@@ -192,6 +195,11 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		Map<Long, Politica.Cambio> antes = new HashMap<>(politica.cambios());
 		List<Suceso> sucesos = new ArrayList<>();
 		politica.fijaAnio(Estaciones.anio(server.overworld()));
+		// la gente de cada reino sale de su cultura y su casa real: los registros tienen que estar ya
+		for (long r : politica.reinosVivos(grafo)) {
+			nombres.aseguraReino(server, r);
+		}
+		politica.fijaFuente(nombres.fuente(server));
 		for (int i = 0; i < turnos; i++) {
 			politica.turno(grafo, sucesos::add);
 		}
@@ -207,6 +215,7 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 			actualizaDucado(server, d);
 			ventanas.addAll(grafo.ventanasDe(d));
 		}
+		senores(server);
 		anuncia(server, sucesos);
 		guarda(server);
 		return ventanas;
@@ -248,6 +257,19 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		Grafo.Ducado d = grafo.ducado(ducado);
 		boolean conquistado = d != null && !d.salvajeBase() && !o.salvaje() && o.reino() != d.reinoBase();
 		nombres.cambiaDucado(server, ducado, o, conquistado);
+	}
+
+	/** Los duques nuevos pasan a los registros del datapack, para que el título al entrar en su ducado los nombre. */
+	private void senores(MinecraftServer server) {
+		Gente gente = politica.gente();
+		for (long d : gente.ducadosCambiados()) {
+			Persona x = gente.duque(d);
+			if (x != null && grafo.ducado(d) != null) {
+				aseguraDucado(server, d);
+				nombres.fijaSenor(server, d, x);
+			}
+		}
+		gente.ducadosCambiados().clear();
 	}
 
 	private void aseguraDucado(MinecraftServer server, long ducado) {
@@ -321,7 +343,7 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 			reinos.add(new PaqueteFichas.Reino(Grafo.x(id), Grafo.z(id), nombreReino(server, id), res.poder(),
 					NombresPolitica.redondea(res.habitantes()), res.ducados(), e == null ? 60 : e.estabilidad, i + 1, capital, perdida,
 					senor, guerras, aliados, p == null ? 0 : encargos.rep(p, id), nombres.cultura(server, id), cronica, fondo,
-					Estandarte.de(Grafo.x(id), Grafo.z(id), sal(), fondo), union, nombreUnion));
+					Estandarte.de(Grafo.x(id), Grafo.z(id), sal(), fondo), union, nombreUnion, corte(id), linaje(id)));
 		}
 		Map<Long, Integer> peligro = peligros(server);
 		FaunaDucados fauna = FaunaDucados.de(server.overworld(), sal());
@@ -332,6 +354,68 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 					f.animales(), f.peligros()));
 		}
 		return new PaqueteFichas(Estaciones.anio(server.overworld()), politica.turno(), reinos, ducados);
+	}
+
+	/** La corte del reino para su ficha: rey (o regente), consorte, heredero, ley de herencia, general y consejo. */
+	private List<Component> corte(long reino) {
+		Gente g = politica.gente();
+		int anio = politica.anio();
+		List<Component> l = new ArrayList<>();
+		Persona rey = g.rey(reino);
+		if (rey == null) {
+			return l;
+		}
+		Persona consejo = g.consejero(reino);
+		if (rey.edad(anio) < Gente.ADULTO && consejo != null) {
+			l.add(Component.translatableWithFallback("destinos.gente.rey_menor", "♚ %s, %s años (menor: gobierna %s)",
+					NombresPolitica.conTitulo(rey, anio), rey.edad(anio), NombresPolitica.conTitulo(consejo, anio)));
+		} else {
+			l.add(Component.translatableWithFallback("destinos.gente.rey", "♚ %s, %s años · %s y %s", NombresPolitica.conTitulo(rey, anio),
+					rey.edad(anio), NombresPolitica.rasgo(rey, rey.rasgo1), NombresPolitica.rasgo(rey, rey.rasgo2)));
+		}
+		Persona c = g.conyuge(rey);
+		if (c != null) {
+			l.add(Component.translatableWithFallback("destinos.gente.consorte", "Consorte: %s, %s años", NombresPolitica.persona(c, anio),
+					c.edad(anio)));
+		}
+		Persona h = g.heredero(politica, reino);
+		l.add(h == null ? Component.translatableWithFallback("destinos.gente.sin_heredero", "Sin heredero: si muere, habrá crisis")
+				: Component.translatableWithFallback("destinos.gente.heredero", "Heredero: %s, %s años", NombresPolitica.persona(h, anio),
+						h.edad(anio)));
+		Gente.Ley ley = Gente.Ley.de(rey.cultura);
+		l.add(Component.translatableWithFallback("destinos.gente.ley", "Ley: %s",
+				Component.translatableWithFallback("destinos.gente.ley." + ley.name(), ley.name())));
+		Persona general = g.general(reino);
+		if (general != null && consejo != null) {
+			l.add(Component.translatableWithFallback("destinos.gente.corte", "General: %s · Consejo: %s", NombresPolitica.persona(general, anio),
+					NombresPolitica.persona(consejo, anio)));
+		}
+		return l;
+	}
+
+	/** Los reyes del reino, del de hoy hacia atrás (como mucho 12). */
+	private List<Component> linaje(long reino) {
+		Gente g = politica.gente();
+		int anio = politica.anio();
+		List<Gente.Reinado> reinados = g.linaje(reino);
+		List<Component> l = new ArrayList<>();
+		for (int i = reinados.size() - 1; i >= 0 && l.size() < 12; i--) {
+			Gente.Reinado r = reinados.get(i);
+			Persona x = g.persona(r.persona());
+			if (x == null) {
+				continue;
+			}
+			if (r.hasta() == 0) {
+				l.add(Component.translatableWithFallback("destinos.gente.reinado_hoy", "%s · desde el año %s", NombresPolitica.persona(x, anio),
+						r.desde()));
+				continue;
+			}
+			Component fin = !x.vivo() && x.muere == r.hasta() ? NombresPolitica.causa(x)
+					: Component.translatableWithFallback("destinos.gente.fin.otro", "dejó el trono");
+			l.add(Component.translatableWithFallback("destinos.gente.reinado", "%s · años %s-%s, %s", NombresPolitica.persona(x, anio),
+					r.desde(), r.hasta(), fin));
+		}
+		return l;
 	}
 
 	/**

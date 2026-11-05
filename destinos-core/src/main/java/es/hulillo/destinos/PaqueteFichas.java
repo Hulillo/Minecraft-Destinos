@@ -25,10 +25,13 @@ public record PaqueteFichas(int anio, int turno, List<Reino> reinos, List<Nombre
 	 * Un reino vivo. puesto: lugar en el ranking de poder (1 = el más fuerte). capital: nombre del ducado de su
 	 * capital (vacío si aún no se sabe) y si la ha perdido. senor: reino del que es vasallo (kx, kz) o null. fondo y
 	 * escudo: su estandarte (id de DyeColor y Estandarte). union: el otro reino de su unión (o null) y su nombre.
+	 * corte: el rey, su consorte, su heredero, la ley y sus nobles, ya escritos (v0.7 Gente); linaje: sus reyes, del
+	 * último al primero.
 	 */
 	public record Reino(int kx, int kz, Component nombre, int poder, int habitantes, int ducados, int estabilidad, int puesto,
 			Component capital, boolean capitalPerdida, int[] senor, List<int[]> guerras, List<int[]> aliados, int rep, String cultura,
-			List<Component> cronica, int fondo, int escudo, int[] union, Component nombreUnion) {
+			List<Component> cronica, int fondo, int escudo, int[] union, Component nombreUnion, List<Component> corte,
+			List<Component> linaje) {
 	}
 
 	/**
@@ -112,6 +115,8 @@ public record PaqueteFichas(int anio, int turno, List<Reino> reinos, List<Nombre
 				buf.writeVarInt(r.union()[1]);
 				ComponentSerialization.TRUSTED_STREAM_CODEC.encode(buf, r.nombreUnion());
 			}
+			textos(buf, r.corte());
+			textos(buf, r.linaje());
 		}
 		buf.writeVarInt(ducados.size());
 		for (Nombre d : ducados) {
@@ -154,8 +159,10 @@ public record PaqueteFichas(int anio, int turno, List<Reino> reinos, List<Nombre
 				union = new int[] {buf.readVarInt(), buf.readVarInt()};
 				nombreUnion = ComponentSerialization.TRUSTED_STREAM_CODEC.decode(buf);
 			}
+			List<Component> corte = textos(buf);
+			List<Component> linaje = textos(buf);
 			reinos.add(new Reino(kx, kz, nombre, poder, habitantes, ducados, estabilidad, puesto, capital, perdida, senor, guerras,
-					aliados, rep, cultura, cronica, fondo, escudo, union, nombreUnion));
+					aliados, rep, cultura, cronica, fondo, escudo, union, nombreUnion, corte, linaje));
 		}
 		int m = cuenta(buf);
 		List<Nombre> ducados = new ArrayList<>(m);

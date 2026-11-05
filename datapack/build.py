@@ -659,6 +659,79 @@ POLITICA = {
                   "✧ Year %1$s · The %4$s breaks apart: the %2$s and the %3$s go their separate ways again."),
 }
 for k, (a, b) in POLITICA.items(): L(f"destinos.politica.{k}", a, b)
+# v0.7 Gente: sucesos con personas (%5$s y %6$s: la gente con su título; %7$s: la causa de la muerte; %8$s: quién)
+GENTE_SUCESOS = {
+    "muerte": ("✝ Año %1$s · Muere %5$s del %2$s (%7$s).", "✝ Year %1$s · %5$s of the %2$s has died (%7$s)."),
+    "sucesion": ("♛ Año %1$s · Sube al trono del %2$s %5$s.", "♛ Year %1$s · %5$s ascends the throne of the %2$s."),
+    "crisis": ("⚠ Año %1$s · Sin heredero, el %2$s se tambalea: %5$s se hace con la corona.",
+               "⚠ Year %1$s · With no heir, the %2$s totters: %5$s seizes the crown."),
+    "boda": ("💍 Año %1$s · Boda de %5$s del %2$s y %6$s del %3$s: la alianza queda sellada.",
+             "💍 Year %1$s · %5$s of the %2$s weds %6$s of the %3$s: the alliance is sealed."),
+    "boda_noble": ("💍 Año %1$s · Boda en el %2$s: %5$s se casa con %6$s.", "💍 Year %1$s · Wedding in the %2$s: %5$s marries %6$s."),
+    "golpe": ("⚔ Año %1$s · Golpe en el %2$s: %5$s derroca a %6$s.", "⚔ Year %1$s · Coup in the %2$s: %5$s overthrows %6$s."),
+    "caido": ("✝ Año %1$s · Cae en la guerra %5$s, del %2$s.", "✝ Year %1$s · %5$s of the %2$s falls in battle."),
+    "caido_ducado": ("✝ Año %1$s · Cae %5$s, del %2$s, luchando por %4$s.", "✝ Year %1$s · %5$s of the %2$s falls fighting for %4$s."),
+    "herencia": ("❖ Año %1$s · Una sola corona para el %2$s y el %3$s: la hereda %5$s.",
+                 "❖ Year %1$s · One crown for the %2$s and the %3$s: %5$s inherits it."),
+    "renombre": ("★ Año %1$s · Nace una leyenda en el %2$s: %5$s.", "★ Year %1$s · A legend is born in the %2$s: %5$s."),
+    "nacimiento": ("✦ Año %1$s · Nace %5$s en la familia real del %2$s.", "✦ Year %1$s · %5$s is born to the royal family of the %2$s."),
+    "asesinato": ("☠ Año %1$s · Asesinato en el %2$s: %8$s mata a %5$s.", "☠ Year %1$s · Murder in the %2$s: %8$s kills %5$s."),
+}
+for k, (a, b) in GENTE_SUCESOS.items(): L(f"destinos.politica.{k}", a, b)
+GENTE_TITULOS = {
+    "rey": (("el rey %s", "la reina %s"), ("King %s", "Queen %s")),
+    "consorte": (("el rey consorte %s", "la reina %s"), ("Prince Consort %s", "Queen %s")),
+    "familia": (("el príncipe %s", "la princesa %s"), ("Prince %s", "Princess %s")),
+    "duque": (("el duque %s", "la duquesa %s"), ("Duke %s", "Duchess %s")),
+    "general": (("el general %s", "la generala %s"), ("General %s", "General %s")),
+    "consejero": (("el consejero %s", "la consejera %s"), ("Councillor %s", "Councillor %s")),
+    "sin_cargo": (("%s", "%s"), ("%s", "%s")),
+}
+for k, ((em, ef), (nm, nf)) in GENTE_TITULOS.items():
+    L(f"destinos.gente.titulo.{k}.m", em, nm); L(f"destinos.gente.titulo.{k}.f", ef, nf)
+GENTE_RASGOS = {
+    "valiente": ("valiente", "valiente", "brave"), "cobarde": ("cobarde", "cobarde", "craven"), "cruel": ("cruel", "cruel", "cruel"),
+    "justo": ("justo", "justa", "just"), "ambicioso": ("ambicioso", "ambiciosa", "ambitious"), "humilde": ("humilde", "humilde", "humble"),
+    "codicioso": ("codicioso", "codiciosa", "greedy"), "generoso": ("generoso", "generosa", "generous"),
+    "piadoso": ("piadoso", "piadosa", "pious"), "astuto": ("astuto", "astuta", "cunning"),
+}
+for k, (m, f, en_) in GENTE_RASGOS.items():
+    L(f"destinos.gente.rasgo.{k}.m", m, en_); L(f"destinos.gente.rasgo.{k}.f", f, en_)
+GENTE_MOTES = {
+    "conquistador": (("el Conquistador", "la Conquistadora"), "the Conqueror"), "terrible": (("el Terrible", "la Terrible"), "the Terrible"),
+    "justo": (("el Justo", "la Justa"), "the Just"), "cruel": (("el Cruel", "la Cruel"), "the Cruel"),
+    "piadoso": (("el Piadoso", "la Piadosa"), "the Pious"), "generoso": (("el Generoso", "la Generosa"), "the Generous"),
+    "astuto": (("el Astuto", "la Astuta"), "the Cunning"), "bravo": (("el Bravo", "la Brava"), "the Bold"),
+    "grande": (("el Grande", "la Grande"), "the Great"),
+}
+for k, ((m, f), en_) in GENTE_MOTES.items():
+    L(f"destinos.gente.mote.{k}.m", m, en_); L(f"destinos.gente.mote.{k}.f", f, en_)
+GENTE_CAUSAS = {"vejez": ("de vejez", "of old age"), "enfermedad": ("de enfermedad", "of illness"), "guerra": ("en la guerra", "in battle"),
+                "golpe": ("en un golpe", "in a coup"), "asesinato": ("asesinado", "murdered"), "parto": ("de parto", "in childbirth")}
+for k, (a, b) in GENTE_CAUSAS.items(): L(f"destinos.gente.causa.{k}", a, b)
+GENTE = {
+    "nombre_mote": ("%s %s", "%s %s"),
+    "pista": ("Casa %s · %s años · %s y %s\nGuerra %s · Diplomacia %s · Intriga %s",
+              "House %s · aged %s · %s and %s\nWarfare %s · Diplomacy %s · Intrigue %s"),
+    "pista_muerto": ("Casa %s · murió con %s años, %s", "House %s · died aged %s, %s"),
+    "rey": ("♚ %s, %s años · %s y %s", "♚ %s, aged %s · %s and %s"),
+    "rey_menor": ("♚ %s, %s años (menor: gobierna %s)", "♚ %s, aged %s (a minor: %s rules)"),
+    "consorte": ("Consorte: %s, %s años", "Consort: %s, aged %s"),
+    "heredero": ("Heredero: %s, %s años", "Heir: %s, aged %s"),
+    "sin_heredero": ("Sin heredero: si muere, habrá crisis", "No heir: a crisis looms if they die"),
+    "ley": ("Ley: %s", "Law: %s"),
+    "ley.varon": ("hereda el hijo mayor", "the eldest son inherits"),
+    "ley.absoluta": ("hereda el primogénito", "the firstborn inherits"),
+    "ley.valia": ("hereda el más capaz de la sangre", "the ablest of the blood inherits"),
+    "ley.electiva": ("los nobles eligen al rey", "the nobles elect the ruler"),
+    "corte": ("General: %s · Consejo: %s", "General: %s · Council: %s"),
+    "linaje": ("Linaje", "Lineage"),
+    "reinado": ("%s · años %s-%s, %s", "%s · years %s-%s, %s"),
+    "reinado_hoy": ("%s · desde el año %s", "%s · since year %s"),
+    "fin.golpe": ("derrocado", "overthrown"),
+    "fin.otro": ("dejó el trono", "left the throne"),
+}
+for k, (a, b) in GENTE.items(): L(f"destinos.gente.{k}", a, b)
 L("destinos.politica.coordenadas", "Centro: %s, %s", "Centre: %s, %s")
 L("destinos.politica.ver_mapa", "Clic: verlo en el mapa", "Click: show it on the map")
 L("destinos.politica.donde", " (a %s bloques al %s)", " (%s blocks to the %s)")

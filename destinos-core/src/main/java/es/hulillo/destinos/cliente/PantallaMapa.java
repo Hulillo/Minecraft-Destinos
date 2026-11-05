@@ -2085,6 +2085,13 @@ public final class PantallaMapa extends Screen {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.union", "❖ En la %s, con el %s", r.nombreUnion(), nombre(r.union())),
 					tx, y, w, ModoMapa.UNION);
 		}
+		// la corte (v0.7 Gente): el rey en dorado y el resto en suave
+		if (!r.corte().isEmpty()) {
+			y += 4;
+			for (int i = 0; i < r.corte().size(); i++) {
+				y = linea(g, r.corte().get(i), tx, y, w, i == 0 ? ORO : TEXTO_SUAVE);
+			}
+		}
 		y += 4;
 		if (!r.guerras().isEmpty()) {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.guerras", "⚔ En guerra con %s", lista(r.guerras())), tx, y, w,
@@ -2104,6 +2111,14 @@ public final class PantallaMapa extends Screen {
 				: "Tu reputación: %s";
 		y = linea(g, Component.translatableWithFallback(clave, respaldo, (rep > 0 ? "+" : "") + rep), tx, y, w,
 				rep >= 20 ? 0xFF9FD08A : rep <= -20 ? 0xFFFF7A6A : TEXTO);
+		// el linaje: los últimos reyes (cuantos quepan sin quitarle todo el sitio a la crónica)
+		if (r.linaje().size() > 1 && y + 60 < y1) {
+			y += 6;
+			y = linea(g, Component.translatableWithFallback("destinos.gente.linaje", "Linaje").withStyle(ChatFormatting.BOLD), tx, y, w, ORO) + 2;
+			for (int i = 0; i < r.linaje().size() && i < 4 && y + 50 < y1; i++) {
+				y = linea(g, Component.literal("· ").append(r.linaje().get(i)), tx, y, w, TEXTO_SUAVE);
+			}
+		}
 		if (!r.cronica().isEmpty() && y + 36 < y1) {
 			y += 6;
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.cronica", "Crónica").withStyle(ChatFormatting.BOLD), tx, y, w, ORO)

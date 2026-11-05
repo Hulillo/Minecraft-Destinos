@@ -118,6 +118,15 @@ public final class Politica {
 
 	/** Cartas entregadas por jugadores (encargos de embajada): en el siguiente turno, paz o alianza seguras. */
 	private final Map<Par, String> embajadas = new TreeMap<>();
+	/** La gente de los reinos (v0.7): reyes, familias, duques, generales y consejeros. */
+	private final Gente gente = new Gente();
+	/** De dónde salen los nombres de la gente (en el juego, las tablas del datapack). */
+	private Gente.Fuente fuente = Gente.Fuente.SIMPLE;
+
+	/** La lealtad con la que queda un ducado ganado en la guerra (así la gente sabe que cayó luchando). */
+	public static final int LEALTAD_GUERRA = 20;
+	/** Turnos (días) que dura un año con las estaciones: los de Serene Seasons por defecto. */
+	public static final int TURNOS_POR_ANIO_ESTACIONES = 96;
 
 	public Politica(int sal) {
 		this.sal = sal;
@@ -133,6 +142,19 @@ public final class Politica {
 
 	public int anio() {
 		return anioFijo > 0 ? anioFijo : 1 + turno / TURNOS_POR_ANIO;
+	}
+
+	/** Turnos que dura un año: con las estaciones, los días de su año; sin ellas (pruebas), TURNOS_POR_ANIO. */
+	public int turnosPorAnio() {
+		return anioFijo > 0 ? TURNOS_POR_ANIO_ESTACIONES : TURNOS_POR_ANIO;
+	}
+
+	public Gente gente() {
+		return gente;
+	}
+
+	public void fijaFuente(Gente.Fuente fuente) {
+		this.fuente = fuente;
 	}
 
 	/** El año del mundo que llevan los sucesos de los próximos turnos. */
@@ -448,7 +470,10 @@ public final class Politica {
 		vasallajes(mapa, rnd, anota, ocupados);
 		crisis(mapa, rnd, anota, ocupados);
 		expansiones(mapa, rnd, anota, ocupados);
-		limpia(new Mapa(grafo));
+		Mapa despues = new Mapa(grafo);
+		limpia(despues);
+		gente.turno(this, grafo, despues.ducadosDe, fuente, new SplittableRandom(((long) sal << 21) ^ turno * Geo.MEZCLA ^ 0x6e6e7465L),
+				new ArrayList<>(sucesos), anota);
 		sucesos.forEach(aviso);
 	}
 
@@ -511,6 +536,21 @@ public final class Politica {
 		return Geo.rasgoReino(Grafo.x(reino), Grafo.z(reino), sal);
 	}
 
+	/** Mejora (o empeora) la relación entre dos reinos: una boda, por ejemplo. */
+	void mejora(long a, long b, int delta) {
+		cambiaRelacion(a, b, delta);
+	}
+
+	/** El rey de b hereda la corona de a: los dos reinos quedan unidos (y aliados, y en paz). */
+	void unePorHerencia(long a, long b) {
+		Par p = Par.de(a, b);
+		guerras.remove(p);
+		alianzas.add(p);
+		alianzaDesde.putIfAbsent(p, turno);
+		uniones.add(p);
+		relaciones.put(p, Math.max(relacion(a, b), 70));
+	}
+
 	private void cambiaRelacion(long a, long b, int delta) {
 		Par p = Par.de(a, b);
 		int r = relaciones.getOrDefault(p, relacionInicial(a, b)) + delta;
@@ -566,6 +606,11 @@ public final class Politica {
 		}
 	}
 
+	/** Si el reino sigue protegido (el de inicio, en sus primeros turnos). */
+	boolean protegidoHoy(long r) {
+		return protegido(r);
+	}
+
 	private boolean protegido(long r) {
 		return r == reinoProtegido && turno <= TURNOS_PROTECCION;
 	}
@@ -578,6 +623,9 @@ public final class Politica {
 			double prob = turnos < GUERRA_MINIMA ? 0 : 0.05 + 0.03 * (turnos - GUERRA_MINIMA);
 			if (turnos >= GUERRA_MINIMA && (reinos.get(p.a).estabilidad < 30 || reinos.get(p.b).estabilidad < 30)) {
 				prob += 0.15;
+			}
+			if (turnos >= GUERRA_MINIMA) {
+				prob = Math.max(0, prob + gente.pacifismo(p.a) + gente.pacifismo(p.b));
 			}
 			// con un ducado a punto de caer por los campamentos arrasados no se firma la paz hasta tomarlo
 			if (rnd.nextDouble() < prob && decisivo(mapa, p) == null && !embajadas.containsKey(p)) {
@@ -767,7 +815,7 @@ public final class Politica {
 		if (nuevo == base) {
 			cambios.remove(ducado);
 		} else {
-			cambios.put(ducado, new Cambio(nuevo, guerra ? 20 : 60, anio(), !d.salvajeBase() && nuevo != SALVAJE, turno));
+			cambios.put(ducado, new Cambio(nuevo, guerra ? LEALTAD_GUERRA : 60, anio(), !d.salvajeBase() && nuevo != SALVAJE, turno));
 		}
 	}
 
@@ -787,7 +835,7 @@ public final class Politica {
 		mapa.ducadosDe.remove(reino);
 	}
 
-	private boolean enGuerra(long r) {
+	boolean enGuerra(long r) {
 		for (Par p : guerras.keySet()) {
 			if (p.tiene(r)) {
 				return true;
@@ -815,7 +863,8 @@ public final class Politica {
 			if (rasgo(p.otro(ataca)) == MILITAR && rasgo(ataca) != MILITAR) {
 				ataca = p.otro(ataca);
 			}
-			double prob = rasgo(ataca) == MILITAR ? 0.12 : 0.06;
+			// el carácter del rey cuenta: uno ambicioso o cruel busca la guerra, uno piadoso o cobarde la evita
+			double prob = (rasgo(ataca) == MILITAR ? 0.12 : 0.06) * gente.belicosidad(ataca);
 			if (rnd.nextDouble() < prob) {
 				maximo--;
 				guerras.put(p, 0);
