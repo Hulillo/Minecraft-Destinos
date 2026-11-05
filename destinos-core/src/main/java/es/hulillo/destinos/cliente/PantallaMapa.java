@@ -1483,12 +1483,12 @@ public final class PantallaMapa extends Screen {
 			float f = 0;
 			float fa = 0;
 			int alto = 0;
-			for (float t : new float[] {3, 2.5f, 2, 1.5f, 1}) {
+			for (float t : new float[] {2.5f, 2, 1.5f, 1}) {
 				float ta = n.anchoArriba() == 0 ? 0 : Math.max(1, t * 0.55f);
 				int h = (int) (9 * t + (ta > 0 ? 9 * ta + 2 : 0));
 				// que no sea más ancho que las tierras del reino de oeste a este, ni mucho más que su parte más ancha
 				double ancho = Math.max(w * t, n.anchoArriba() * ta);
-				boolean cabe = ancho <= (c[4] - c[3]) * s && ancho / 2 <= radio * 2.2 && h / 2.0 <= radio * 1.3;
+				boolean cabe = ancho <= (c[4] - c[3]) * s * 0.85 && ancho / 2 <= radio * 1.8 && h / 2.0 <= radio * 1.2;
 				if (cabe && libre((int) (x - Math.max(w * t, n.anchoArriba() * ta) / 2) - 2,
 						(int) (y - h / 2f) - 2, (int) (x + Math.max(w * t, n.anchoArriba() * ta) / 2) + 2, (int) (y + h / 2f) + 2)) {
 					f = t;
