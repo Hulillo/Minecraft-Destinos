@@ -392,9 +392,14 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 					c.edad(anio)));
 		}
 		Persona h = g.heredero(politica, reino);
-		l.add(h == null ? Component.translatableWithFallback("destinos.gente.sin_heredero", "Sin heredero: si muere, habrá crisis")
-				: Component.translatableWithFallback("destinos.gente.heredero", "Heredero: %s, %s años", NombresPolitica.persona(h, anio),
-						h.edad(anio)));
+		if (h == null) {
+			l.add(Component.translatableWithFallback("destinos.gente.sin_heredero", "Sin heredero: si muere, habrá crisis"));
+		} else {
+			// hijo, hermano, noble…: que no parezca un hijo un heredero mayor que el rey
+			String que = g.parentesco(rey, h);
+			l.add(Component.translatableWithFallback("destinos.gente.heredero", "Heredero: %s (%s), %s años", NombresPolitica.persona(h, anio),
+					Component.translatableWithFallback("destinos.gente.parentesco." + que + "." + (h.mujer ? "f" : "m"), que), h.edad(anio)));
+		}
 		Gente.Ley ley = Gente.Ley.de(rey.cultura);
 		l.add(Component.translatableWithFallback("destinos.gente.ley", "Ley: %s",
 				Component.translatableWithFallback("destinos.gente.ley." + ley.name(), ley.name())));

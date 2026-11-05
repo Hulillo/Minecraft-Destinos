@@ -722,7 +722,7 @@ GENTE = {
     "rey": ("♚ %s, %s años · %s y %s", "♚ %s, aged %s · %s and %s"),
     "rey_menor": ("♚ %s, %s años (menor: gobierna %s)", "♚ %s, aged %s (a minor: %s rules)"),
     "consorte": ("Consorte: %s, %s años", "Consort: %s, aged %s"),
-    "heredero": ("Heredero: %s, %s años", "Heir: %s, aged %s"),
+    "heredero": ("Heredero: %s (%s), %s años", "Heir: %s (%s), aged %s"),
     "sin_heredero": ("Sin heredero: si muere, habrá crisis", "No heir: a crisis looms if they die"),
     "ley": ("Ley: %s", "Law: %s"),
     "ley.varon": ("hereda el hijo mayor", "the eldest son inherits"),
@@ -737,6 +737,11 @@ GENTE = {
     "fin.otro": ("dejó el trono", "left the throne"),
 }
 for k, (a, b) in GENTE.items(): L(f"destinos.gente.{k}", a, b)
+GENTE_PARENTESCO = {"hijo": (("hijo", "hija"), ("son", "daughter")), "nieto": (("nieto", "nieta"), ("grandson", "granddaughter")),
+                    "hermano": (("hermano", "hermana"), ("brother", "sister")), "sobrino": (("sobrino", "sobrina"), ("nephew", "niece")),
+                    "noble": (("noble elegido", "noble elegida"), ("elected noble", "elected noble"))}
+for k, ((m, f), (em, ef)) in GENTE_PARENTESCO.items():
+    L(f"destinos.gente.parentesco.{k}.m", m, em); L(f"destinos.gente.parentesco.{k}.f", f, ef)
 L("destinos.politica.coordenadas", "Centro: %s, %s", "Centre: %s, %s")
 L("destinos.politica.ver_mapa", "Clic: verlo en el mapa", "Click: show it on the map")
 L("destinos.politica.donde", " (a %s bloques al %s)", " (%s blocks to the %s)")

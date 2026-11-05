@@ -211,6 +211,33 @@ public final class Gente {
 		return rey == null ? null : sucesor(p, reino, rey);
 	}
 
+	/** Qué es x del rey, para la ficha: hijo, nieto, hermano, sobrino o noble (elegido, sin ser de la sangre). */
+	public String parentesco(Persona rey, Persona x) {
+		if (hijoDe(x, rey)) {
+			return "hijo";
+		}
+		Persona padre = personas.get(x.padre);
+		Persona madre = personas.get(x.madre);
+		if ((padre != null && hijoDe(padre, rey)) || (madre != null && hijoDe(madre, rey))) {
+			return "nieto";
+		}
+		if (hermanos(x, rey)) {
+			return "hermano";
+		}
+		if ((padre != null && hermanos(padre, rey)) || (madre != null && hermanos(madre, rey))) {
+			return "sobrino";
+		}
+		return "noble";
+	}
+
+	private static boolean hijoDe(Persona x, Persona p) {
+		return x.padre == p.id || x.madre == p.id;
+	}
+
+	private static boolean hermanos(Persona a, Persona b) {
+		return a.id != b.id && ((a.padre != Persona.NADIE && a.padre == b.padre) || (a.madre != Persona.NADIE && a.madre == b.madre));
+	}
+
 	// ------------------------------------------------------------------ lo que la gente pesa en la política
 
 	/** Cuánto más (o menos) declara guerras el reino por el carácter de su rey. */
