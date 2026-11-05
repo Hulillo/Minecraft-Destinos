@@ -184,7 +184,8 @@ public final class MapaTerreno {
 	 * Guarda el terreno ya leído del generador (lo más caro de calcular), para que al volver a entrar en el mundo no
 	 * haya que leerlo otra vez. Los biomas van por nombre, porque sus números solo valen mientras el juego está abierto.
 	 */
-	public void guardaTerreno(java.nio.file.Path fichero) throws java.io.IOException {
+	public synchronized void guardaTerreno(java.nio.file.Path fichero) throws java.io.IOException {
+		long leidasAhora = leidas.get();
 		java.nio.file.Files.createDirectories(fichero.getParent());
 		java.nio.file.Path temporal = fichero.resolveSibling(fichero.getFileName() + ".tmp");
 		try (java.io.DataOutputStream out = new java.io.DataOutputStream(new java.io.BufferedOutputStream(
@@ -210,6 +211,23 @@ public final class MapaTerreno {
 			}
 		}
 		java.nio.file.Files.move(temporal, fichero, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+		guardadas = leidasAhora;
+	}
+
+	/** Casillas leídas del generador desde que se abrió el mundo, y cuántas había en el último guardado. */
+	private final java.util.concurrent.atomic.AtomicLong leidas = new java.util.concurrent.atomic.AtomicLong();
+	private long guardadas;
+
+	/**
+	 * Guarda el terreno solo si se ha leído algo nuevo desde la última vez (para el guardado cada pocos minutos, que
+	 * así no se pierde lo explorado si el juego se cierra de golpe). Devuelve si ha escrito.
+	 */
+	public synchronized boolean guardaSiCambia(java.nio.file.Path fichero) throws java.io.IOException {
+		if (leidas.get() == guardadas) {
+			return false;
+		}
+		guardaTerreno(fichero);
+		return true;
 	}
 
 	/** Carga el terreno guardado por guardaTerreno, si es de este mundo (misma sal). Devuelve cuántas regiones. */
@@ -586,6 +604,7 @@ public final class MapaTerreno {
 		Casilla c = muestreador.muestra(ti * CASILLA + CASILLA / 2, tj * CASILLA + CASILLA / 2);
 		// dos hilos pueden leer la misma casilla a la vez: escriben lo mismo
 		region[k] = c.empaqueta();
+		leidas.incrementAndGet();
 		return c;
 	}
 

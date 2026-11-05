@@ -34,6 +34,8 @@ public final class DestinosCore implements ModInitializer {
 	private static final int TICKS_PRECARGA = 100;
 	/** Las zonas se calculan en segundo plano en 1 o 2 hilos, dejando el resto de núcleos a la carga de chunks. */
 	private static final int HILOS = Math.max(1, Math.min(2, Runtime.getRuntime().availableProcessors() - 2));
+	/** Cada cuánto se guarda el terreno leído mientras se juega (5 minutos). */
+	private static final int TICKS_GUARDA_TERRENO = 20 * 60 * 5;
 	private static final ExecutorService HILO = Executors.newFixedThreadPool(HILOS, r -> {
 		Thread t = new Thread(r, "Destinos Core - terreno");
 		t.setDaemon(true);
@@ -157,6 +159,17 @@ public final class DestinosCore implements ModInitializer {
 			precarga(server);
 		}
 		MapaTerreno m = mapa;
+		if (m != null && server.getTickCount() % TICKS_GUARDA_TERRENO == 0) {
+			// cada pocos minutos, fuera del hilo del servidor: si el juego se cierra de golpe no se pierde lo explorado
+			java.nio.file.Path fichero = ficheroTerreno(server);
+			HILO.execute(() -> {
+				try {
+					m.guardaSiCambia(fichero);
+				} catch (java.io.IOException | RuntimeException e) {
+					LOG.warn("Destinos Core: no se pudo guardar el terreno leído", e);
+				}
+			});
+		}
 		if (m != null) {
 			REPARA.tick(server, m);
 		}
