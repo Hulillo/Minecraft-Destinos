@@ -33,7 +33,7 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	/** Anuncios como mucho por tanda (al forzar varios turnos); el resto queda en la crónica. */
 	private static final int MAX_ANUNCIOS = 10;
 	/** Sucesos de cada reino que salen en su ficha del mapa político. */
-	private static final int CRONICA_FICHA = 4;
+	private static final int CRONICA_FICHA = 60;
 
 	private final Grafo grafo = new Grafo();
 	private final Politica politica;
@@ -683,7 +683,7 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		}
 		fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.cronica", "📜 Crónica del mundo")
 				.withStyle(ChatFormatting.GOLD), false);
-		for (Suceso s : todos.subList(Math.max(0, todos.size() - 12), todos.size())) {
+		for (Suceso s : todos.subList(Math.max(0, todos.size() - 20), todos.size())) {
 			Component t = nombres.texto(fuente.getServer(), s);
 			fuente.sendSuccess(() -> t, false);
 		}

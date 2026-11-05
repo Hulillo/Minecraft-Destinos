@@ -170,6 +170,10 @@ public final class PantallaMapa extends Screen {
 	private int x1;
 	private int y1;
 	private int panelX;
+	/** Sucesos de la crónica de la ficha que se saltan (rueda sobre la ficha), y de qué reino es esa ficha. */
+	private int scrollCronica;
+	private long cronicaDe = Long.MIN_VALUE;
+	private int cronicaTotal;
 	private boolean arrastra;
 	private double arrastrado;
 
@@ -550,6 +554,11 @@ public final class PantallaMapa extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mx, double my, double sx, double sy) {
+		if (mx >= panelX && sy != 0) {
+			// la rueda sobre la ficha pasa la crónica: arriba lo más reciente
+			scrollCronica = Math.max(0, Math.min(Math.max(0, cronicaTotal - 1), scrollCronica - (int) Math.signum(sy)));
+			return true;
+		}
 		if (!enMapa(mx, my) || sy == 0) {
 			return false;
 		}
@@ -2024,7 +2033,12 @@ public final class PantallaMapa extends Screen {
 		Integer colorReino = coloresReino.get(Geo.clave(kx, kz));
 		pintaEstandarte(g, tx, y, r.fondo(), r.escudo(), colorReino == null ? 0xFF888888 : 0xFF000000 | colorReino);
 		// el texto de la ficha (traducir y partir en líneas) solo se rehace si cambia el reino, las fichas o el tamaño
-		String clave = kx + "," + kz + "," + (fijado != Long.MIN_VALUE) + "," + tx + "," + w + "," + y1 + "," + FichasCliente.version();
+		if (Geo.clave(kx, kz) != cronicaDe) {
+			cronicaDe = Geo.clave(kx, kz);
+			scrollCronica = 0;
+		}
+		cronicaTotal = r.cronica().size();
+		String clave = kx + "," + kz + "," + scrollCronica + "," + (fijado != Long.MIN_VALUE) + "," + tx + "," + w + "," + y1 + "," + FichasCliente.version();
 		if (clave.equals(fichaClave)) {
 			for (Trazo t : fichaTrazos) {
 				g.drawString(font, t.texto(), t.x(), t.y(), t.color(), false);
@@ -2090,17 +2104,27 @@ public final class PantallaMapa extends Screen {
 				: "Tu reputación: %s";
 		y = linea(g, Component.translatableWithFallback(clave, respaldo, (rep > 0 ? "+" : "") + rep), tx, y, w,
 				rep >= 20 ? 0xFF9FD08A : rep <= -20 ? 0xFFFF7A6A : TEXTO);
-		if (!r.cronica().isEmpty() && y + 24 < y1) {
+		if (!r.cronica().isEmpty() && y + 36 < y1) {
 			y += 6;
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.cronica", "Crónica").withStyle(ChatFormatting.BOLD), tx, y, w, ORO)
 					+ 2;
-			// solo los sucesos que caben enteros en el panel (los más recientes primero)
-			for (Component c : r.cronica()) {
-				Component l = Component.literal("· ").append(c);
-				if (y + font.split(l, w).size() * 10 > y1 - 4) {
+			if (scrollCronica > 0) {
+				y = linea(g, Component.translatableWithFallback("destinos.mapa.cronica_recientes", "▲ %s más recientes (rueda)", scrollCronica),
+						tx, y, w, ORO) + 2;
+			}
+			// solo los sucesos que caben enteros en el panel (los más recientes primero); la rueda pasa al resto
+			List<Component> lista = r.cronica();
+			int i = Math.min(scrollCronica, lista.size());
+			for (; i < lista.size(); i++) {
+				Component l = Component.literal("· ").append(lista.get(i));
+				if (y + font.split(l, w).size() * 10 > y1 - 16) {
 					break;
 				}
 				y = linea(g, l, tx, y, w, TEXTO_SUAVE) + 2;
+			}
+			if (i < lista.size()) {
+				linea(g, Component.translatableWithFallback("destinos.mapa.cronica_antiguos", "▼ %s más antiguos (rueda)", lista.size() - i),
+						tx, y1 - 13, w, ORO);
 			}
 		}
 	}

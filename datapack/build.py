@@ -896,6 +896,8 @@ MAPA = {
     "guerras": ("⚔ En guerra con %s", "⚔ At war with %s"),
     "aliados": ("✦ Aliado del %s", "✦ Allied with %s"),
     "union": ("❖ En la %s, con el %s", "❖ Part of the %s, with the %s"),
+    "cronica_recientes": ("▲ %s más recientes (rueda)", "▲ %s more recent (scroll)"),
+    "cronica_antiguos": ("▼ %s más antiguos (rueda)", "▼ %s older (scroll)"),
     "en_paz": ("En paz y sin alianzas", "At peace, no alliances"),
     "rep": ("Tu reputación: %s", "Your reputation: %s"),
     "rep_buena": ("Tu reputación: %s (te aprecian)", "Your reputation: %s (they like you)"),
