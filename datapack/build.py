@@ -929,6 +929,9 @@ for k, (a, b) in MAZMORRAS.items(): L(f"destinos.mazmorra.{k}", a, b)
 for k, (a, b) in EMBAJADA.items(): L(f"destinos.embajada.{k}", a, b)
 
 MAPA = {
+    "pestana.reino": ("Reino", "Realm"), "pestana.corte": ("Corte", "Court"), "pestana.cronica": ("Crónica", "Chronicle"),
+    "ultimo": ("Lo último", "Latest"), "sin_corte": ("Aún no se sabe quién reina aquí.", "No one knows yet who rules here."),
+    "sin_cronica": ("Aún no ha pasado nada en este reino.", "Nothing has happened in this realm yet."),
     "titulo": ("Mapa político", "Political map"),
     "cerrar": ("Cerrar", "Close"),
     "capa_si": ("Colores en tus mapas: sí", "Colours on your maps: on"),

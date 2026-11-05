@@ -491,6 +491,18 @@ public final class PantallaMapa extends Screen {
 				}
 			}
 		}
+		if (e.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT && e.x() >= panelX) {
+			for (int i = 0; i < pestanas.length; i++) {
+				int[] p = pestanas[i];
+				if (p != null && e.x() >= p[0] && e.x() < p[2] && e.y() >= p[1] && e.y() < p[3]) {
+					pestanaFicha = i;
+					scrollCronica = 0;
+					Minecraft.getInstance().getSoundManager().play(
+							net.minecraft.client.resources.sounds.SimpleSoundInstance.forUI(net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1));
+					return true;
+				}
+			}
+		}
 		if (super.mouseClicked(e, doble)) {
 			return true;
 		}
@@ -555,7 +567,8 @@ public final class PantallaMapa extends Screen {
 	@Override
 	public boolean mouseScrolled(double mx, double my, double sx, double sy) {
 		if (mx >= panelX && sy != 0) {
-			// la rueda sobre la ficha pasa la crónica: arriba lo más reciente
+			// la rueda sobre la ficha pasa la crónica (y salta a su pestaña): arriba lo más reciente
+			pestanaFicha = 2;
 			scrollCronica = Math.max(0, Math.min(Math.max(0, cronicaTotal - 1), scrollCronica - (int) Math.signum(sy)));
 			return true;
 		}
@@ -2038,19 +2051,29 @@ public final class PantallaMapa extends Screen {
 			scrollCronica = 0;
 		}
 		cronicaTotal = r.cronica().size();
-		String clave = kx + "," + kz + "," + scrollCronica + "," + (fijado != Long.MIN_VALUE) + "," + tx + "," + w + "," + y1 + "," + FichasCliente.version();
+		String clave = kx + "," + kz + "," + scrollCronica + "," + pestanaFicha + "," + (fijado != Long.MIN_VALUE) + "," + tx + "," + w + "," + y1 + "," + FichasCliente.version();
 		if (clave.equals(fichaClave)) {
 			for (Trazo t : fichaTrazos) {
 				g.drawString(font, t.texto(), t.x(), t.y(), t.color(), false);
 			}
-			return;
+		} else {
+			fichaClave = clave;
+			fichaTrazos.clear();
+			grabando = fichaTrazos;
+			fichaReino(g, r, tx, y, w);
+			grabando = null;
 		}
-		fichaClave = clave;
-		fichaTrazos.clear();
-		grabando = fichaTrazos;
-		fichaReino(g, r, tx, y, w);
-		grabando = null;
+		// la pestaña elegida, subrayada (las rayas no se graban con el texto)
+		int[] p = pestanas[pestanaFicha];
+		if (p != null) {
+			g.fill(p[0] + 2, p[3] - 1, p[2] - 2, p[3], ORO);
+		}
 	}
+
+	/** Pestaña de la ficha: 0 el reino, 1 la corte (rey, familia y linaje), 2 la crónica. */
+	private static int pestanaFicha;
+	/** Dónde están las pestañas de la ficha (x0, y0, x1, y1), para los clics; se rehacen al pintar la ficha. */
+	private final int[][] pestanas = new int[3][];
 
 	/** Lo escrito en la ficha de un reino (se graba en fichaTrazos para los frames siguientes). */
 	private void fichaReino(GuiGraphics g, PaqueteFichas.Reino r, int tx, int y, int w) {
@@ -2061,6 +2084,28 @@ public final class PantallaMapa extends Screen {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.fijada", "(ficha fija: clic fuera para soltarla)"), tx, y, w,
 					TEXTO_SUAVE) + 2;
 		}
+		// las pestañas: el texto de cada una, la elegida en dorado y subrayada
+		String[][] nombres = {{"destinos.mapa.pestana.reino", "Reino"}, {"destinos.mapa.pestana.corte", "Corte"},
+			{"destinos.mapa.pestana.cronica", "Crónica"}};
+		int px = tx;
+		for (int i = 0; i < 3; i++) {
+			Component c = Component.translatableWithFallback(nombres[i][0], nombres[i][1]).withStyle(ChatFormatting.BOLD);
+			int an = font.width(c);
+			boolean elegida = i == pestanaFicha;
+			linea(g, c, px, y, an + 2, elegida ? ORO : TEXTO_SUAVE);
+			pestanas[i] = new int[] {px - 2, y - 2, px + an + 2, y + 10};
+			px += an + 12;
+		}
+		y += 16;
+		switch (pestanaFicha) {
+			case 1 -> fichaCorte(g, r, tx, y, w);
+			case 2 -> fichaCronica(g, r, tx, y, w);
+			default -> fichaDatos(g, r, tx, y, w);
+		}
+	}
+
+	/** Pestaña Reino: poder, gente, cultura, capital, lazos y tu reputación. */
+	private void fichaDatos(GuiGraphics g, PaqueteFichas.Reino r, int tx, int y, int w) {
 		y = linea(g, Component.translatableWithFallback("destinos.mapa.poder", "Poder %s · puesto %s de %s", r.poder(), r.puesto(),
 				FichasCliente.vivos()), tx, y, w, ORO);
 		y = linea(g, Component.translatableWithFallback("destinos.mapa.gente", "Unos %s habitantes · %s ducados", r.habitantes(),
@@ -2077,6 +2122,10 @@ public final class PantallaMapa extends Screen {
 					r.capitalPerdida() ? "♛ Capital perdida: %s" : "♛ Capital: %s", r.capital()), tx, y, w,
 					r.capitalPerdida() ? 0xFFFF7A6A : TEXTO);
 		}
+		// quién reina, en una línea (el resto, en la pestaña Corte)
+		if (!r.corte().isEmpty()) {
+			y = linea(g, r.corte().get(0), tx, y, w, ORO);
+		}
 		if (r.senor() != null) {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.vasallo", "Vasallo del %s", nombre(r.senor())), tx, y, w,
 					TEXTO_SUAVE);
@@ -2084,13 +2133,6 @@ public final class PantallaMapa extends Screen {
 		if (r.union() != null) {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.union", "❖ En la %s, con el %s", r.nombreUnion(), nombre(r.union())),
 					tx, y, w, ModoMapa.UNION);
-		}
-		// la corte (v0.7 Gente): el rey en dorado y el resto en suave
-		if (!r.corte().isEmpty()) {
-			y += 4;
-			for (int i = 0; i < r.corte().size(); i++) {
-				y = linea(g, r.corte().get(i), tx, y, w, i == 0 ? ORO : TEXTO_SUAVE);
-			}
 		}
 		y += 4;
 		if (!r.guerras().isEmpty()) {
@@ -2111,36 +2153,68 @@ public final class PantallaMapa extends Screen {
 				: "Tu reputación: %s";
 		y = linea(g, Component.translatableWithFallback(clave, respaldo, (rep > 0 ? "+" : "") + rep), tx, y, w,
 				rep >= 20 ? 0xFF9FD08A : rep <= -20 ? 0xFFFF7A6A : TEXTO);
-		// el linaje: los últimos reyes (cuantos quepan sin quitarle todo el sitio a la crónica)
-		if (r.linaje().size() > 1 && y + 60 < y1) {
+		// lo último de la crónica, para que se vea algo sin cambiar de pestaña
+		if (!r.cronica().isEmpty() && y + 40 < y1) {
 			y += 6;
-			y = linea(g, Component.translatableWithFallback("destinos.gente.linaje", "Linaje").withStyle(ChatFormatting.BOLD), tx, y, w, ORO) + 2;
-			for (int i = 0; i < r.linaje().size() && i < 4 && y + 50 < y1; i++) {
-				y = linea(g, Component.literal("· ").append(r.linaje().get(i)), tx, y, w, TEXTO_SUAVE);
-			}
-		}
-		if (!r.cronica().isEmpty() && y + 36 < y1) {
-			y += 6;
-			y = linea(g, Component.translatableWithFallback("destinos.mapa.cronica", "Crónica").withStyle(ChatFormatting.BOLD), tx, y, w, ORO)
+			y = linea(g, Component.translatableWithFallback("destinos.mapa.ultimo", "Lo último").withStyle(ChatFormatting.BOLD), tx, y, w, ORO)
 					+ 2;
-			if (scrollCronica > 0) {
-				y = linea(g, Component.translatableWithFallback("destinos.mapa.cronica_recientes", "▲ %s más recientes (rueda)", scrollCronica),
-						tx, y, w, ORO) + 2;
-			}
-			// solo los sucesos que caben enteros en el panel (los más recientes primero); la rueda pasa al resto
-			List<Component> lista = r.cronica();
-			int i = Math.min(scrollCronica, lista.size());
-			for (; i < lista.size(); i++) {
-				Component l = Component.literal("· ").append(lista.get(i));
-				if (y + font.split(l, w).size() * 10 > y1 - 16) {
+			for (int i = 0; i < r.cronica().size(); i++) {
+				Component l = Component.literal("· ").append(r.cronica().get(i));
+				if (y + font.split(l, w).size() * 10 > y1 - 6) {
 					break;
 				}
 				y = linea(g, l, tx, y, w, TEXTO_SUAVE) + 2;
 			}
-			if (i < lista.size()) {
-				linea(g, Component.translatableWithFallback("destinos.mapa.cronica_antiguos", "▼ %s más antiguos (rueda)", lista.size() - i),
-						tx, y1 - 13, w, ORO);
+		}
+	}
+
+	/** Pestaña Corte: el rey, su familia, la ley, sus nobles y todo el linaje (cuanto quepa). */
+	private void fichaCorte(GuiGraphics g, PaqueteFichas.Reino r, int tx, int y, int w) {
+		if (r.corte().isEmpty()) {
+			linea(g, Component.translatableWithFallback("destinos.mapa.sin_corte", "Aún no se sabe quién reina aquí."), tx, y, w, TEXTO_SUAVE);
+			return;
+		}
+		for (int i = 0; i < r.corte().size(); i++) {
+			y = linea(g, r.corte().get(i), tx, y, w, i == 0 ? ORO : TEXTO) + 1;
+		}
+		if (r.linaje().isEmpty()) {
+			return;
+		}
+		y += 6;
+		y = linea(g, Component.translatableWithFallback("destinos.gente.linaje", "Linaje").withStyle(ChatFormatting.BOLD), tx, y, w, ORO) + 2;
+		for (Component c : r.linaje()) {
+			Component l = Component.literal("· ").append(c);
+			if (y + font.split(l, w).size() * 10 > y1 - 6) {
+				break;
 			}
+			y = linea(g, l, tx, y, w, TEXTO_SUAVE) + 1;
+		}
+	}
+
+	/** Pestaña Crónica: todo lo que ha pasado con el reino, lo más reciente primero, con la rueda. */
+	private void fichaCronica(GuiGraphics g, PaqueteFichas.Reino r, int tx, int y, int w) {
+		if (r.cronica().isEmpty()) {
+			linea(g, Component.translatableWithFallback("destinos.mapa.sin_cronica", "Aún no ha pasado nada en este reino."), tx, y, w,
+					TEXTO_SUAVE);
+			return;
+		}
+		if (scrollCronica > 0) {
+			y = linea(g, Component.translatableWithFallback("destinos.mapa.cronica_recientes", "▲ %s más recientes (rueda)", scrollCronica),
+					tx, y, w, ORO) + 2;
+		}
+		// solo los sucesos que caben enteros en el panel (los más recientes primero); la rueda pasa al resto
+		List<Component> lista = r.cronica();
+		int i = Math.min(scrollCronica, lista.size());
+		for (; i < lista.size(); i++) {
+			Component l = Component.literal("· ").append(lista.get(i));
+			if (y + font.split(l, w).size() * 10 > y1 - 16) {
+				break;
+			}
+			y = linea(g, l, tx, y, w, TEXTO_SUAVE) + 2;
+		}
+		if (i < lista.size()) {
+			linea(g, Component.translatableWithFallback("destinos.mapa.cronica_antiguos", "▼ %s más antiguos (rueda)", lista.size() - i),
+					tx, y1 - 13, w, ORO);
 		}
 	}
 
