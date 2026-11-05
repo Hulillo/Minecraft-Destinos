@@ -260,6 +260,16 @@ public final class MapaTerreno {
 					r[c] = v;
 				}
 				terrenoLeido.putIfAbsent(clave, r);
+				// una región leída entera es el núcleo de una ventana que ya se había calculado: se rehará sola
+				int llenas = 0;
+				for (int v : r) {
+					if (v != 0) {
+						llenas++;
+					}
+				}
+				if (llenas * 10 >= r.length * 9) {
+					porRehacer.add(clave);
+				}
 			}
 			return n;
 		}
@@ -293,6 +303,32 @@ public final class MapaTerreno {
 		for (int ox = -1; ox <= 1; ox++) {
 			for (int oz = -1; oz <= 1; oz++) {
 				ventana(wx + ox, wz + oz);
+			}
+		}
+	}
+
+	/** Ventanas que ya se habían calculado en otra partida (su terreno está guardado), por rehacer al volver. */
+	private final java.util.concurrent.ConcurrentLinkedQueue<Long> porRehacer = new java.util.concurrent.ConcurrentLinkedQueue<>();
+
+	/**
+	 * Al volver a entrar en el mundo, el mapa de lo ya explorado: rehace de una en una (y solo cuando no hay otra
+	 * calculándose, para no quitar sitio a lo de alrededor del jugador) las ventanas cuyo terreno estaba guardado.
+	 * Con el terreno ya leído van rápidas. Se llama cada pocos segundos.
+	 */
+	public void rehaceGuardadas() {
+		if (porRehacer.isEmpty()) {
+			return;
+		}
+		for (CompletableFuture<Ventana> f : ventanas.values()) {
+			if (!f.isDone()) {
+				return;
+			}
+		}
+		Long clave;
+		while ((clave = porRehacer.poll()) != null) {
+			if (!ventanas.containsKey(clave)) {
+				ventana(Geo.claveX(clave), Geo.claveZ(clave));
+				return;
 			}
 		}
 	}

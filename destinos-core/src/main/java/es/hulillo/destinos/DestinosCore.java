@@ -203,6 +203,8 @@ public final class DestinosCore implements ModInitializer {
 				ENVIO.envia(m, pol, deAhora, p);
 			}
 		}
+		// lo explorado en otras partidas vuelve al mapa sin tener que pasar otra vez por allí
+		m.rehaceGuardadas();
 	}
 
 	/**
