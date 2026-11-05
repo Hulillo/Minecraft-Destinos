@@ -185,11 +185,14 @@ public final class EstructuraCapital extends Structure {
 		int estilo = AdornoCapital.estilo(pueblo.estructura().getRegisteredName(), bioma.value().getBaseTemperature());
 		MapaTerreno mapa = DestinosCore.mapaActual();
 		int tinte = -1;
+		int escudoReino = -1;
 		if (mapa != null) {
 			int[] t = Geo.territorioGeometrico(cx, cz, mapa.sal());
 			Geo.Reino reino = esta != null ? Geo.reinoDeDucado(esta.dcx(), esta.dcz(), mapa.sal()) : new Geo.Reino(t[2], t[3], false);
 			tinte = AdornoCapital.tinte(Geo.colorReino(reino.kx(), reino.kz(), mapa.sal()));
+			escudoReino = Estandarte.de(reino.kx(), reino.kz(), mapa.sal(), tinte);
 		}
+		int escudo = escudoReino;
 		int color = tinte;
 		boolean enBadlands = bioma.is(net.minecraft.tags.BiomeTags.IS_BADLANDS);
 		int madera = Paleta.madera(estilo, bioma.getRegisteredName(), Geo.hash(cx, cz, 5813));
@@ -438,42 +441,49 @@ public final class EstructuraCapital extends Structure {
 		long ms = (System.nanoTime() - antes) / 1_000_000;
 		BlockPos centro = new BlockPos(px, alturaPlaza, pz);
 		return Optional.of(new Structure.GenerationStub(centro, piezas -> {
+			// los estandartes de todas las obras llevan el escudo del reino
+			java.util.function.Consumer<StructurePiece> pon = pz0 -> {
+				if (pz0 instanceof PiezaObra o) {
+					o.escudo(escudo);
+				}
+				piezas.addPiece(pz0);
+			};
 			List<BoundingBox> cajas = new ArrayList<>();
 			// la plaza mayor con el mercado (lleva la campana en la fuente)
-			piezas.addPiece(mayor);
+			pon.accept(mayor);
 			cajas.add(mayor.getBoundingBox());
 			for (StructurePiece g : grandes) {
-				piezas.addPiece(g);
+				pon.accept(g);
 				cajas.add(g.getBoundingBox());
 			}
 			for (StructurePiece c : casas) {
-				piezas.addPiece(c);
+				pon.accept(c);
 				cajas.add(c.getBoundingBox());
 			}
-			gente.forEach(piezas::addPiece);
+			gente.forEach(pon);
 			// las calles antes que la muralla: así la muralla les abre las puertas
 			for (CalleCapital c : calles) {
-				piezas.addPiece(c);
+				pon.accept(c);
 				cajas.add(c.getBoundingBox());
 			}
-			muelles.forEach(piezas::addPiece);
-			huertos.forEach(piezas::addPiece);
+			muelles.forEach(pon);
+			huertos.forEach(pon);
 			faro.ifPresent(f -> {
-				piezas.addPiece(f);
+				pon.accept(f);
 				cajas.add(f.getBoundingBox());
 			});
 			// las puertas antes que la muralla: los arcos se paran en sus torres
 			for (PuertaCapital q : portones) {
-				piezas.addPiece(q);
+				pon.accept(q);
 				cajas.add(q.getBoundingBox());
 			}
 			for (StructurePiece m : enMuralla) {
-				piezas.addPiece(m);
+				pon.accept(m);
 				cajas.add(m.getBoundingBox());
 			}
 			// y lo último, el adorno, que ya ve todo lo demás puesto
-			BoundingBox.encapsulatingBoxes(cajas).ifPresent(caja -> piezas.addPiece(
-					new AdornoCapital(px, alturaPlaza, pz, estilo, color, caja, techo, false, 0, mayor.nivel(), mayor.semilla(), mayor.entradas(), enBadlands)));
+			BoundingBox.encapsulatingBoxes(cajas).ifPresent(caja -> pon.accept(
+					new AdornoCapital(px, alturaPlaza, pz, estilo, color, caja, techo, false, 0, mayor.nivel(), mayor.semilla(), mayor.entradas(), enBadlands).escudo(escudo)));
 			DestinosCore.LOG.info("Destinos Core: capital en {}, {}, {} (muralla de nivel {}{}): {} calles, {} tramos de ronda y {} callejones, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
 					px, alturaPlaza, pz, nivel,
 					(castillo.isPresent() ? ", con castillo" : "") + (mercado.isPresent() ? ", con mercado" : "")

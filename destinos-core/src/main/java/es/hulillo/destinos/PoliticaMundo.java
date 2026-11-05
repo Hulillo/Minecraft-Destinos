@@ -308,9 +308,20 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 				}
 			}
 			int[] senor = e != null && e.senor != Politica.NADIE ? celda(e.senor) : null;
+			int fondo = AdornoCapital.tinte(Geo.colorReino(Grafo.x(id), Grafo.z(id), sal()));
+			int[] union = null;
+			Component nombreUnion = Component.empty();
+			Politica.Par u = politica.unionDe(id);
+			if (u != null) {
+				long otro = u.otro(id);
+				boolean primero = res.poder() >= politica.resumen(grafo, otro).poder();
+				union = celda(otro);
+				nombreUnion = nombres.nombreUnion(server, primero ? id : otro, primero ? otro : id);
+			}
 			reinos.add(new PaqueteFichas.Reino(Grafo.x(id), Grafo.z(id), nombreReino(server, id), res.poder(),
 					NombresPolitica.redondea(res.habitantes()), res.ducados(), e == null ? 60 : e.estabilidad, i + 1, capital, perdida,
-					senor, guerras, aliados, p == null ? 0 : encargos.rep(p, id), nombres.cultura(server, id), cronica));
+					senor, guerras, aliados, p == null ? 0 : encargos.rep(p, id), nombres.cultura(server, id), cronica, fondo,
+					Estandarte.de(Grafo.x(id), Grafo.z(id), sal(), fondo), union, nombreUnion));
 		}
 		Map<Long, Integer> peligro = peligros(server);
 		FaunaDucados fauna = FaunaDucados.de(server.overworld(), sal());

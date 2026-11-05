@@ -2,6 +2,7 @@ package es.hulillo.destinos.cliente;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import es.hulillo.destinos.DestinosCore;
+import es.hulillo.destinos.Estandarte;
 import es.hulillo.destinos.Geo;
 import es.hulillo.destinos.MapaTerreno;
 import es.hulillo.destinos.PaqueteFichas;
@@ -35,6 +36,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.item.DyeColor;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -1321,6 +1323,9 @@ public final class PantallaMapa extends Screen {
 			if (r.senor() != null) {
 				curva(g, a, sitioReino(r.senor()[0], r.senor()[1]), ModoMapa.VASALLAJE);
 			}
+			if (r.union() != null && Geo.clave(r.union()[0], r.union()[1]) > ka) {
+				curva(g, a, sitioReino(r.union()[0], r.union()[1]), ModoMapa.UNION);
+			}
 		}
 	}
 
@@ -1954,9 +1959,8 @@ public final class PantallaMapa extends Screen {
 		}
 		int kx = r.kx();
 		int kz = r.kz();
-		g.fill(tx, y, tx + 10, y + 14, 0xFF000000);
 		Integer colorReino = coloresReino.get(Geo.clave(kx, kz));
-		g.fill(tx + 1, y + 1, tx + 9, y + 13, colorReino == null ? 0xFF888888 : 0xFF000000 | colorReino);
+		pintaEstandarte(g, tx, y, r.fondo(), r.escudo(), colorReino == null ? 0xFF888888 : 0xFF000000 | colorReino);
 		// el texto de la ficha (traducir y partir en líneas) solo se rehace si cambia el reino, las fichas o el tamaño
 		String clave = kx + "," + kz + "," + (fijado != Long.MIN_VALUE) + "," + tx + "," + w + "," + y1 + "," + FichasCliente.version();
 		if (clave.equals(fichaClave)) {
@@ -1974,7 +1978,9 @@ public final class PantallaMapa extends Screen {
 
 	/** Lo escrito en la ficha de un reino (se graba en fichaTrazos para los frames siguientes). */
 	private void fichaReino(GuiGraphics g, PaqueteFichas.Reino r, int tx, int y, int w) {
-		y = linea(g, r.nombre().copy().withStyle(ChatFormatting.BOLD), tx + 14, y + 3, w - 14, TEXTO) + 6;
+		int arriba = y;
+		y = linea(g, r.nombre().copy().withStyle(ChatFormatting.BOLD), tx + 16, y + 3, w - 16, TEXTO) + 6;
+		y = Math.max(y, arriba + ALTO_ESTANDARTE + 6);
 		if (fijado != Long.MIN_VALUE) {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.fijada", "(ficha fija: clic fuera para soltarla)"), tx, y, w,
 					TEXTO_SUAVE) + 2;
@@ -1998,6 +2004,10 @@ public final class PantallaMapa extends Screen {
 		if (r.senor() != null) {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.vasallo", "Vasallo del %s", nombre(r.senor())), tx, y, w,
 					TEXTO_SUAVE);
+		}
+		if (r.union() != null) {
+			y = linea(g, Component.translatableWithFallback("destinos.mapa.union", "❖ En la %s, con el %s", r.nombreUnion(), nombre(r.union())),
+					tx, y, w, ModoMapa.UNION);
 		}
 		y += 4;
 		if (!r.guerras().isEmpty()) {
@@ -2027,6 +2037,32 @@ public final class PantallaMapa extends Screen {
 					break;
 				}
 				y = linea(g, Component.literal("· ").append(c), tx, y, w, TEXTO_SUAVE) + 2;
+			}
+		}
+	}
+
+	private static final int ALTO_ESTANDARTE = 22;
+
+	/**
+	 * El estandarte del reino en pequeño (un píxel por cada dos de la tela): el palo arriba y la tela de su color con
+	 * la partición y la figura del escudo. Sin datos (fichas de un servidor viejo), un cuadro liso del color del mapa.
+	 */
+	private static void pintaEstandarte(GuiGraphics g, int x, int y, int fondo, int escudo, int liso) {
+		g.fill(x - 1, y, x + 13, y + 2, 0xFF5A3A22);
+		g.fill(x, y + 2, x + 12, y + ALTO_ESTANDARTE, 0xFF000000);
+		int base = fondo >= 0 ? 0xFF000000 | DyeColor.byId(fondo).getTextureDiffuseColor() : liso;
+		String particion = escudo >= 0 ? Estandarte.PARTICION_NOMBRES.get(Estandarte.particion(escudo)) : "";
+		String figura = escudo >= 0 ? Estandarte.FIGURA_NOMBRES.get(Estandarte.figura(escudo)) : "";
+		int c1 = escudo >= 0 ? 0xFF000000 | DyeColor.byId(Estandarte.colorParticion(escudo)).getTextureDiffuseColor() : base;
+		int c2 = escudo >= 0 ? 0xFF000000 | DyeColor.byId(Estandarte.colorFigura(escudo)).getTextureDiffuseColor() : base;
+		int an = 10;
+		int al = ALTO_ESTANDARTE - 4;
+		for (int j = 0; j < al; j++) {
+			for (int i = 0; i < an; i++) {
+				double u = (i + 0.5) / an;
+				double v = (j + 0.5) / al;
+				int c = Estandarte.cubre(figura, u, v) ? c2 : Estandarte.cubre(particion, u, v) ? c1 : base;
+				g.fill(x + 1 + i, y + 3 + j, x + 2 + i, y + 4 + j, c);
 			}
 		}
 	}

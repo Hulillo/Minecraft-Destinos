@@ -67,6 +67,8 @@ public final class AdornoCapital extends StructurePiece {
 	private final int estilo;
 	/** Color del reino (id de DyeColor), o -1 si no se sabe. */
 	private final int color;
+	/** El escudo del reino para los estandartes de la plaza (Estandarte), o -1: lisos. */
+	private int escudo = -1;
 	/** Si lleva el anillo de puestos en la plaza (solo si la capital no tiene plaza del mercado). */
 	private final boolean puestos;
 	/** Altura de la plaza mayor (la mediana de su suelo), o MIN_VALUE en las guardadas antes: sin allanar. */
@@ -96,12 +98,19 @@ public final class AdornoCapital extends StructurePiece {
 		this.badlands = badlands;
 	}
 
+	/** Pone el escudo del reino en los estandartes de la plaza. */
+	AdornoCapital escudo(int e) {
+		escudo = e;
+		return this;
+	}
+
 	private AdornoCapital(CompoundTag t) {
 		super(TIPO, t);
 		px = t.getIntOr("px", 0);
 		pz = t.getIntOr("pz", 0);
 		estilo = t.getIntOr("estilo", TEMPLADO);
 		color = t.getIntOr("color", -1);
+		escudo = t.getIntOr("escudo", -1);
 		puestos = t.getBooleanOr("puestos", true);
 		py = t.getIntOr("py", Integer.MIN_VALUE);
 		mercado = t.getIntOr("mercado", 0);
@@ -161,6 +170,7 @@ public final class AdornoCapital extends StructurePiece {
 		t.putInt("pz", pz);
 		t.putInt("estilo", estilo);
 		t.putInt("color", color);
+		t.putInt("escudo", escudo);
 		t.putBoolean("puestos", puestos);
 		t.putInt("py", py);
 		t.putInt("mercado", mercado);
@@ -634,8 +644,9 @@ public final class AdornoCapital extends StructurePiece {
 		level.setBlock(pos.set(x, y + 5, z), Blocks.LANTERN.defaultBlockState(), 2);
 		Block banner = bloque("wall_banner");
 		for (Direction d : Direction.Plane.HORIZONTAL) {
-			level.setBlock(new BlockPos(x + d.getStepX(), y + 4, z + d.getStepZ()),
-					banner.defaultBlockState().setValue(WallBannerBlock.FACING, d), 2);
+			BlockPos sitio = new BlockPos(x + d.getStepX(), y + 4, z + d.getStepZ());
+			level.setBlock(sitio, banner.defaultBlockState().setValue(WallBannerBlock.FACING, d), 2);
+			Estandarte.aplica(level, sitio, color, escudo);
 		}
 		DestinosCore.LOG.info("Destinos Core: plaza mayor de la capital en {}, {}: estandartes en {}, {}, {} ({})", px, pz, x, y, z,
 				level.getBlockState(pos.set(x + 1, y + 4, z)));

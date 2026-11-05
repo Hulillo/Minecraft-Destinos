@@ -23,11 +23,12 @@ public record PaqueteFichas(int anio, int turno, List<Reino> reinos, List<Nombre
 
 	/**
 	 * Un reino vivo. puesto: lugar en el ranking de poder (1 = el más fuerte). capital: nombre del ducado de su
-	 * capital (vacío si aún no se sabe) y si la ha perdido. senor: reino del que es vasallo (kx, kz) o null.
+	 * capital (vacío si aún no se sabe) y si la ha perdido. senor: reino del que es vasallo (kx, kz) o null. fondo y
+	 * escudo: su estandarte (id de DyeColor y Estandarte). union: el otro reino de su unión (o null) y su nombre.
 	 */
 	public record Reino(int kx, int kz, Component nombre, int poder, int habitantes, int ducados, int estabilidad, int puesto,
 			Component capital, boolean capitalPerdida, int[] senor, List<int[]> guerras, List<int[]> aliados, int rep, String cultura,
-			List<Component> cronica) {
+			List<Component> cronica, int fondo, int escudo, int[] union, Component nombreUnion) {
 	}
 
 	/**
@@ -103,6 +104,14 @@ public record PaqueteFichas(int anio, int turno, List<Reino> reinos, List<Nombre
 			buf.writeVarInt(r.rep());
 			buf.writeUtf(r.cultura());
 			textos(buf, r.cronica());
+			buf.writeVarInt(r.fondo() + 1);
+			buf.writeVarInt(r.escudo() + 1);
+			buf.writeBoolean(r.union() != null);
+			if (r.union() != null) {
+				buf.writeVarInt(r.union()[0]);
+				buf.writeVarInt(r.union()[1]);
+				ComponentSerialization.TRUSTED_STREAM_CODEC.encode(buf, r.nombreUnion());
+			}
 		}
 		buf.writeVarInt(ducados.size());
 		for (Nombre d : ducados) {
@@ -136,8 +145,17 @@ public record PaqueteFichas(int anio, int turno, List<Reino> reinos, List<Nombre
 			List<int[]> aliados = celdas(buf);
 			int rep = buf.readVarInt();
 			String cultura = buf.readUtf();
+			List<Component> cronica = textos(buf);
+			int fondo = buf.readVarInt() - 1;
+			int escudo = buf.readVarInt() - 1;
+			int[] union = null;
+			Component nombreUnion = Component.empty();
+			if (buf.readBoolean()) {
+				union = new int[] {buf.readVarInt(), buf.readVarInt()};
+				nombreUnion = ComponentSerialization.TRUSTED_STREAM_CODEC.decode(buf);
+			}
 			reinos.add(new Reino(kx, kz, nombre, poder, habitantes, ducados, estabilidad, puesto, capital, perdida, senor, guerras,
-					aliados, rep, cultura, textos(buf)));
+					aliados, rep, cultura, cronica, fondo, escudo, union, nombreUnion));
 		}
 		int m = cuenta(buf);
 		List<Nombre> ducados = new ArrayList<>(m);

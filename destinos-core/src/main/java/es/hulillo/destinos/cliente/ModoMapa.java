@@ -30,6 +30,7 @@ enum ModoMapa {
 	static final int FRENTE = 0xFFC0281F;
 	static final int ALIANZA = 0xFF4FB548;
 	static final int VASALLAJE = 0xFFF1C84B;
+	static final int UNION = 0xFFB07CE0;
 	private static final int DEBIL = 0xFFF2E6C4;
 	private static final int FUERTE = 0xFF5A2F14;
 	private static final int SIN_DATOS = 0xFFCFC6B2;
@@ -186,6 +187,7 @@ enum ModoMapa {
 				l.add(new Object[] {ALIANZA, t("alianza", "Alianza")});
 				l.add(new Object[] {FRENTE, t("guerra", "Guerra")});
 				l.add(new Object[] {VASALLAJE, t("vasallaje", "Vasallaje")});
+				l.add(new Object[] {UNION, t("union", "Unión de coronas")});
 			}
 			case GUERRAS -> {
 				l.add(new Object[] {0xFFB5523A, t("en_guerra", "Reinos en guerra")});
