@@ -1,0 +1,11 @@
+{
+	"required": false,
+	"minVersion": "0.8",
+	"package": "es.hulillo.destinos.tornados.mixin",
+	"plugin": "es.hulillo.destinos.tornados.PluginTornados",
+	"compatibilityLevel": "JAVA_21",
+	"mixins": ["MixinCumulosWT", "MixinTiempoWT"],
+	"injectors": {
+		"defaultRequire": 0
+	}
+}

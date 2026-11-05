@@ -14,7 +14,8 @@
 	},
 	"mixins": [
 		"destinos_core.mixins.json",
-		{"config": "destinos_core.diorama.mixins.json", "environment": "client"}
+		{"config": "destinos_core.diorama.mixins.json", "environment": "client"},
+		"destinos_core.tornados.mixins.json"
 	],
 	"depends": {
 		"fabricloader": ">=0.19.5",
@@ -24,6 +25,7 @@
 	},
 	"suggests": {
 		"journeymap": "*",
-		"diorama": "*"
+		"diorama": "*",
+		"weather_classic": "*"
 	}
 }
