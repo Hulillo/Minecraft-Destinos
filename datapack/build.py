@@ -735,6 +735,13 @@ GENTE = {
     "reinado_hoy": ("%s · desde el año %s", "%s · since year %s"),
     "fin.golpe": ("derrocado", "overthrown"),
     "fin.otro": ("dejó el trono", "left the throne"),
+    "ver_arbol": ("⚘ Ver el árbol familiar", "⚘ See the family tree"),
+    "arbol.cargando": ("Buscando el árbol…", "Looking up the tree…"),
+    "arbol.titulo": ("Árbol familiar · casa %s", "Family tree · House %s"),
+    "arbol.ayuda": ("Clic en alguien: su árbol · ♚ reina hoy · ♛ reinó · Esc: cerrar",
+                    "Click someone: their tree · ♚ rules today · ♛ once ruled · Esc: close"),
+    "arbol.vive": ("n. %s", "b. %s"),
+    "arbol.vida": ("%s–%s", "%s–%s"),
 }
 for k, (a, b) in GENTE.items(): L(f"destinos.gente.{k}", a, b)
 GENTE_PARENTESCO = {"hijo": (("hijo", "hija"), ("son", "daughter")), "nieto": (("nieto", "nieta"), ("grandson", "granddaughter")),

@@ -369,6 +369,27 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		return new PaqueteFichas(Estaciones.anio(server.overworld()), politica.turno(), reinos, ducados);
 	}
 
+	/**
+	 * El árbol familiar para el mapa: el de la persona pedida o, con Persona.NADIE, el del rey de hoy del reino (kx,
+	 * kz). Null si no hay a quién enseñar.
+	 */
+	PaqueteArbol arbol(int kx, int kz, int persona) {
+		Gente g = politica.gente();
+		Persona centro = persona == Persona.NADIE ? g.rey(Grafo.id(kx, kz)) : g.persona(persona);
+		if (centro == null) {
+			return null;
+		}
+		int anio = politica.anio();
+		Set<Integer> reyes = new HashSet<>(g.reyes().values());
+		List<PaqueteArbol.Miembro> miembros = new ArrayList<>();
+		for (Gente.Rama r : g.arbol(centro.id)) {
+			Persona x = r.persona();
+			miembros.add(new PaqueteArbol.Miembro(x.id, r.generacion(), NombresPolitica.nombre(x), NombresPolitica.pista(x, anio), x.mujer,
+					x.nace, x.muere, x.padre, x.madre, x.conyuge, x.ordinal > 0, x.vivo() && reyes.contains(x.id)));
+		}
+		return new PaqueteArbol(kx, kz, centro.id, Component.literal(centro.casa), miembros);
+	}
+
 	/** La corte del reino para su ficha: rey (o regente), consorte, heredero, ley de herencia, general y consejo. */
 	private List<Component> corte(long reino) {
 		Gente g = politica.gente();

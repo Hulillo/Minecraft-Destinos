@@ -147,6 +147,29 @@ public final class PruebaPolitica {
 					}
 				});
 			}
+			// el árbol de cada rey: él en el centro, sin repetidos, sus hijos debajo y sus padres encima
+			for (long reino : p.reinosVivos(g)) {
+				es.hulillo.destinos.politica.Persona rey = p.gente().rey(reino);
+				List<es.hulillo.destinos.politica.Gente.Rama> arbol = p.gente().arbol(rey.id);
+				java.util.Set<Integer> vistos = new java.util.HashSet<>();
+				boolean esta = false;
+				for (es.hulillo.destinos.politica.Gente.Rama r : arbol) {
+					es.hulillo.destinos.politica.Persona x = r.persona();
+					if (!vistos.add(x.id)) {
+						falla("sal " + sal + ": el árbol de " + rey + " repite a " + x);
+					}
+					esta |= x.id == rey.id && r.generacion() == 0;
+					if (r.generacion() == 1 && x.padre != rey.id && x.madre != rey.id) {
+						falla("sal " + sal + ": en el árbol de " + rey + " sale como hijo " + x);
+					}
+					if (r.generacion() == -1 && x.id != rey.padre && x.id != rey.madre) {
+						falla("sal " + sal + ": en el árbol de " + rey + " sale como padre " + x);
+					}
+				}
+				if (!esta || arbol.size() > es.hulillo.destinos.politica.Gente.MAX_ARBOL) {
+					falla("sal " + sal + ": el árbol de " + rey + " no vale (" + arbol.size() + " personas)");
+				}
+			}
 			for (Suceso s : p.cronica()) {
 				if (s.personaA() != es.hulillo.destinos.politica.Persona.NADIE && p.gente().persona(s.personaA()) == null) {
 					falla("sal " + sal + ": la crónica nombra a alguien olvidado (" + s + ")");

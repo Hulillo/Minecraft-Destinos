@@ -3,6 +3,7 @@ package es.hulillo.destinos.cliente;
 import com.mojang.blaze3d.platform.InputConstants;
 import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.MapaTerreno;
+import es.hulillo.destinos.PaqueteArbol;
 import es.hulillo.destinos.PaqueteEncargos;
 import es.hulillo.destinos.PaqueteFichas;
 import es.hulillo.destinos.PaqueteMazmorra;
@@ -45,6 +46,7 @@ public final class DestinosCoreCliente implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteEncargos.TIPO, (paquete, contexto) -> HudEncargos.recibe(paquete));
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteMazmorra.TIPO, (paquete, contexto) -> BarraMazmorra.recibe(paquete));
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteFichas.TIPO, (paquete, contexto) -> FichasCliente.recibe(paquete));
+		ClientPlayNetworking.registerGlobalReceiver(PaqueteArbol.TIPO, (paquete, contexto) -> PantallaMapa.recibeArbol(paquete));
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteVerMapa.TIPO, (paquete, contexto) -> {
 			PantallaMapa.centra(paquete.x(), paquete.z());
 			contexto.client().setScreen(new PantallaMapa(teclaMapa));

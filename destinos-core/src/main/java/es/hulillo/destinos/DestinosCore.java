@@ -78,13 +78,21 @@ public final class DestinosCore implements ModInitializer {
 		PayloadTypeRegistry.playS2C().register(PaqueteEncargos.TIPO, PaqueteEncargos.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaqueteMazmorra.TIPO, PaqueteMazmorra.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaqueteFichas.TIPO, PaqueteFichas.CODEC);
+		PayloadTypeRegistry.playS2C().register(PaqueteArbol.TIPO, PaqueteArbol.CODEC);
 		PayloadTypeRegistry.playC2S().register(PaqueteAccionEncargo.TIPO, PaqueteAccionEncargo.CODEC);
 		PayloadTypeRegistry.playC2S().register(PaquetePedirMapa.TIPO, PaquetePedirMapa.CODEC);
+		PayloadTypeRegistry.playC2S().register(PaquetePedirArbol.TIPO, PaquetePedirArbol.CODEC);
 		// Fabric ya entrega los paquetes en el hilo del servidor
 		ServerPlayNetworking.registerGlobalReceiver(PaqueteAccionEncargo.TIPO, (paquete, contexto) ->
 				EncargosMundo.accion(contexto.player(), paquete));
 		ServerPlayNetworking.registerGlobalReceiver(PaquetePedirMapa.TIPO, (paquete, contexto) ->
 				pideMapa(contexto.server(), contexto.player(), paquete.fichas()));
+		ServerPlayNetworking.registerGlobalReceiver(PaquetePedirArbol.TIPO, (paquete, contexto) -> {
+			PaqueteArbol a = politica == null ? null : politica.arbol(paquete.kx(), paquete.kz(), paquete.persona());
+			if (a != null && ServerPlayNetworking.canSend(contexto.player(), PaqueteArbol.TIPO)) {
+				ServerPlayNetworking.send(contexto.player(), a);
+			}
+		});
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
 				EncargosMundo.de(server).envia(server, handler.getPlayer()));
 		ServerLivingEntityEvents.AFTER_DEATH.register((muerto, fuente) -> {

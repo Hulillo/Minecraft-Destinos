@@ -188,6 +188,75 @@ public final class Gente {
 		return res;
 	}
 
+	/** Una persona del árbol familiar y su generación respecto del centro (-2 abuelos … +2 nietos). */
+	public record Rama(Persona persona, int generacion) {
+	}
+
+	/** Como mucho tantas personas en un árbol (para el mapa). */
+	public static final int MAX_ARBOL = 48;
+
+	/**
+	 * La familia cercana de una persona, ya en el orden en que se pinta cada fila: abuelos (los del padre y luego los
+	 * de la madre), padres, hermanos con la persona y su cónyuge al lado, hijos del mayor al pequeño y nietos por
+	 * familias. Vacío si la persona ya no se recuerda.
+	 */
+	public List<Rama> arbol(int centro) {
+		Persona c = personas.get(centro);
+		List<Rama> res = new ArrayList<>();
+		if (c == null) {
+			return res;
+		}
+		Set<Integer> puestos = new HashSet<>();
+		Persona padre = personas.get(c.padre);
+		Persona madre = personas.get(c.madre);
+		for (Persona p : new Persona[] {padre, madre}) {
+			if (p != null) {
+				pon(res, puestos, personas.get(p.padre), -2);
+				pon(res, puestos, personas.get(p.madre), -2);
+			}
+		}
+		pon(res, puestos, padre, -1);
+		pon(res, puestos, madre, -1);
+		// los hermanos (de padre o de madre) por edad, y la persona en su sitio con su cónyuge al lado
+		List<Persona> fila = new ArrayList<>();
+		for (Persona p : new Persona[] {padre, madre}) {
+			if (p != null) {
+				for (Persona h : hijos(p)) {
+					if (!fila.contains(h)) {
+						fila.add(h);
+					}
+				}
+			}
+		}
+		if (!fila.contains(c)) {
+			fila.add(c);
+		}
+		fila.sort(Comparator.comparingInt((Persona h) -> h.nace).thenComparingInt(h -> h.id));
+		Persona conyuge = personas.get(c.conyuge);
+		for (Persona h : fila) {
+			pon(res, puestos, h, 0);
+			if (h == c) {
+				pon(res, puestos, conyuge, 0);
+			}
+		}
+		List<Persona> hijos = hijos(c);
+		for (Persona h : hijos) {
+			pon(res, puestos, h, 1);
+		}
+		for (Persona h : hijos) {
+			for (Persona n : hijos(h)) {
+				pon(res, puestos, n, 2);
+			}
+		}
+		return res;
+	}
+
+	private static void pon(List<Rama> res, Set<Integer> puestos, Persona p, int generacion) {
+		if (p != null && res.size() < MAX_ARBOL && puestos.add(p.id)) {
+			res.add(new Rama(p, generacion));
+		}
+	}
+
 	private void padres(Persona h, int padre, int madre) {
 		h.padre = padre;
 		h.madre = madre;

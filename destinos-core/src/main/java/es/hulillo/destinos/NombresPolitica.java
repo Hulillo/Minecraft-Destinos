@@ -320,18 +320,25 @@ final class NombresPolitica {
 
 	/** "Aldric II el Bravo" (con su mote si lo tiene), con la casa, la edad y el carácter al pasar el ratón. */
 	static MutableComponent persona(Persona x, int anio) {
-		String g = x.mujer ? "f" : "m";
+		Component pista = pista(x, anio);
+		return nombre(x).withStyle(st -> st.withHoverEvent(new HoverEvent.ShowText(pista)).withColor(0xE8D9A8));
+	}
+
+	/** "Aldric II el Bravo": el nombre con su número y su mote, sin más. */
+	static MutableComponent nombre(Persona x) {
 		MutableComponent nombre = Component.literal(x.nombreCorto());
-		if (x.mote != null) {
-			nombre = Component.translatableWithFallback("destinos.gente.nombre_mote", "%s %s", nombre,
-					Component.translatableWithFallback("destinos.gente.mote." + x.mote + "." + g, x.mote));
-		}
-		Component pista = x.vivo()
+		return x.mote == null ? nombre
+				: Component.translatableWithFallback("destinos.gente.nombre_mote", "%s %s", nombre,
+						Component.translatableWithFallback("destinos.gente.mote." + x.mote + "." + (x.mujer ? "f" : "m"), x.mote));
+	}
+
+	/** Lo que sale al pasar el ratón por alguien: casa, edad y carácter (o de qué murió). */
+	static Component pista(Persona x, int anio) {
+		return x.vivo()
 				? Component.translatableWithFallback("destinos.gente.pista", "Casa %s · %s años · %s y %s\nGuerra %s · Diplomacia %s · Intriga %s",
 						x.casa, x.edad(anio), rasgo(x, x.rasgo1), rasgo(x, x.rasgo2), x.guerra, x.diplomacia, x.intriga)
 				: Component.translatableWithFallback("destinos.gente.pista_muerto", "Casa %s · murió con %s años, %s", x.casa, x.edad(anio),
 						causa(x));
-		return nombre.withStyle(st -> st.withHoverEvent(new HoverEvent.ShowText(pista)).withColor(0xE8D9A8));
 	}
 
 	/** "el rey Aldric II", "la duquesa Elvira"… con el cargo de hoy (o el último que tuvo). */
