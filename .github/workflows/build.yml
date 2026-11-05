@@ -53,19 +53,6 @@ jobs:
         working-directory: destinos-core
         run: ./gradlew build --no-daemon
 
-      - name: Sondeo de API (temporal)
-        if: always()
-        working-directory: destinos-core
-        run: |
-          J=$(find ~/.gradle/caches .gradle -name '*.jar' 2>/dev/null | grep -iE 'minecraft-(merged|common|clientonly)|fabric-api|fabric-(networking|rendering|object-builder|entity)' | grep -v sources | tr '\n' ':')
-          echo "$J" | tr ':' '\n' | head -40
-          for c in net.minecraft.client.renderer.entity.HumanoidMobRenderer net.minecraft.client.renderer.entity.MobRenderer net.minecraft.client.renderer.entity.LivingEntityRenderer net.minecraft.client.model.HumanoidModel net.minecraft.client.model.player.PlayerModel net.minecraft.client.model.PlayerModel net.minecraft.client.renderer.entity.state.HumanoidRenderState net.minecraft.client.renderer.entity.state.AvatarRenderState net.minecraft.client.renderer.entity.state.LivingEntityRenderState net.minecraft.client.renderer.entity.EntityRendererProvider\$Context net.minecraft.world.entity.PathfinderMob net.minecraft.world.entity.Mob net.minecraft.world.entity.EntityType\$Builder net.minecraft.world.entity.ai.goal.LookAtPlayerGoal net.minecraft.world.entity.ai.goal.RandomLookAroundGoal net.minecraft.world.entity.ai.goal.Goal net.minecraft.world.level.storage.ValueOutput net.minecraft.world.level.storage.ValueInput net.minecraft.network.syncher.SynchedEntityData\$Builder net.minecraft.client.renderer.texture.DynamicTexture net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry net.minecraft.client.model.geom.ModelLayers net.minecraft.world.entity.ai.navigation.PathNavigation net.minecraft.client.gui.GuiGraphics; do
-            echo "===== $c"; javap -cp "$J" "$c" 2>&1 | head -120
-          done
-          echo "===== Entity (selección)"; javap -cp "$J" net.minecraft.world.entity.Entity | grep -iE 'shouldBeSaved|addAdditionalSaveData|readAdditionalSaveData|defineSynchedData|setCustomName|teleportTo|hurtServer|isInvulnerableTo|interact|discard|level\(\)'
-          echo "===== LivingEntity (selección)"; javap -cp "$J" net.minecraft.world.entity.LivingEntity | grep -iE 'die\(|hurtServer|getAttribute|actuallyHurt|isPushable|doPush|setHealth'
-          echo "===== Attributes"; javap -cp "$J" net.minecraft.world.entity.ai.attributes.Attributes | grep -iE 'SCALE|MAX_HEALTH|ARMOR|MOVEMENT|FOLLOW'
-
       - name: Arrancar un servidor de Minecraft con el mod y comprobar que el datapack carga sin errores
         run: python herramientas/servidor_prueba.py
         timeout-minutes: 20

@@ -789,8 +789,9 @@ final class EncargosMundo {
 	}
 
 	/**
-	 * Una embajada en marcha: una vez por el camino salen cazarrecompensas (lejos aún del destino) y, al llegar a la
-	 * plaza de la capital con la carta encima, se entrega. Devuelve si ha cambiado algo.
+	 * Una embajada en marcha: una vez por el camino salen cazarrecompensas (lejos aún del destino). La carta se da al
+	 * rey en persona, hablándole; solo si su reino ha perdido la capital se entrega al llegar a la plaza. Devuelve si
+	 * ha cambiado algo.
 	 */
 	private boolean embajada(MinecraftServer server, PoliticaMundo pol, ServerLevel level, ServerPlayer p, Jugador j, Encargo e, double d2) {
 		if (!e.emboscada && d2 > 350 * 350 && (d2 < 700 * 700 || level.getRandom().nextInt(240) == 0)) {
@@ -804,18 +805,19 @@ final class EncargosMundo {
 			}
 			return false;
 		}
-		// en las capitales ricas (con castillo) la carta se entrega al rey, en el salón del trono; en las demás, en la plaza
+		// con la capital en pie, la carta se da al rey en persona (al hablarle: DialogoCorte → entregaEnMano); si el
+		// reino ha perdido su capital, basta con llegar a la plaza
 		MapaTerreno.Capital destino = pol.capitalViva(e.enemigo);
-		boolean rica = destino != null && destino.nivel() == 2;
-		if (rica) {
-			if (d2 > 160 * 160 || !Embajadas.junto(level, p)) {
-				if (d2 < 24 * 24 && server.getTickCount() % 200 == 0) {
-					p.displayClientMessage(Component.translatableWithFallback("destinos.embajada.al_trono",
-							"Aquí te dirán que la carta es para el rey: búscalo en el salón del trono del castillo.").withStyle(ChatFormatting.YELLOW), true);
-				}
-				return false;
+		if (destino != null) {
+			if (d2 < 32 * 32 && server.getTickCount() % 200 == 0) {
+				boolean castillo = destino.nivel() == 2;
+				p.displayClientMessage(Component.translatableWithFallback(castillo ? "destinos.embajada.al_trono" : "destinos.embajada.al_rey",
+						castillo ? "La carta es para el rey en persona: búscalo en el castillo (de día, en el salón del trono) y háblale."
+								: "La carta es para el rey en persona: búscalo por la plaza y háblale.").withStyle(ChatFormatting.YELLOW), true);
 			}
-		} else if (d2 > 24 * 24) {
+			return false;
+		}
+		if (d2 > 24 * 24) {
 			return false;
 		}
 		if (!Embajadas.tiene(p, e.id)) {
@@ -895,6 +897,41 @@ final class EncargosMundo {
 						: "✉ La carta está entregada: en el próximo turno el %s y el %s sellarán una alianza.",
 				pol.nombreReino(server, e.reino), pol.nombreReino(server, e.enemigo)).withStyle(ChatFormatting.GOLD));
 		sonido(server, p, "minecraft:block.bell.use", 0.8f, 1);
+	}
+
+	/** La embajada en marcha del jugador cuya carta lleva encima y va para el reino, o null. */
+	private Encargo cartaPara(Jugador j, ServerPlayer p, long reino) {
+		if (j != null) {
+			for (Encargo e : j.activos) {
+				if (e.tipo == Encargo.Tipo.embajada && e.enemigo == reino && Embajadas.tiene(p, e.id)) {
+					return e;
+				}
+			}
+		}
+		return null;
+	}
+
+	/** Si el jugador trae una carta para el rey del reino (para ofrecérsela al hablarle). */
+	boolean llevaCarta(ServerPlayer p, long reino) {
+		return cartaPara(jugadores.get(p.getUUID()), p, reino) != null;
+	}
+
+	/** El jugador da la carta al rey del reino en persona (DialogoCorte). Devuelve si la llevaba. */
+	boolean entregaEnMano(MinecraftServer server, PoliticaMundo pol, ServerPlayer p, long reino) {
+		Jugador j = jugadores.get(p.getUUID());
+		Encargo e = cartaPara(j, p, reino);
+		if (e == null) {
+			return false;
+		}
+		Embajadas.quita(p, e.id);
+		cumple(server, pol, p, j, e);
+		envia(server, p);
+		return true;
+	}
+
+	/** Baja la reputación con el reino (golpes y muertes en la corte). Devuelve la que queda. */
+	int castiga(ServerPlayer p, long reino, int delta) {
+		return sumaRep(p, reino, -delta);
 	}
 
 	/** Si el jugador lleva una carta de un reino que está en guerra con este (los guardias no le dejan pasar). */
@@ -1113,9 +1150,12 @@ final class EncargosMundo {
 		if (e.tipo == Encargo.Tipo.embajada) {
 			PoliticaMundo pol = DestinosCore.politica();
 			MapaTerreno.Capital c = pol == null ? null : pol.capitalViva(e.enemigo);
-			return c != null && c.nivel() == 2
-					? Component.translatableWithFallback("destinos.encargo.estado.trono", "Lleva la carta sellada al rey, al salón del trono de su castillo.")
-					: Component.translatableWithFallback("destinos.encargo.estado.carta", "Lleva la carta sellada a la plaza de su capital.");
+			if (c == null) {
+				return Component.translatableWithFallback("destinos.encargo.estado.carta", "Lleva la carta sellada a la plaza de su capital.");
+			}
+			return c.nivel() == 2
+					? Component.translatableWithFallback("destinos.encargo.estado.trono", "Dale la carta sellada al rey en persona: de día está en el salón del trono de su castillo.")
+					: Component.translatableWithFallback("destinos.encargo.estado.rey", "Dale la carta sellada al rey en persona: está en la plaza de su capital.");
 		}
 		if (e.tipo == Encargo.Tipo.guerra) {
 			return e.campamento

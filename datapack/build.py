@@ -881,7 +881,10 @@ ENCARGOS.update({
     "embajada.texto": ("Lleva la carta sellada de nuestro rey hasta la plaza de la capital del %s, en %s. Si hay guerra, es una carta de paz; si no, de alianza. Por el camino habrá quien quiera quitártela.",
                        "Carry our king's sealed letter to the square of the capital of the %s, in %s. If there is war, it is a letter of peace; if not, of alliance. Some will try to take it from you on the way."),
     "estado.carta": ("Lleva la carta sellada a la plaza de su capital.", "Take the sealed letter to the square of their capital."),
-    "estado.trono": ("Lleva la carta sellada al rey, al salón del trono de su castillo.", "Take the sealed letter to the king, in the throne room of their castle."),
+    "estado.trono": ("Dale la carta sellada al rey en persona: de día está en el salón del trono de su castillo.",
+                     "Hand the sealed letter to the king in person: by day they sit in their castle's throne room."),
+    "estado.rey": ("Dale la carta sellada al rey en persona: está en la plaza de su capital.",
+                   "Hand the sealed letter to the king in person: they are in their capital's square."),
 })
 EMBAJADA = {
     "carta": ("✉ Carta sellada del %s al %s", "✉ Sealed letter from the %s to the %s"),
@@ -890,8 +893,10 @@ EMBAJADA = {
     "guardias": ("¡Guardias! En el %s no te quieren por aquí.", "Guards! The %s doesn't want you around here."),
     "guardias_guerra": ("¡Guardias! El %s está en guerra con quien te manda.", "Guards! The %s is at war with whoever sent you."),
     "emboscada": ("¡Cazarrecompensas! Alguien no quiere que esa carta llegue.", "Bounty hunters! Someone doesn't want that letter to arrive."),
-    "al_trono": ("Aquí te dirán que la carta es para el rey: búscalo en el salón del trono del castillo.",
-                 "Here they'll tell you the letter is for the king: find him in the castle's throne room."),
+    "al_trono": ("La carta es para el rey en persona: búscalo en el castillo (de día, en el salón del trono) y háblale.",
+                 "The letter is for the king in person: find them in the castle (by day, in the throne room) and talk to them."),
+    "al_rey": ("La carta es para el rey en persona: búscalo por la plaza y háblale.",
+               "The letter is for the king in person: find them around the square and talk to them."),
     "sin_carta": ("Te falta la carta sellada: sin ella no te recibirán.", "You're missing the sealed letter: without it they won't receive you."),
     "rep": ("El %s te recibe con respeto · reputación: %s (+%s)", "The %s receives you with respect · reputation: %s (+%s)"),
     "tarde": ("La carta llega tarde: las cosas entre los dos reinos ya han cambiado.", "The letter arrives too late: things between the two kingdoms have already changed."),
@@ -1069,6 +1074,57 @@ for k, (a, b) in ENCARGOS.items(): L(f"destinos.encargo.{k}", a, b)
 L("destinos.moneda.cobre", "%s cobre", "%s copper")
 L("destinos.moneda.plata", "%s plata", "%s silver")
 L("destinos.moneda.oro", "%s oro", "%s gold")
+L("entity.destinos_core.persona", "Persona de la corte", "Courtier")
+# v0.7.1 La corte: el rey y los suyos en su capital, y lo que dicen al hablarles
+CORTE = {
+    "nombre": ("%s · %s", "%s · %s"),
+    "del_reino": ("%s del %s", "%s of the %s"),
+    "asesinato": ("☠ Has matado a %s. El %s no lo olvidará · reputación: %s", "☠ You killed %s. The %s will not forget · reputation: %s"),
+    "golpe": ("¡Guardias! Has puesto la mano encima a %s · reputación con el %s: %s (-%s)",
+              "Guards! You laid hands on %s · reputation with the %s: %s (-%s)"),
+    "opcion.carta": ("✉ Entregar la carta sellada", "✉ Hand over the sealed letter"),
+    "opcion.quien": ("¿Quién eres?", "Who are you?"),
+    "opcion.noticias": ("¿Qué se cuenta por aquí?", "What's the news around here?"),
+    "opcion.donde": ("¿Dónde puedo encontrar al rey?", "Where can I find the king?"),
+    "opcion.adios": ("Adiós", "Farewell"),
+    "saludo.odio": ("No eres bienvenido aquí. Vete antes de que llame a la guardia.", "You are not welcome here. Leave before I call the guard."),
+    "saludo.amigo": ("¡Bienvenido! En el %s se habla bien de ti.", "Welcome! The %s speaks well of you."),
+    "saludo.nino": ("¿Eres un aventurero de verdad? ¡Cuéntame algo!", "Are you a real adventurer? Tell me something!"),
+    "saludo.rey": ("Estás ante el trono del %s. Habla.", "You stand before the throne of the %s. Speak."),
+    "saludo.consorte": ("Sé bienvenido a la corte del %s.", "Be welcome at the court of the %s."),
+    "saludo.hijo": ("¿Qué te trae a palacio, forastero?", "What brings you to the palace, stranger?"),
+    "saludo.general": ("¿Vienes a alistarte o solo estás de paso?", "Here to enlist, or just passing through?"),
+    "saludo.consejero": ("El consejo tiene mucho trabajo. Sé breve.", "The council has much to do. Be brief."),
+    "quien": ("Soy %s, %s del %s. Tengo %s años, y dicen que soy %s y %s.", "I am %s, %s of the %s. I am %s years old, and they say I am %s and %s."),
+    "noticias": ("Esto es lo que se cuenta:", "This is what people are saying:"),
+    "noticias.nada": ("Últimamente todo está tranquilo, gracias a Dios.", "All has been quiet lately, thank heavens."),
+    "donde": ("A estas horas, %s está %s.", "At this hour, %s is %s."),
+    "donde.nose": ("No sabría decirte.", "I couldn't tell you."),
+    "carta.gracias": ("Leeré tu carta con atención. Dile a quien te envía que tendrá respuesta.",
+                      "I will read your letter carefully. Tell whoever sent you they shall have an answer."),
+    "carta.nada": ("No traes nada para mí.", "You bring nothing for me."),
+    "sitio.trono": ("en el salón del trono", "in the throne room"),
+    "sitio.junto_trono": ("junto al trono", "beside the throne"),
+    "sitio.patio_honor": ("en el patio de honor", "in the court of honour"),
+    "sitio.consejo": ("en la sala del consejo", "in the council chamber"),
+    "sitio.patio_armas": ("en el patio de armas", "in the training yard"),
+    "sitio.comedor": ("comiendo en el gran comedor", "dining in the great hall"),
+    "sitio.capilla": ("rezando en la capilla", "praying in the chapel"),
+    "sitio.alcoba_rey": ("en sus aposentos", "in their chambers"),
+    "sitio.alcoba_reina": ("en los aposentos de la reina", "in the queen's chambers"),
+    "sitio.alcoba_hijo": ("en los aposentos de los príncipes", "in the princes' chambers"),
+    "sitio.biblioteca": ("en la biblioteca", "in the library"),
+    "sitio.cuartel": ("en el cuartel", "in the barracks"),
+    "sitio.plaza": ("en la plaza, junto a la campana", "in the square, by the bell"),
+    "sitio.casa": ("en la casa noble", "in the noble house"),
+}
+for k, (a, b) in CORTE.items(): L(f"destinos.corte.{k}", a, b)
+CORTE_CARGOS = {"rey": (("Rey", "Reina"), ("King", "Queen")), "consorte": (("Rey consorte", "Reina consorte"), ("King consort", "Queen consort")),
+                "hijo": (("Príncipe", "Princesa"), ("Prince", "Princess")),
+                "consejero": (("Consejero real", "Consejera real"), ("Royal councillor", "Royal councillor")),
+                "general": (("General", "General"), ("General", "General"))}
+for k, ((m, f), (em, ef)) in CORTE_CARGOS.items():
+    L(f"destinos.corte.cargo.{k}.m", m, em); L(f"destinos.corte.cargo.{k}.f", f, ef)
 L("block.destinos_core.tablon", "Tablón de encargos", "Quest board")
 L("item.destinos_core.moneda_cobre", "Moneda de cobre", "Copper coin")
 L("item.destinos_core.moneda_plata", "Moneda de plata", "Silver coin")

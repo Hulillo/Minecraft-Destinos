@@ -612,6 +612,72 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		return null;
 	}
 
+	/** La capital conocida más cercana a menos de r bloques de (x, z), o null. */
+	MapaTerreno.Capital capitalJunto(int x, int z, int r) {
+		MapaTerreno.Capital mejor = null;
+		long dm = (long) r * r;
+		for (MapaTerreno.Capital c : capitales.values()) {
+			long dx = c.x() - x;
+			long dz = c.z() - z;
+			long d = dx * dx + dz * dz;
+			if (d < dm) {
+				dm = d;
+				mejor = c;
+			}
+		}
+		return mejor;
+	}
+
+	// ------------------------------------------------------------------ la corte (v0.7.1)
+
+	Gente gente() {
+		return politica.gente();
+	}
+
+	int anio() {
+		return politica.anio();
+	}
+
+	/**
+	 * Un jugador ha matado a alguien de la corte: muere en la política, si era rey sube el heredero en el acto, se
+	 * anuncia a todos y se guarda.
+	 */
+	void asesinato(MinecraftServer server, int persona, String quien) {
+		Persona x = politica.gente().persona(persona);
+		if (x == null || !x.vivo()) {
+			return;
+		}
+		nombres.aseguraReino(server, x.reino);
+		politica.fijaFuente(nombres.fuente(server));
+		List<Suceso> sucesos = politica.asesinato(persona, quien);
+		if (!sucesos.isEmpty()) {
+			anuncia(server, sucesos);
+			guarda(server);
+		}
+	}
+
+	/** Lo último que ha pasado en el reino (como mucho n sucesos, del más nuevo al más viejo), para contarlo en la corte. */
+	List<Component> noticias(MinecraftServer server, long reino, int n) {
+		List<Component> l = new ArrayList<>();
+		java.util.Iterator<Suceso> it = politica.cronica().descendingIterator();
+		while (it.hasNext() && l.size() < n) {
+			Suceso s = it.next();
+			if (s.reinoA() == reino || s.reinoB() == reino) {
+				if (s.reinoA() != Politica.NADIE) {
+					nombres.aseguraReino(server, s.reinoA());
+				}
+				if (s.reinoB() != Politica.NADIE) {
+					nombres.aseguraReino(server, s.reinoB());
+				}
+				if (s.ducado() != Politica.NADIE) {
+					aseguraDucado(server, s.ducado());
+				}
+				l.add(nombres.texto(server, s));
+			}
+		}
+		return l;
+	}
+
 	/** Si (x, z) está a menos de r bloques de alguna capital conocida. */
 	boolean cercaDeCapital(int x, int z, int r) {
 		for (MapaTerreno.Capital c : capitales.values()) {
