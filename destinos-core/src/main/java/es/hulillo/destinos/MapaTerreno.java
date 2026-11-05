@@ -177,6 +177,76 @@ public final class MapaTerreno {
 		return sal;
 	}
 
+	/** Versión del fichero del terreno leído (si cambia el formato de Casilla, se sube y se ignoran los viejos). */
+	private static final int VERSION_FICHERO = 1;
+
+	/**
+	 * Guarda el terreno ya leído del generador (lo más caro de calcular), para que al volver a entrar en el mundo no
+	 * haya que leerlo otra vez. Los biomas van por nombre, porque sus números solo valen mientras el juego está abierto.
+	 */
+	public void guardaTerreno(java.nio.file.Path fichero) throws java.io.IOException {
+		java.nio.file.Files.createDirectories(fichero.getParent());
+		java.nio.file.Path temporal = fichero.resolveSibling(fichero.getFileName() + ".tmp");
+		try (java.io.DataOutputStream out = new java.io.DataOutputStream(new java.io.BufferedOutputStream(
+				new java.util.zip.GZIPOutputStream(java.nio.file.Files.newOutputStream(temporal))))) {
+			out.writeInt(VERSION_FICHERO);
+			out.writeInt(sal);
+			List<String> biomas = new ArrayList<>();
+			for (int n = 0; !Biomas.nombre(n).isEmpty(); n++) {
+				biomas.add(Biomas.nombre(n));
+			}
+			out.writeInt(biomas.size());
+			for (String b : biomas) {
+				out.writeUTF(b);
+			}
+			List<Map.Entry<Long, int[]>> regiones = new ArrayList<>(terrenoLeido.entrySet());
+			out.writeInt(regiones.size());
+			for (Map.Entry<Long, int[]> e : regiones) {
+				out.writeLong(e.getKey());
+				int[] r = e.getValue().clone();
+				for (int v : r) {
+					out.writeInt(v);
+				}
+			}
+		}
+		java.nio.file.Files.move(temporal, fichero, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+	}
+
+	/** Carga el terreno guardado por guardaTerreno, si es de este mundo (misma sal). Devuelve cuántas regiones. */
+	public int cargaTerreno(java.nio.file.Path fichero) throws java.io.IOException {
+		if (!java.nio.file.Files.exists(fichero)) {
+			return 0;
+		}
+		try (java.io.DataInputStream in = new java.io.DataInputStream(new java.io.BufferedInputStream(
+				new java.util.zip.GZIPInputStream(java.nio.file.Files.newInputStream(fichero))))) {
+			if (in.readInt() != VERSION_FICHERO || in.readInt() != sal) {
+				return 0;
+			}
+			int nb = in.readInt();
+			int[] numero = new int[nb];
+			for (int k = 0; k < nb; k++) {
+				numero[k] = Biomas.numero(in.readUTF());
+			}
+			int n = in.readInt();
+			for (int k = 0; k < n; k++) {
+				long clave = in.readLong();
+				int[] r = new int[NUCLEO * NUCLEO];
+				for (int c = 0; c < r.length; c++) {
+					int v = in.readInt();
+					// el bioma, al número que tiene ahora
+					int b = (v >> 21 & 511) - 1;
+					if (b >= 0) {
+						int nuevo = b < nb ? numero[b] : -1;
+						v = (v & ~(511 << 21)) | (Math.max(0, Math.min(511, nuevo + 1)) << 21);
+					}
+					r[c] = v;
+				}
+				terrenoLeido.putIfAbsent(clave, r);
+			}
+			return n;
+		}
+	}
+
 	/** Territorio de un punto. Bloquea hasta que su zona esté calculada (para pruebas y herramientas). */
 	public Resultado consulta(int x, int z) {
 		return resultado(ventanaDe(x, z).join(), x, z);

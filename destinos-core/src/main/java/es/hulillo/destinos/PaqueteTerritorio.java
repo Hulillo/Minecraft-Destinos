@@ -39,7 +39,7 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 			int cambio) {
 		static Ducado de(MapaTerreno.Entrada e, int sal, Politica politica) {
 			MapaTerreno.Resultado r = politica.aplica(e.territorio());
-			int color = r.salvaje() ? COLOR_SALVAJE : Geo.colorReino(r.kx(), r.kz(), sal);
+			int color = r.salvaje() ? COLOR_SALVAJE : Geo.colorMapa(r.kx(), r.kz(), sal);
 			return new Ducado(r.dcx(), r.dcz(), r.kx(), r.kz(), r.salvaje(), r.oceano(), e.internacional(), color,
 					r.oceano() ? -1 : politica.turnoCambio(r.dcx(), r.dcz()));
 		}

@@ -24,6 +24,8 @@ public final class Geo {
 		0xc0392b, 0x2e5fa8, 0x2e8b3a, 0x7b3fa0, 0xc9a227, 0xd8d8d8, 0xa0582c, 0x138d90, 0xb0306a, 0x5b6f7c,
 	};
 	public static final int SAL_COLOR = 5;
+	/** Para elegir la variante (claro, normal, oscuro) del color de cada reino en los mapas. */
+	public static final int SAL_TONO = 7;
 	/** Rasgo del reino (0 militar, 1 mercantil, 2 devoto, 3 decadente, 4 joven), como en el datapack. */
 	public static final int SAL_RASGO = 4;
 	public static final int N_RASGOS = 5;
@@ -136,6 +138,25 @@ public final class Geo {
 	/** Color (RGB) del reino de celda (kx, kz): el mismo que elige reino/generar_reino. */
 	public static int colorReino(int kx, int kz, int sal) {
 		return COLORES[Math.floorMod(hash(kx, kz, sal + SAL_COLOR), COLORES.length)];
+	}
+
+	/**
+	 * Color del reino en los mapas: el suyo (el mismo tono que en los títulos del datapack) en una de tres variantes,
+	 * normal, más claro o más oscuro, para que con solo 10 colores no se repitan tanto los reinos vecinos.
+	 */
+	public static int colorMapa(int kx, int kz, int sal) {
+		int c = colorReino(kx, kz, sal);
+		int tono = Math.floorMod(hash(kx, kz, sal + SAL_TONO), 3);
+		if (tono == 0) {
+			return c;
+		}
+		// 1: hacia el blanco, 2: hacia el negro
+		double t = tono == 1 ? 0.38 : 0.32;
+		int hacia = tono == 1 ? 255 : 0;
+		int r = (int) Math.round(((c >> 16) & 255) * (1 - t) + hacia * t);
+		int v = (int) Math.round(((c >> 8) & 255) * (1 - t) + hacia * t);
+		int a = (int) Math.round((c & 255) * (1 - t) + hacia * t);
+		return r << 16 | v << 8 | a;
 	}
 
 	/** Rasgo del reino de celda (kx, kz): el mismo índice que elige reino/generar_reino. */
