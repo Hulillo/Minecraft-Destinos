@@ -660,6 +660,7 @@ POLITICA = {
 }
 for k, (a, b) in POLITICA.items(): L(f"destinos.politica.{k}", a, b)
 L("destinos.politica.coordenadas", "Centro: %s, %s", "Centre: %s, %s")
+L("destinos.politica.ver_mapa", "Clic: verlo en el mapa", "Click: show it on the map")
 L("destinos.politica.donde", " (a %s bloques al %s)", " (%s blocks to the %s)")
 L("destinos.politica.aqui", " (aquí mismo)", " (right here)")
 for k, (a_, b_) in {"n": ("N", "N"), "ne": ("NE", "NE"), "e": ("E", "E"), "se": ("SE", "SE"), "s": ("S", "S"),

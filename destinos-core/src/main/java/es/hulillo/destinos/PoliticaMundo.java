@@ -624,10 +624,9 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		}
 		long ducado = Grafo.id(c.dcx(), c.dcz());
 		aseguraDucado(server, ducado);
-		Component pista = NombresPolitica.coordenadas(c.x(), c.z());
 		MutableComponent sitio = Component.empty().append(nombres.ducado(server, ducado))
 				.append(Component.literal(" (" + c.x() + ", " + c.z() + ")").withStyle(ChatFormatting.DARK_GRAY))
-				.withStyle(st -> st.withHoverEvent(new HoverEvent.ShowText(pista)));
+				.withStyle(st -> NombresPolitica.enMapa(st, c.x(), c.z()));
 		Component nombre = c.montana()
 				? Component.translatableWithFallback("destinos.politica.capital_montana", "%s (en las montañas)", sitio)
 				: sitio;

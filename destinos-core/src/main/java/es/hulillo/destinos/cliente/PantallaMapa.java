@@ -76,6 +76,9 @@ public final class PantallaMapa extends Screen {
 
 	/** Lo que se queda de una vista a otra mientras dura la conexión. */
 	private static double vistaX = Double.NaN;
+	/** El sitio que se pidió ver desde el chat (se señala con un círculo hasta cerrar el mapa), o NaN. */
+	private static double focoX = Double.NaN;
+	private static double focoZ = Double.NaN;
 	private static double vistaZ;
 	private static double escala = 1.0 / 12;
 	private static long fijado = Long.MIN_VALUE;
@@ -270,6 +273,32 @@ public final class PantallaMapa extends Screen {
 		nombrando.visible = false;
 		addRenderableWidget(nombrando);
 		ClientPlayNetworking.send(new PaquetePedirMapa(true));
+	}
+
+	/** Deja el mapa mirando a (x, z) y con un círculo ahí, para cuando se abre desde un clic en el chat. */
+	static void centra(int x, int z) {
+		vistaX = x;
+		vistaZ = z;
+		focoX = x;
+		focoZ = z;
+		// lo bastante cerca para ver el sitio, pero sin perder lo de alrededor
+		escala = Math.max(escala, 1.0 / 16);
+	}
+
+	/** Un círculo dorado que late en el sitio pedido desde el chat. */
+	private void pintaFoco(GuiGraphics g) {
+		if (Double.isNaN(focoX)) {
+			return;
+		}
+		int x = pantallaX(focoX);
+		int y = pantallaY(focoZ);
+		double r = 9 + 3 * Math.sin(System.currentTimeMillis() / 180.0);
+		for (int k = 0; k < 48; k++) {
+			double a = k * Math.PI / 24;
+			int px = x + (int) Math.round(Math.cos(a) * r);
+			int py = y + (int) Math.round(Math.sin(a) * r);
+			g.fill(px - 1, py - 1, px + 1, py + 1, ORO);
+		}
 	}
 
 	private void cambiaModo(ModoMapa m) {
@@ -624,6 +653,7 @@ public final class PantallaMapa extends Screen {
 			pintaDucados(g);
 		}
 		pintaViaje(g);
+		pintaFoco(g);
 		pintaMarcas(g);
 		pintaJugador(g);
 		pintaEscala(g);
@@ -1236,6 +1266,8 @@ public final class PantallaMapa extends Screen {
 
 	@Override
 	public void removed() {
+		focoX = Double.NaN;
+		focoZ = Double.NaN;
 		pinturas.values().forEach(Pintura::suelta);
 		pinturas.clear();
 		soltarLienzo();
