@@ -2094,11 +2094,13 @@ public final class PantallaMapa extends Screen {
 			y += 6;
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.cronica", "Crónica").withStyle(ChatFormatting.BOLD), tx, y, w, ORO)
 					+ 2;
+			// solo los sucesos que caben enteros en el panel (los más recientes primero)
 			for (Component c : r.cronica()) {
-				if (y + 10 > y1 - 4) {
+				Component l = Component.literal("· ").append(c);
+				if (y + font.split(l, w).size() * 10 > y1 - 4) {
 					break;
 				}
-				y = linea(g, Component.literal("· ").append(c), tx, y, w, TEXTO_SUAVE) + 2;
+				y = linea(g, l, tx, y, w, TEXTO_SUAVE) + 2;
 			}
 		}
 	}
