@@ -660,6 +660,7 @@ POLITICA = {
 }
 for k, (a, b) in POLITICA.items(): L(f"destinos.politica.{k}", a, b)
 L("destinos.politica.coordenadas", "Centro: %s, %s", "Centre: %s, %s")
+L("destinos.politica.ver_mapa", "Clic: verlo en el mapa", "Click: show it on the map")
 L("destinos.politica.donde", " (a %s bloques al %s)", " (%s blocks to the %s)")
 L("destinos.politica.aqui", " (aquí mismo)", " (right here)")
 for k, (a_, b_) in {"n": ("N", "N"), "ne": ("NE", "NE"), "e": ("E", "E"), "se": ("SE", "SE"), "s": ("S", "S"),
@@ -861,8 +862,24 @@ MAPA = {
     "leyenda.salvaje": ("Tierras salvajes", "Wildlands"),
     "leyenda.reciente": ("Cambió de dueño", "Changed hands"),
     "leyenda.niebla": ("Sin explorar", "Unexplored"),
-    "ayuda": ("Arrastra · rueda: zoom · 1-9: modos · espacio: a ti · clic: fijar · clic der.: marca",
-              "Drag · wheel: zoom · 1-9: modes · space: to you · click: pin · right click: marker"),
+    "ayuda": ("Arrastra · rueda: zoom · 1-9: modos · espacio: a ti · clic: fijar · clic der.: marca · H: ayuda",
+              "Drag · wheel: zoom · 1-9: modes · space: to you · click: pin · right click: marker · H: help"),
+    "tutorial.titulo": ("Cómo se usa el mapa político", "How to use the political map"),
+    "tutorial.reinos": ("Cada color es un reino; las rayas finas parten sus ducados. ♛ es su capital.",
+                        "Each colour is a kingdom; thin lines split its duchies. ♛ marks its capital."),
+    "tutorial.ficha": ("Pasa el ratón por un reino para ver su ficha a la derecha (estandarte, poder, guerras, uniones). Clic: la dejas fija.",
+                       "Hover a kingdom to see its sheet on the right (banner, power, wars, unions). Click: pin it."),
+    "tutorial.mover": ("Arrastra para moverte, rueda para acercarte. Espacio te devuelve a donde estás.",
+                       "Drag to move, wheel to zoom. Space takes you back to where you are."),
+    "tutorial.modos": ("Teclas 1-9 o los botones de la izquierda: reinos, diplomacia, guerras, poder, cultura, seguridad, fauna, relieve y biomas.",
+                       "Keys 1-9 or the buttons on the left: kingdoms, diplomacy, wars, power, culture, safety, wildlife, terrain and biomes."),
+    "tutorial.marcas": ("Clic derecho: pones una marca con nombre. Clic en una marca: la haces destino y sale la línea de viaje.",
+                        "Right click: drop a named marker. Click a marker: make it your destination and a travel line appears."),
+    "tutorial.chat": ("En el chat, los nombres de reinos, ducados y capitales se pueden pulsar: abren el mapa ahí.",
+                      "In chat, kingdom, duchy and capital names are clickable: they open the map right there."),
+    "tutorial.buscar": ("Arriba a la derecha puedes buscar un reino o un ducado por su nombre.",
+                        "Top right you can search a kingdom or a duchy by name."),
+    "tutorial.cerrar": ("Clic o cualquier tecla para empezar · H: volver a verlo", "Click or press any key to start · H: show this again"),
     "marca_nombre": ("Nombre de la marca", "Marker name"),
     "pista_lejos": ("A %s bloques de ti, al %s", "%s blocks from you, to the %s"),
     "escala": ("%s bloques", "%s blocks"),
@@ -878,6 +895,9 @@ MAPA = {
     "vasallo": ("Vasallo del %s", "Vassal of the %s"),
     "guerras": ("⚔ En guerra con %s", "⚔ At war with %s"),
     "aliados": ("✦ Aliado del %s", "✦ Allied with %s"),
+    "union": ("❖ En la %s, con el %s", "❖ Part of the %s, with the %s"),
+    "cronica_recientes": ("▲ %s más recientes (rueda)", "▲ %s more recent (scroll)"),
+    "cronica_antiguos": ("▼ %s más antiguos (rueda)", "▼ %s older (scroll)"),
     "en_paz": ("En paz y sin alianzas", "At peace, no alliances"),
     "rep": ("Tu reputación: %s", "Your reputation: %s"),
     "rep_buena": ("Tu reputación: %s (te aprecian)", "Your reputation: %s (they like you)"),
@@ -902,6 +922,7 @@ MAPA = {
     "leyenda.alianza": ("Alianza", "Alliance"),
     "leyenda.guerra": ("Guerra", "War"),
     "leyenda.vasallaje": ("Vasallaje", "Vassalage"),
+    "leyenda.union": ("Unión de coronas", "Union of crowns"),
     "leyenda.en_guerra": ("Reinos en guerra", "Kingdoms at war"),
     "leyenda.en_paz": ("En paz", "At peace"),
     "leyenda.debil": ("Débil", "Weak"),

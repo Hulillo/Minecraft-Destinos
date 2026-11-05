@@ -2,6 +2,7 @@ package es.hulillo.destinos.cliente;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import es.hulillo.destinos.DestinosCore;
+import es.hulillo.destinos.Estandarte;
 import es.hulillo.destinos.Geo;
 import es.hulillo.destinos.MapaTerreno;
 import es.hulillo.destinos.PaqueteFichas;
@@ -35,6 +36,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.item.DyeColor;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -76,6 +78,9 @@ public final class PantallaMapa extends Screen {
 
 	/** Lo que se queda de una vista a otra mientras dura la conexión. */
 	private static double vistaX = Double.NaN;
+	/** El sitio que se pidió ver desde el chat (se señala con un círculo hasta cerrar el mapa), o NaN. */
+	private static double focoX = Double.NaN;
+	private static double focoZ = Double.NaN;
 	private static double vistaZ;
 	private static double escala = 1.0 / 12;
 	private static long fijado = Long.MIN_VALUE;
@@ -111,6 +116,8 @@ public final class PantallaMapa extends Screen {
 	private EditBox buscador;
 	/** El cuadro para poner nombre a una marca nueva (clic derecho), y dónde va la marca (en bloques). */
 	private EditBox nombrando;
+	/** El tutorial de la primera vez (o el que se pide con H): tapa el mapa hasta un clic o una tecla. */
+	private static Boolean tutorial;
 	private int marcaX;
 	private int marcaZ;
 	/** Rutas entre capitales (puntos en casillas), la que se calcula en otro hilo y con qué capitales se hizo. */
@@ -163,6 +170,10 @@ public final class PantallaMapa extends Screen {
 	private int x1;
 	private int y1;
 	private int panelX;
+	/** Sucesos de la crónica de la ficha que se saltan (rueda sobre la ficha), y de qué reino es esa ficha. */
+	private int scrollCronica;
+	private long cronicaDe = Long.MIN_VALUE;
+	private int cronicaTotal;
 	private boolean arrastra;
 	private double arrastrado;
 
@@ -232,6 +243,9 @@ public final class PantallaMapa extends Screen {
 	@Override
 	protected void init() {
 		Minecraft mc = Minecraft.getInstance();
+		if (tutorial == null) {
+			tutorial = !Ajustes.tutorialVisto();
+		}
 		if (Double.isNaN(vistaX) && mc.player != null) {
 			vistaX = mc.player.getX();
 			vistaZ = mc.player.getZ();
@@ -270,6 +284,32 @@ public final class PantallaMapa extends Screen {
 		nombrando.visible = false;
 		addRenderableWidget(nombrando);
 		ClientPlayNetworking.send(new PaquetePedirMapa(true));
+	}
+
+	/** Deja el mapa mirando a (x, z) y con un círculo ahí, para cuando se abre desde un clic en el chat. */
+	static void centra(int x, int z) {
+		vistaX = x;
+		vistaZ = z;
+		focoX = x;
+		focoZ = z;
+		// lo bastante cerca para ver el sitio, pero sin perder lo de alrededor
+		escala = Math.max(escala, 1.0 / 16);
+	}
+
+	/** Un círculo dorado que late en el sitio pedido desde el chat. */
+	private void pintaFoco(GuiGraphics g) {
+		if (Double.isNaN(focoX)) {
+			return;
+		}
+		int x = pantallaX(focoX);
+		int y = pantallaY(focoZ);
+		double r = 9 + 3 * Math.sin(System.currentTimeMillis() / 180.0);
+		for (int k = 0; k < 48; k++) {
+			double a = k * Math.PI / 24;
+			int px = x + (int) Math.round(Math.cos(a) * r);
+			int py = y + (int) Math.round(Math.sin(a) * r);
+			g.fill(px - 1, py - 1, px + 1, py + 1, ORO);
+		}
 	}
 
 	private void cambiaModo(ModoMapa m) {
@@ -436,6 +476,10 @@ public final class PantallaMapa extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent e, boolean doble) {
+		if (tutorial) {
+			cierraTutorial();
+			return true;
+		}
 		if (e.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
 			for (Boton b : botones) {
 				if (b.dentro(e.x(), e.y())) {
@@ -510,6 +554,11 @@ public final class PantallaMapa extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mx, double my, double sx, double sy) {
+		if (mx >= panelX && sy != 0) {
+			// la rueda sobre la ficha pasa la crónica: arriba lo más reciente
+			scrollCronica = Math.max(0, Math.min(Math.max(0, cronicaTotal - 1), scrollCronica - (int) Math.signum(sy)));
+			return true;
+		}
 		if (!enMapa(mx, my) || sy == 0) {
 			return false;
 		}
@@ -543,6 +592,14 @@ public final class PantallaMapa extends Screen {
 			}
 			// mientras se escribe, las letras y los números son del buscador (Escape sí cierra)
 			return super.keyPressed(e);
+		}
+		if (tutorial) {
+			cierraTutorial();
+			return true;
+		}
+		if (e.key() == GLFW.GLFW_KEY_H) {
+			tutorial = true;
+			return true;
 		}
 		if (e.key() >= GLFW.GLFW_KEY_1 && e.key() < GLFW.GLFW_KEY_1 + ModoMapa.values().length) {
 			cambiaModo(ModoMapa.values()[e.key() - GLFW.GLFW_KEY_1]);
@@ -624,6 +681,7 @@ public final class PantallaMapa extends Screen {
 			pintaDucados(g);
 		}
 		pintaViaje(g);
+		pintaFoco(g);
 		pintaMarcas(g);
 		pintaJugador(g);
 		pintaEscala(g);
@@ -640,10 +698,55 @@ public final class PantallaMapa extends Screen {
 		g.drawString(font, Component.translatableWithFallback("destinos.mapa.modos", "Modos"), 10, y0 - 11, TEXTO_SUAVE, false);
 		pintaBotones(g, mx, my);
 		super.render(g, mx, my, pt);
-		if (d != null && !arrastra) {
+		if (tutorial) {
+			g.nextStratum();
+			pintaTutorial(g);
+		} else if (d != null && !arrastra) {
 			g.nextStratum();
 			pista(g, d, mx, my);
 		}
+	}
+
+	/** Las claves de las líneas del tutorial y su texto por si el idioma no las tiene. */
+	private static final String[][] TUTORIAL = {
+			{"reinos", "Cada color es un reino; las rayas finas parten sus ducados. ♛ es su capital."},
+			{"ficha", "Pasa el ratón por un reino para ver su ficha a la derecha (estandarte, poder, guerras, uniones). Clic: la dejas fija."},
+			{"mover", "Arrastra para moverte, rueda para acercarte. Espacio te devuelve a donde estás."},
+			{"modos", "Teclas 1-9 o los botones de la izquierda: reinos, diplomacia, guerras, poder, cultura, seguridad, fauna, relieve y biomas."},
+			{"marcas", "Clic derecho: pones una marca con nombre. Clic en una marca: la haces destino y sale la línea de viaje."},
+			{"chat", "En el chat, los nombres de reinos, ducados y capitales se pueden pulsar: abren el mapa ahí."},
+			{"buscar", "Arriba a la derecha puedes buscar un reino o un ducado por su nombre."}};
+
+	private void pintaTutorial(GuiGraphics g) {
+		int w = Math.min(320, x1 - x0 - 20);
+		int tx = (int) cx() - w / 2;
+		List<FormattedCharSequence> lineas = new ArrayList<>();
+		for (String[] t : TUTORIAL) {
+			lineas.addAll(font.split(Component.literal("• ").append(Component.translatableWithFallback("destinos.mapa.tutorial." + t[0], t[1])), w));
+			lineas.add(null);
+		}
+		int alto = 16 + 14 + lineas.size() * 10 - 4 + 18;
+		int ty = (int) cy() - alto / 2;
+		g.fill(tx - 10, ty - 8, tx + w + 10, ty + alto, MARCO);
+		g.fill(tx - 8, ty - 6, tx + w + 8, ty + alto - 2, PANEL);
+		g.drawString(font, Component.translatableWithFallback("destinos.mapa.tutorial.titulo", "Cómo se usa el mapa político")
+				.withStyle(ChatFormatting.BOLD), tx, ty, ORO, false);
+		int y = ty + 16;
+		for (FormattedCharSequence l : lineas) {
+			if (l != null) {
+				g.drawString(font, l, tx, y, TEXTO, false);
+				y += 10;
+			} else {
+				y += 4;
+			}
+		}
+		g.drawString(font, Component.translatableWithFallback("destinos.mapa.tutorial.cerrar", "Clic o cualquier tecla para empezar · H: volver a verlo"),
+				tx, y + 4, TEXTO_SUAVE, false);
+	}
+
+	private void cierraTutorial() {
+		tutorial = false;
+		Ajustes.marcaTutorial();
 	}
 
 	@Override
@@ -1236,6 +1339,8 @@ public final class PantallaMapa extends Screen {
 
 	@Override
 	public void removed() {
+		focoX = Double.NaN;
+		focoZ = Double.NaN;
 		pinturas.values().forEach(Pintura::suelta);
 		pinturas.clear();
 		soltarLienzo();
@@ -1288,6 +1393,9 @@ public final class PantallaMapa extends Screen {
 			}
 			if (r.senor() != null) {
 				curva(g, a, sitioReino(r.senor()[0], r.senor()[1]), ModoMapa.VASALLAJE);
+			}
+			if (r.union() != null && Geo.clave(r.union()[0], r.union()[1]) > ka) {
+				curva(g, a, sitioReino(r.union()[0], r.union()[1]), ModoMapa.UNION);
 			}
 		}
 	}
@@ -1840,7 +1948,7 @@ public final class PantallaMapa extends Screen {
 			}
 			x = muestra(g, x, y, (Integer) m[0], (FormattedCharSequence) m[1], (Integer) m[2]);
 		}
-		Component ayuda = Component.translatableWithFallback("destinos.mapa.ayuda", "Arrastra · rueda: zoom · 1-9: modos · espacio: a ti · clic: fijar · clic der.: marca");
+		Component ayuda = Component.translatableWithFallback("destinos.mapa.ayuda", "Arrastra · rueda: zoom · 1-9: modos · espacio: a ti · clic: fijar · clic der.: marca · H: ayuda");
 		if (x + font.width(ayuda) < x1) {
 			g.drawString(font, ayuda, x1 - font.width(ayuda), y, TEXTO_SUAVE, false);
 		}
@@ -1922,11 +2030,15 @@ public final class PantallaMapa extends Screen {
 		}
 		int kx = r.kx();
 		int kz = r.kz();
-		g.fill(tx, y, tx + 10, y + 14, 0xFF000000);
 		Integer colorReino = coloresReino.get(Geo.clave(kx, kz));
-		g.fill(tx + 1, y + 1, tx + 9, y + 13, colorReino == null ? 0xFF888888 : 0xFF000000 | colorReino);
+		pintaEstandarte(g, tx, y, r.fondo(), r.escudo(), colorReino == null ? 0xFF888888 : 0xFF000000 | colorReino);
 		// el texto de la ficha (traducir y partir en líneas) solo se rehace si cambia el reino, las fichas o el tamaño
-		String clave = kx + "," + kz + "," + (fijado != Long.MIN_VALUE) + "," + tx + "," + w + "," + y1 + "," + FichasCliente.version();
+		if (Geo.clave(kx, kz) != cronicaDe) {
+			cronicaDe = Geo.clave(kx, kz);
+			scrollCronica = 0;
+		}
+		cronicaTotal = r.cronica().size();
+		String clave = kx + "," + kz + "," + scrollCronica + "," + (fijado != Long.MIN_VALUE) + "," + tx + "," + w + "," + y1 + "," + FichasCliente.version();
 		if (clave.equals(fichaClave)) {
 			for (Trazo t : fichaTrazos) {
 				g.drawString(font, t.texto(), t.x(), t.y(), t.color(), false);
@@ -1942,7 +2054,9 @@ public final class PantallaMapa extends Screen {
 
 	/** Lo escrito en la ficha de un reino (se graba en fichaTrazos para los frames siguientes). */
 	private void fichaReino(GuiGraphics g, PaqueteFichas.Reino r, int tx, int y, int w) {
-		y = linea(g, r.nombre().copy().withStyle(ChatFormatting.BOLD), tx + 14, y + 3, w - 14, TEXTO) + 6;
+		int arriba = y;
+		y = linea(g, r.nombre().copy().withStyle(ChatFormatting.BOLD), tx + 16, y + 3, w - 16, TEXTO) + 6;
+		y = Math.max(y, arriba + ALTO_ESTANDARTE + 6);
 		if (fijado != Long.MIN_VALUE) {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.fijada", "(ficha fija: clic fuera para soltarla)"), tx, y, w,
 					TEXTO_SUAVE) + 2;
@@ -1967,6 +2081,10 @@ public final class PantallaMapa extends Screen {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.vasallo", "Vasallo del %s", nombre(r.senor())), tx, y, w,
 					TEXTO_SUAVE);
 		}
+		if (r.union() != null) {
+			y = linea(g, Component.translatableWithFallback("destinos.mapa.union", "❖ En la %s, con el %s", r.nombreUnion(), nombre(r.union())),
+					tx, y, w, ModoMapa.UNION);
+		}
 		y += 4;
 		if (!r.guerras().isEmpty()) {
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.guerras", "⚔ En guerra con %s", lista(r.guerras())), tx, y, w,
@@ -1986,15 +2104,53 @@ public final class PantallaMapa extends Screen {
 				: "Tu reputación: %s";
 		y = linea(g, Component.translatableWithFallback(clave, respaldo, (rep > 0 ? "+" : "") + rep), tx, y, w,
 				rep >= 20 ? 0xFF9FD08A : rep <= -20 ? 0xFFFF7A6A : TEXTO);
-		if (!r.cronica().isEmpty() && y + 24 < y1) {
+		if (!r.cronica().isEmpty() && y + 36 < y1) {
 			y += 6;
 			y = linea(g, Component.translatableWithFallback("destinos.mapa.cronica", "Crónica").withStyle(ChatFormatting.BOLD), tx, y, w, ORO)
 					+ 2;
-			for (Component c : r.cronica()) {
-				if (y + 10 > y1 - 4) {
+			if (scrollCronica > 0) {
+				y = linea(g, Component.translatableWithFallback("destinos.mapa.cronica_recientes", "▲ %s más recientes (rueda)", scrollCronica),
+						tx, y, w, ORO) + 2;
+			}
+			// solo los sucesos que caben enteros en el panel (los más recientes primero); la rueda pasa al resto
+			List<Component> lista = r.cronica();
+			int i = Math.min(scrollCronica, lista.size());
+			for (; i < lista.size(); i++) {
+				Component l = Component.literal("· ").append(lista.get(i));
+				if (y + font.split(l, w).size() * 10 > y1 - 16) {
 					break;
 				}
-				y = linea(g, Component.literal("· ").append(c), tx, y, w, TEXTO_SUAVE) + 2;
+				y = linea(g, l, tx, y, w, TEXTO_SUAVE) + 2;
+			}
+			if (i < lista.size()) {
+				linea(g, Component.translatableWithFallback("destinos.mapa.cronica_antiguos", "▼ %s más antiguos (rueda)", lista.size() - i),
+						tx, y1 - 13, w, ORO);
+			}
+		}
+	}
+
+	private static final int ALTO_ESTANDARTE = 22;
+
+	/**
+	 * El estandarte del reino en pequeño (un píxel por cada dos de la tela): el palo arriba y la tela de su color con
+	 * la partición y la figura del escudo. Sin datos (fichas de un servidor viejo), un cuadro liso del color del mapa.
+	 */
+	private static void pintaEstandarte(GuiGraphics g, int x, int y, int fondo, int escudo, int liso) {
+		g.fill(x - 1, y, x + 13, y + 2, 0xFF5A3A22);
+		g.fill(x, y + 2, x + 12, y + ALTO_ESTANDARTE, 0xFF000000);
+		int base = fondo >= 0 ? 0xFF000000 | DyeColor.byId(fondo).getTextureDiffuseColor() : liso;
+		String particion = escudo >= 0 ? Estandarte.PARTICION_NOMBRES.get(Estandarte.particion(escudo)) : "";
+		String figura = escudo >= 0 ? Estandarte.FIGURA_NOMBRES.get(Estandarte.figura(escudo)) : "";
+		int c1 = escudo >= 0 ? 0xFF000000 | DyeColor.byId(Estandarte.colorParticion(escudo)).getTextureDiffuseColor() : base;
+		int c2 = escudo >= 0 ? 0xFF000000 | DyeColor.byId(Estandarte.colorFigura(escudo)).getTextureDiffuseColor() : base;
+		int an = 10;
+		int al = ALTO_ESTANDARTE - 4;
+		for (int j = 0; j < al; j++) {
+			for (int i = 0; i < an; i++) {
+				double u = (i + 0.5) / an;
+				double v = (j + 0.5) / al;
+				int c = Estandarte.cubre(figura, u, v) ? c2 : Estandarte.cubre(particion, u, v) ? c1 : base;
+				g.fill(x + 1 + i, y + 3 + j, x + 2 + i, y + 4 + j, c);
 			}
 		}
 	}

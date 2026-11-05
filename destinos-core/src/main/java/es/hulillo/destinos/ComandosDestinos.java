@@ -26,6 +26,14 @@ final class ComandosDestinos {
 	}
 
 	static void registra(CommandDispatcher<CommandSourceStack> dispatcher) {
+		// lo que ejecuta un clic en los anuncios: abre el mapa político del que hace clic en ese sitio (sin permisos)
+		dispatcher.register(Commands.literal("destinosver").then(Commands.argument("x", IntegerArgumentType.integer())
+				.then(Commands.argument("z", IntegerArgumentType.integer()).executes(c -> {
+					ServerPlayer p = c.getSource().getPlayerOrException();
+					net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(p,
+							new PaqueteVerMapa(IntegerArgumentType.getInteger(c, "x"), IntegerArgumentType.getInteger(c, "z")));
+					return 1;
+				}))));
 		dispatcher.register(Commands.literal("destinoscore")
 				.then(Commands.literal("territorio").executes(ctx -> territorio(ctx.getSource())))
 				.then(Commands.literal("estado").executes(ctx -> estado(ctx.getSource())))

@@ -34,7 +34,8 @@ public final class Politica {
 	public static final int TURNOS_POR_ANIO = 8;
 	/** Durante estos turnos el reino protegido (donde se empieza a jugar) no pierde tierras. */
 	public static final int TURNOS_PROTECCION = 10;
-	private static final int MAX_CRONICA = 30;
+	/** La historia del mundo: se guarda con la partida (unos 100 bytes por suceso). */
+	private static final int MAX_CRONICA = 3000;
 
 	// Rasgos del datapack (destinos.rasgo.N)
 	private static final int MILITAR = 0;

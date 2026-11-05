@@ -9,6 +9,7 @@ import es.hulillo.destinos.PaqueteMazmorra;
 import es.hulillo.destinos.PaquetePolitica;
 import es.hulillo.destinos.PaqueteTablon;
 import es.hulillo.destinos.PaqueteTerritorio;
+import es.hulillo.destinos.PaqueteVerMapa;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -33,6 +34,8 @@ import org.lwjgl.glfw.GLFW;
  * alternar, enciende y apaga los colores de los reinos en esos mapas.
  */
 public final class DestinosCoreCliente implements ClientModInitializer {
+	/** La tecla del mapa político (para abrirlo también desde un clic en el chat). */
+	private static KeyMapping teclaMapa;
 	@Override
 	public void onInitializeClient() {
 		// Fabric ya entrega los paquetes en el hilo del cliente
@@ -42,6 +45,10 @@ public final class DestinosCoreCliente implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteEncargos.TIPO, (paquete, contexto) -> HudEncargos.recibe(paquete));
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteMazmorra.TIPO, (paquete, contexto) -> BarraMazmorra.recibe(paquete));
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteFichas.TIPO, (paquete, contexto) -> FichasCliente.recibe(paquete));
+		ClientPlayNetworking.registerGlobalReceiver(PaqueteVerMapa.TIPO, (paquete, contexto) -> {
+			PantallaMapa.centra(paquete.x(), paquete.z());
+			contexto.client().setScreen(new PantallaMapa(teclaMapa));
+		});
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, cliente) -> cliente.execute(() -> {
 			TerritoriosCliente.borra();
 			FichasCliente.borra();
@@ -57,7 +64,7 @@ public final class DestinosCoreCliente implements ClientModInitializer {
 							alterna(c.getSource().getClient());
 							return 1;
 						}))));
-		KeyMapping tecla = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.destinos_core.mapa_politico",
+		KeyMapping tecla = teclaMapa = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.destinos_core.mapa_politico",
 				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K,
 				KeyMapping.Category.register(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "destinos"))));
 		ClientTickEvents.END_CLIENT_TICK.register(cliente -> {

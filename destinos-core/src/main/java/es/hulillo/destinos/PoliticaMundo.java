@@ -33,7 +33,7 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	/** Anuncios como mucho por tanda (al forzar varios turnos); el resto queda en la crónica. */
 	private static final int MAX_ANUNCIOS = 10;
 	/** Sucesos de cada reino que salen en su ficha del mapa político. */
-	private static final int CRONICA_FICHA = 4;
+	private static final int CRONICA_FICHA = 60;
 
 	private final Grafo grafo = new Grafo();
 	private final Politica politica;
@@ -308,9 +308,20 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 				}
 			}
 			int[] senor = e != null && e.senor != Politica.NADIE ? celda(e.senor) : null;
+			int fondo = AdornoCapital.tinte(Geo.colorReino(Grafo.x(id), Grafo.z(id), sal()));
+			int[] union = null;
+			Component nombreUnion = Component.empty();
+			Politica.Par u = politica.unionDe(id);
+			if (u != null) {
+				long otro = u.otro(id);
+				boolean primero = res.poder() >= politica.resumen(grafo, otro).poder();
+				union = celda(otro);
+				nombreUnion = nombres.nombreUnion(server, primero ? id : otro, primero ? otro : id);
+			}
 			reinos.add(new PaqueteFichas.Reino(Grafo.x(id), Grafo.z(id), nombreReino(server, id), res.poder(),
 					NombresPolitica.redondea(res.habitantes()), res.ducados(), e == null ? 60 : e.estabilidad, i + 1, capital, perdida,
-					senor, guerras, aliados, p == null ? 0 : encargos.rep(p, id), nombres.cultura(server, id), cronica));
+					senor, guerras, aliados, p == null ? 0 : encargos.rep(p, id), nombres.cultura(server, id), cronica, fondo,
+					Estandarte.de(Grafo.x(id), Grafo.z(id), sal(), fondo), union, nombreUnion));
 		}
 		Map<Long, Integer> peligro = peligros(server);
 		FaunaDucados fauna = FaunaDucados.de(server.overworld(), sal());
@@ -624,10 +635,9 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		}
 		long ducado = Grafo.id(c.dcx(), c.dcz());
 		aseguraDucado(server, ducado);
-		Component pista = NombresPolitica.coordenadas(c.x(), c.z());
 		MutableComponent sitio = Component.empty().append(nombres.ducado(server, ducado))
 				.append(Component.literal(" (" + c.x() + ", " + c.z() + ")").withStyle(ChatFormatting.DARK_GRAY))
-				.withStyle(st -> st.withHoverEvent(new HoverEvent.ShowText(pista)));
+				.withStyle(st -> NombresPolitica.enMapa(st, c.x(), c.z()));
 		Component nombre = c.montana()
 				? Component.translatableWithFallback("destinos.politica.capital_montana", "%s (en las montañas)", sitio)
 				: sitio;
@@ -673,7 +683,7 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		}
 		fuente.sendSuccess(() -> Component.translatableWithFallback("destinos.politica.cronica", "📜 Crónica del mundo")
 				.withStyle(ChatFormatting.GOLD), false);
-		for (Suceso s : todos.subList(Math.max(0, todos.size() - 12), todos.size())) {
+		for (Suceso s : todos.subList(Math.max(0, todos.size() - 20), todos.size())) {
 			Component t = nombres.texto(fuente.getServer(), s);
 			fuente.sendSuccess(() -> t, false);
 		}

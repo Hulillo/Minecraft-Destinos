@@ -137,7 +137,19 @@ final class NombresPolitica {
 		int[] c = Geo.centroReino(Grafo.x(reino), Grafo.z(reino), sal);
 		return Component.translatableWithFallback("destinos.reino", "Reino de %s", r.getStringOr("nombre", "?"))
 				.withColor(color(r))
-				.withStyle(st -> st.withHoverEvent(new HoverEvent.ShowText(coordenadas(c[0], c[1]))));
+				.withStyle(st -> enMapa(st, c[0], c[1]));
+	}
+
+	/**
+	 * Que el texto lleve las coordenadas al pasar el ratón y abra el mapa político en ese sitio al hacer clic (con
+	 * /destinosver, que no pide permisos).
+	 */
+	static net.minecraft.network.chat.Style enMapa(net.minecraft.network.chat.Style st, int x, int z) {
+		Component pista = Component.empty().append(coordenadas(x, z)).append("\n")
+				.append(Component.translatableWithFallback("destinos.politica.ver_mapa", "Clic: verlo en el mapa")
+						.withStyle(net.minecraft.ChatFormatting.GRAY));
+		return st.withHoverEvent(new HoverEvent.ShowText(pista))
+				.withClickEvent(new net.minecraft.network.chat.ClickEvent.RunCommand("/destinosver " + x + " " + z));
 	}
 
 	/** La cultura del reino ("norte", "desierto"…, como en culturas.py), o "" si el datapack aún no lo conoce. */
@@ -166,7 +178,7 @@ final class NombresPolitica {
 				? Component.translatableWithFallback("destinos.salvaje." + d.getIntOr("geo", 0), nombre, nombre).withColor(0x9e9e9e)
 				: Component.translatableWithFallback("destinos.tipo." + d.getStringOr("tipo", "ducado"), nombre, nombre)
 						.withColor(color(d));
-		return res.withStyle(st -> st.withHoverEvent(new HoverEvent.ShowText(coordenadas(c[0], c[1]))));
+		return res.withStyle(st -> enMapa(st, c[0], c[1]));
 	}
 
 	/** "Corona de A y B": el tipo de unión sale del par, así que siempre se llama igual. */

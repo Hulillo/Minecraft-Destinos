@@ -12,6 +12,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.world.level.block.AbstractBannerBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
@@ -45,6 +46,8 @@ abstract class PiezaObra extends StructurePiece {
 	protected final int madera;
 	/** Color del reino (id de DyeColor), o -1 si no se sabe. */
 	protected final int color;
+	/** El escudo del reino para sus estandartes (Estandarte), o -1: lisos. */
+	private int escudo = -1;
 	private Obra obra;
 	/** Distancia (en planta, en local) de cada columna de la caja a la obra con suelo; se calcula con la obra. */
 	private int[][] distancia;
@@ -70,6 +73,12 @@ abstract class PiezaObra extends StructurePiece {
 		estilo = t.getIntOr("estilo", t.getIntOr("desierto", 0) != 0 ? AdornoCapital.DESIERTO : AdornoCapital.TEMPLADO);
 		madera = t.getIntOr("madera", -1);
 		color = t.getIntOr("color", -1);
+		escudo = t.getIntOr("escudo", -1);
+	}
+
+	/** Pone el escudo del reino en los estandartes de la obra. */
+	void escudo(int e) {
+		escudo = e;
 	}
 
 	@Override
@@ -81,6 +90,7 @@ abstract class PiezaObra extends StructurePiece {
 		t.putInt("estilo", estilo);
 		t.putInt("madera", madera);
 		t.putInt("color", color);
+		t.putInt("escudo", escudo);
 	}
 
 	/** Lo que se construye, en local, sobre o. */
@@ -320,6 +330,9 @@ abstract class PiezaObra extends StructurePiece {
 			}
 			level.setBlock(pos.immutable(), b.rotate(giro), 2);
 			botin(level, azar, pos.immutable(), b, u, ly, v);
+			if (escudo >= 0 && b.getBlock() instanceof AbstractBannerBlock) {
+				Estandarte.aplica(level, pos.immutable(), color, escudo);
+			}
 		}
 	}
 
