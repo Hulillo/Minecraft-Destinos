@@ -110,7 +110,8 @@ public final class Estandarte {
 		}
 		ItemStack s = new ItemStack(Items.WHITE_BANNER);
 		s.set(DataComponents.BANNER_PATTERNS, capas(level.registryAccess().lookupOrThrow(Registries.BANNER_PATTERN), escudo));
-		be.fromItem(s, DyeColor.byId(fondo));
+		// el fondo ya lo da el bloque (el estandarte del color del reino): solo faltan las capas
+		be.applyComponentsFromItemStack(s);
 		be.setChanged();
 	}
 
