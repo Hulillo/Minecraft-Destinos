@@ -49,19 +49,23 @@ jobs:
           javac -d prueba-guardado -sourcepath destinos-core/src/main/java herramientas/nbt-falso/*.java herramientas/PruebaPolitica.java destinos-core/src/main/java/es/hulillo/destinos/GuardadoPolitica.java
           java -cp prueba-guardado es.hulillo.destinos.PruebaGuardado
 
-      - name: Sonda temporal (API de 3D Skin Layers)
-        continue-on-error: true
-        run: |
-          curl -sL 'https://cdn.modrinth.com/data/zV5r3pPn/versions/DsBJ7HB2/skinlayers3d-fabric-1.11.4-mc1.21.11.jar' -o capas.jar
-          mkdir capas && cd capas && unzip -q ../capas.jar
-          for c in $(find dev/tr7zw/skinlayers/api -name '*.class' | sed 's/\.class$//' | tr / .); do javap -p -cp . "$c"; done
-          for c in $(find . -iname '*SkinUtil*.class' -o -iname '*PlayerSettings*.class' -o -iname '*CustomizableModelPart*.class' -o -iname '*SolidPixelWrapper*.class' | sed 's|^\./||;s/\.class$//' | tr / . | head -8); do javap -p -cp . "$c"; done
-          ls dev/tr7zw/skinlayers dev/tr7zw/skinlayers/* | head -80
-          cat fabric.mod.json
-
       - name: Compilar Destinos Core
         working-directory: destinos-core
         run: ./gradlew build --no-daemon
+
+      - name: Sonda temporal (render en 1.21.11 y 3D Skin Layers con nombres de Mojang)
+        continue-on-error: true
+        run: |
+          find ~/.gradle destinos-core/.gradle -name '*.jar' 2>/dev/null | grep -iE 'skinlayers|minecraft-merged|minecraft-client|clientonly' | head -20
+          MC=$(find ~/.gradle destinos-core/.gradle -name '*.jar' 2>/dev/null | grep -iE 'minecraft-(merged|client|clientOnly)' | grep -v sources | head -1)
+          SL=$(find ~/.gradle destinos-core/.gradle -name '*.jar' 2>/dev/null | grep -i skinlayers | grep -v sources | head -1)
+          echo "MC=$MC SL=$SL"
+          for c in net.minecraft.client.renderer.SubmitNodeCollector 'net.minecraft.client.renderer.SubmitNodeCollector$CustomGeometryRenderer' net.minecraft.client.renderer.OrderedSubmitNodeCollector net.minecraft.client.renderer.entity.layers.RenderLayer 'com.mojang.blaze3d.vertex.PoseStack$Pose' com.mojang.blaze3d.vertex.PoseStack net.minecraft.client.renderer.rendertype.RenderTypes net.minecraft.client.renderer.RenderType; do javap -cp "$MC" "$c" 2>&1 | head -60; done
+          mkdir sl && cd sl && unzip -q "$SL"
+          for c in dev.tr7zw.skinlayers.api.Mesh dev.tr7zw.skinlayers.api.MeshHelper dev.tr7zw.skinlayers.api.OffsetProvider; do javap -cp . "$c"; done
+          ls dev/tr7zw/skinlayers/mixin
+          javap -c -p -cp . dev.tr7zw.skinlayers.mixin.PlayerRendererMixin | grep -E 'invoke|Method|public|private' | head -120
+          javap -c -p -cp . dev.tr7zw.skinlayers.SkinUtil | grep -E 'invoke|ldc|bipush|iconst|fconst|sipush' | head -120
 
       - name: Arrancar un servidor de Minecraft con el mod y comprobar que el datapack carga sin errores
         run: python herramientas/servidor_prueba.py
