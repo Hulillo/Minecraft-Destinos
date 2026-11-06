@@ -411,8 +411,13 @@ final class NombresPolitica {
 		}
 		int[] c = s.ducado() != Politica.NADIE ? Geo.centroDucado(Grafo.x(s.ducado()), Grafo.z(s.ducado()), sal)
 				: Geo.centroReino(Grafo.x(s.reinoA()), Grafo.z(s.reinoA()), sal);
-		double dx = c[0] - p.getX();
-		double dz = c[1] - p.getZ();
+		return donde(p, c[0], c[1]);
+	}
+
+	/** " (a 1800 bloques al NE)" desde el jugador hasta (x, z). */
+	static Component donde(ServerPlayer p, int x, int z) {
+		double dx = x - p.getX();
+		double dz = z - p.getZ();
 		int distancia = (int) Math.round(Math.sqrt(dx * dx + dz * dz) / 100) * 100;
 		if (distancia < 200) {
 			return Component.translatableWithFallback("destinos.politica.aqui", " (aquí mismo)").withStyle(ChatFormatting.DARK_GRAY);

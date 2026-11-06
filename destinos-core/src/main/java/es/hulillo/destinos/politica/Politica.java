@@ -438,6 +438,42 @@ public final class Politica {
 		this.reinoProtegido = protegido;
 	}
 
+	/** Lo que anota un suceso: a la lista del turno y a la crónica (que no pasa de MAX_CRONICA). */
+	private Consumer<Suceso> apunta(List<Suceso> sucesos) {
+		return s -> {
+			sucesos.add(s);
+			cronica.addLast(s);
+			while (cronica.size() > MAX_CRONICA) {
+				cronica.removeFirst();
+			}
+		};
+	}
+
+	/**
+	 * Un jugador (quien) ha matado a una persona en el mundo (v0.7.1 La corte): muere ya y, si era rey, la corona
+	 * pasa en el acto. Devuelve los sucesos, ya en la crónica (vacío si la persona no vivía).
+	 */
+	public List<Suceso> asesinato(int persona, String quien) {
+		List<Suceso> sucesos = new ArrayList<>();
+		// los reinos en los que era rey (dos, si los unió por herencia)
+		List<Long> coronas = new ArrayList<>();
+		gente.reyes().forEach((reino, id) -> {
+			if (id == persona) {
+				coronas.add(reino);
+			}
+		});
+		Suceso s = gente.asesina(this, persona, quien);
+		if (s == null) {
+			return sucesos;
+		}
+		Consumer<Suceso> anota = apunta(sucesos);
+		anota.accept(s);
+		for (long reino : coronas) {
+			gente.sucedeYa(this, reino, fuente, anota);
+		}
+		return sucesos;
+	}
+
 	// ------------------------------------------------------------------ el turno
 
 	/** Juega un turno sobre el mapa conocido y avisa de cada suceso. */
@@ -449,13 +485,7 @@ public final class Politica {
 			reinos.computeIfAbsent(r, k -> new Reino()).caido = false;
 		}
 		List<Suceso> sucesos = new ArrayList<>();
-		Consumer<Suceso> anota = s -> {
-			sucesos.add(s);
-			cronica.addLast(s);
-			while (cronica.size() > MAX_CRONICA) {
-				cronica.removeFirst();
-			}
-		};
+		Consumer<Suceso> anota = apunta(sucesos);
 		// cada reino protagoniza como mucho un suceso grande por turno
 		TreeSet<Long> ocupados = new TreeSet<>();
 

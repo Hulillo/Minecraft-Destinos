@@ -469,44 +469,58 @@ public final class Gente {
 				familiaReal(reino, f, rnd, anio);
 				continue;
 			}
-			if (rey != null && rey.vivo()) {
-				continue;
-			}
-			Persona nuevo = rey == null ? null : sucesor(p, reino, rey);
-			if (nuevo != null) {
-				Long otro = reinoDe(nuevo);
-				corona(nuevo, reino, anio);
-				if (otro != null && otro != reino) {
-					// ya era rey de otro reino: los dos quedan unidos bajo la misma corona
-					p.unePorHerencia(reino, otro);
-					anota.accept(new Suceso(Suceso.Tipo.herencia, anio, reino, otro, Politica.NADIE, null, nuevo.id,
-							rey == null ? Persona.NADIE : rey.id));
-				} else {
-					anota.accept(new Suceso(Suceso.Tipo.sucesion, anio, reino, Politica.NADIE, Politica.NADIE, null, nuevo.id,
-							rey == null ? Persona.NADIE : rey.id));
-				}
-				continue;
-			}
-			// sin heredero: el noble más capaz del reino se hace con la corona, y el reino se tambalea
-			Persona noble = null;
-			for (Persona d : nobles(reino)) {
-				if (noble == null || d.valia() > noble.valia()) {
-					noble = d;
-				}
-			}
-			if (noble == null) {
-				noble = nueva(f, reino, cultura(f, reino), rnd.nextDouble() < 0.3, 25 + rnd.nextInt(30), Persona.Rol.sin_cargo,
-						casaNueva(f, cultura(f, reino), rnd), rnd, anio);
-			}
-			liberaCargo(noble);
-			corona(noble, reino, anio);
-			Politica.Reino e = p.reinos().get(reino);
-			if (e != null) {
-				e.estabilidad = Math.max(0, e.estabilidad - 20);
-			}
-			anota.accept(new Suceso(Suceso.Tipo.crisis, anio, reino, Politica.NADIE, Politica.NADIE, null, noble.id,
-					rey == null ? Persona.NADIE : rey.id));
+			sucede(p, reino, f, rnd, anota, anio);
 		}
+	}
+
+	/**
+	 * Si un jugador acaba de matar al rey (v0.7.1), la corona pasa en el acto, sin esperar al turno: el heredero
+	 * según la ley, o crisis si no hay.
+	 */
+	public void sucedeYa(Politica p, long reino, Fuente f, Consumer<Suceso> anota) {
+		sucede(p, reino, f, new SplittableRandom(((long) p.sal() << 17) ^ p.turno() * 0x9E3779B97F4A7C15L ^ reino), anota, p.anio());
+	}
+
+	/** El reino con el rey muerto (o sin rey) corona a quien toque. Nada si el rey vive. */
+	private void sucede(Politica p, long reino, Fuente f, SplittableRandom rnd, Consumer<Suceso> anota, int anio) {
+		Persona rey = rey(reino);
+		if (rey != null && rey.vivo()) {
+			return;
+		}
+		Persona nuevo = rey == null ? null : sucesor(p, reino, rey);
+		if (nuevo != null) {
+			Long otro = reinoDe(nuevo);
+			corona(nuevo, reino, anio);
+			if (otro != null && otro != reino) {
+				// ya era rey de otro reino: los dos quedan unidos bajo la misma corona
+				p.unePorHerencia(reino, otro);
+				anota.accept(new Suceso(Suceso.Tipo.herencia, anio, reino, otro, Politica.NADIE, null, nuevo.id,
+						rey == null ? Persona.NADIE : rey.id));
+			} else {
+				anota.accept(new Suceso(Suceso.Tipo.sucesion, anio, reino, Politica.NADIE, Politica.NADIE, null, nuevo.id,
+						rey == null ? Persona.NADIE : rey.id));
+			}
+			return;
+		}
+		// sin heredero: el noble más capaz del reino se hace con la corona, y el reino se tambalea
+		Persona noble = null;
+		for (Persona d : nobles(reino)) {
+			if (noble == null || d.valia() > noble.valia()) {
+				noble = d;
+			}
+		}
+		if (noble == null) {
+			noble = nueva(f, reino, cultura(f, reino), rnd.nextDouble() < 0.3, 25 + rnd.nextInt(30), Persona.Rol.sin_cargo,
+					casaNueva(f, cultura(f, reino), rnd), rnd, anio);
+		}
+		liberaCargo(noble);
+		corona(noble, reino, anio);
+		Politica.Reino e = p.reinos().get(reino);
+		if (e != null) {
+			e.estabilidad = Math.max(0, e.estabilidad - 20);
+		}
+		anota.accept(new Suceso(Suceso.Tipo.crisis, anio, reino, Politica.NADIE, Politica.NADIE, null, noble.id,
+				rey == null ? Persona.NADIE : rey.id));
 	}
 
 	private boolean haReinado(long reino) {
@@ -753,8 +767,8 @@ public final class Gente {
 	}
 
 	/**
-	 * Una persona mata a otra (un jugador, v0.7.1): si era rey, el siguiente turno se elige sucesor. Devuelve el
-	 * suceso para la crónica, o null si ya estaba muerta.
+	 * Una persona mata a otra (un jugador, v0.7.1). La sucesión, si era rey, la hace Politica.asesinato en el acto.
+	 * Devuelve el suceso para la crónica, o null si ya estaba muerta.
 	 */
 	public Suceso asesina(Politica p, int id, String quien) {
 		Persona x = personas.get(id);

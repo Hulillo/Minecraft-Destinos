@@ -59,6 +59,14 @@ final class EncargosMundo {
 	private static final int OFERTAS_CAPITAL = 5;
 	/** Reputación para que un reino te dé encargos de 4 y 5 estrellas. */
 	static final int REP_DIFICILES = 30;
+	/** La corte (v0.7.1): reputación para jurar lealtad, lo que cuesta cambiar de señor, la multa por punto de perdón,
+	 * lo que vale un presente (en cobre) y hasta dónde sube la reputación a base de presentes. */
+	static final int REP_LEALTAD = 50;
+	private static final int REP_TRAICION = 40;
+	private static final int MULTA_POR_PUNTO = 3;
+	private static final int PRESENTE = 20;
+	private static final int REP_PRESENTES = 30;
+	private static final int RADIO_PELIGRO = 1500;
 	/** Hasta dónde se busca una estructura que explorar alrededor del sitio elegido (en regiones de estructura). */
 	private static final int RADIO_ESTRUCTURA = 10;
 	private static final int MAX_HECHOS = 32;
@@ -73,6 +81,8 @@ final class EncargosMundo {
 		final Map<Long, Integer> rep = new TreeMap<>();
 		final List<Encargo> activos = new ArrayList<>();
 		final ArrayDeque<String> hechos = new ArrayDeque<>();
+		/** El reino al que ha jurado lealtad (v0.7.1 La corte), o Politica.NADIE. */
+		long leal = Politica.NADIE;
 	}
 
 	/** Una oferta del tablón (aún sin coger). saltos: a cuántos ducados está del tablón. */
@@ -129,6 +139,7 @@ final class EncargosMundo {
 				CompoundTag r = rep.getCompoundOrEmpty(k);
 				j.rep.put(r.getLongOr("reino", 0), r.getIntOr("valor", 0));
 			}
+			j.leal = c.getLongOr("leal", Politica.NADIE);
 			ListTag activos = c.getListOrEmpty("activos");
 			for (int k = 0; k < activos.size(); k++) {
 				Encargo en = Encargo.carga(activos.getCompoundOrEmpty(k));
@@ -161,6 +172,9 @@ final class EncargosMundo {
 				rep.add(r);
 			});
 			c.put("rep", rep);
+			if (j.leal != Politica.NADIE) {
+				c.putLong("leal", j.leal);
+			}
 			ListTag activos = new ListTag();
 			for (Encargo en : j.activos) {
 				activos.add(en.guarda());
@@ -622,7 +636,11 @@ final class EncargosMundo {
 		if (j.hechos.contains(origen) || j.activos.stream().anyMatch(e -> e.origen.equals(origen))) {
 			return;
 		}
-		Oferta o = ofertas.get(indice);
+		acepta(server, p, j, s, ofertas.get(indice), origen);
+	}
+
+	/** El jugador se queda con la oferta: el encargo pasa a sus activos y se le cuenta. */
+	private Encargo acepta(MinecraftServer server, ServerPlayer p, Jugador j, Sitio s, Oferta o, String origen) {
 		Encargo e = new Encargo(siguienteId++, o.tipo(), s.reino(), o.ducado(), o.x(), o.z(), o.estrellas(), o.premio(), o.rep(),
 				server.overworld().getDayTime() + (long) o.dias() * DIA, origen);
 		if (e.tipo == Encargo.Tipo.guerra || e.tipo == Encargo.Tipo.embajada) {
@@ -646,6 +664,111 @@ final class EncargosMundo {
 		p.sendSystemMessage(Component.empty().append(texto(server, s.pol(), e.tipo, e.ducado, e.objetivo())).withStyle(ChatFormatting.GRAY));
 		sonido(server, p, "minecraft:item.book.page_turn", 1, 1);
 		envia(server, p);
+		return e;
+	}
+
+	// ------------------------------------------------------------------ la corte (v0.7.1)
+
+	/**
+	 * Un encargo dado en mano por alguien de la corte (en pos): el mejor de los de hoy de la capital, mejor pagado y
+	 * con más reputación; o, si guerra, uno de guerra. Uno al día de cada clase y reino. Devuelve lo que contesta.
+	 */
+	Component encargoDeCorte(MinecraftServer server, ServerPlayer p, BlockPos pos, boolean guerra) {
+		Sitio s = sitio(server, pos);
+		if (s == null || s.reino() == Politica.NADIE) {
+			return Component.translatableWithFallback("destinos.corte.servir.nada", "Ahora mismo no tengo nada para ti.");
+		}
+		Jugador j = jugador(p);
+		if (j.activos.size() >= MAX_ACTIVOS) {
+			return Component.translatableWithFallback("destinos.corte.servir.lleno", "Ya llevas demasiados asuntos entre manos. Vuelve cuando acabes alguno.");
+		}
+		String origen = "corte/" + (guerra ? "g/" : "r/") + s.reino() + "/" + dia(server);
+		if (j.hechos.contains(origen) || j.activos.stream().anyMatch(e -> e.origen.equals(origen))) {
+			return Component.translatableWithFallback("destinos.corte.servir.hoy", "Por hoy ya te he encomendado bastante. Vuelve mañana.");
+		}
+		Oferta mejor = null;
+		for (Oferta o : ofertas(server, pos, s, maxEstrellas(p, s.reino()))) {
+			boolean vale = guerra ? o.tipo() == Encargo.Tipo.guerra
+					: o.tipo() == Encargo.Tipo.caza || o.tipo() == Encargo.Tipo.exploracion || o.tipo() == Encargo.Tipo.mazmorra;
+			if (vale && (mejor == null || o.estrellas() > mejor.estrellas())) {
+				mejor = o;
+			}
+		}
+		if (mejor == null) {
+			return guerra ? Component.translatableWithFallback("destinos.corte.alistarse.paz", "No estamos en guerra, gracias a Dios. Vuelve si suenan los tambores.")
+					: Component.translatableWithFallback("destinos.corte.servir.nada", "Ahora mismo no tengo nada para ti.");
+		}
+		Oferta real = new Oferta(mejor.tipo(), mejor.ducado(), mejor.x(), mejor.z(), mejor.estrellas(), mejor.premio() * 3 / 2,
+				mejor.rep() + 2, mejor.dias(), mejor.saltos(), mejor.objetivo());
+		Encargo e = acepta(server, p, j, s, real, origen);
+		return Component.translatableWithFallback(guerra ? "destinos.corte.alistarse.si" : "destinos.corte.servir.si",
+				guerra ? "Bien. Te necesitamos en el frente: %s. Vuelve con vida." : "La corona te lo agradecerá: %s. No me falles.",
+				titulo(server, s.pol(), e.tipo, e.ducado, e.objetivo()));
+	}
+
+	/** El reino al que ha jurado lealtad el jugador, o Politica.NADIE. */
+	long leal(ServerPlayer p) {
+		Jugador j = jugadores.get(p.getUUID());
+		return j == null ? Politica.NADIE : j.leal;
+	}
+
+	/** Jurar lealtad al reino: hace falta buena reputación; si ya servía a otro, ese otro se lo toma mal. */
+	Component jura(MinecraftServer server, PoliticaMundo pol, ServerPlayer p, long reino) {
+		Jugador j = jugador(p);
+		if (j.leal == reino) {
+			return Component.translatableWithFallback("destinos.corte.jurar.ya", "Ya eres de los nuestros. No lo olvido.");
+		}
+		if (rep(p, reino) < REP_LEALTAD) {
+			return Component.translatableWithFallback("destinos.corte.jurar.no", "¿Lealtad? Antes demuéstrala sirviendo al reino. (Hace falta reputación %s.)",
+					REP_LEALTAD);
+		}
+		if (j.leal != Politica.NADIE) {
+			int v = sumaRep(p, j.leal, -REP_TRAICION);
+			p.sendSystemMessage(Component.translatableWithFallback("destinos.corte.jurar.traicion", "El %s no perdona que cambies de señor · reputación: %s (-%s)",
+					pol.nombreReino(server, j.leal), v, REP_TRAICION).withStyle(ChatFormatting.RED));
+		}
+		j.leal = reino;
+		sucio = true;
+		sonido(server, p, "minecraft:ui.toast.challenge_complete", 0.6f, 0.8f);
+		p.sendSystemMessage(Component.translatableWithFallback("destinos.corte.jurar.chat", "⚜ Has jurado lealtad al %s.", pol.nombreReino(server, reino))
+				.withStyle(ChatFormatting.GOLD));
+		return Component.translatableWithFallback("destinos.corte.jurar.si", "Arrodíllate. Desde hoy sirves al %s: sus guardias te abrirán paso y su pueblo te conocerá.",
+				pol.nombreReino(server, reino));
+	}
+
+	/** Pedir perdón con una multa: deja la reputación en 0 si estaba en negativo. Cuesta 3 cobre por punto. */
+	Component perdon(MinecraftServer server, PoliticaMundo pol, ServerPlayer p, long reino) {
+		int r = rep(p, reino);
+		if (r >= 0) {
+			return Component.translatableWithFallback("destinos.corte.perdon.nada", "¿Perdón? No tienes nada que expiar aquí.");
+		}
+		int multa = -r * MULTA_POR_PUNTO;
+		if (!Monedas.cobra(p, multa)) {
+			return Component.translatableWithFallback("destinos.corte.perdon.pobre", "El perdón tiene un precio: %s. Vuelve cuando lo tengas.", Monedas.texto(multa));
+		}
+		sumaRep(p, reino, -r);
+		sonido(server, p, "minecraft:entity.villager.yes", 0.8f, 0.9f);
+		return Component.translatableWithFallback("destinos.corte.perdon.si", "Pagas %s y el %s olvida tus faltas. Que no se repita.", Monedas.texto(multa),
+				pol.nombreReino(server, reino));
+	}
+
+	/** Un presente en monedas: sube la reputación, pero solo hasta REP_PRESENTES (el resto hay que ganárselo). */
+	Component presente(MinecraftServer server, PoliticaMundo pol, ServerPlayer p, long reino) {
+		if (rep(p, reino) >= REP_PRESENTES) {
+			return Component.translatableWithFallback("destinos.corte.presente.basta", "Eres muy generoso, pero tu nombre ya se aprecia aquí. Guarda tus monedas.");
+		}
+		if (!Monedas.cobra(p, PRESENTE)) {
+			return Component.translatableWithFallback("destinos.corte.presente.pobre", "Agradezco la intención, pero no llevas suficiente (%s).", Monedas.texto(PRESENTE));
+		}
+		int v = sumaRep(p, reino, 3);
+		sonido(server, p, "minecraft:entity.villager.celebrate", 0.8f, 1);
+		return Component.translatableWithFallback("destinos.corte.presente.si", "Un presente digno. El %s lo recordará · reputación: %s (+3)",
+				pol.nombreReino(server, reino), v);
+	}
+
+	/** La mazmorra más cercana a (x, z) que pueda hacer el jugador, o null (para los avisos del consejero). */
+	Mazmorra peligroCerca(MinecraftServer server, ServerPlayer p, long reino, int x, int z) {
+		return MazmorrasMundo.de(server).cercana(x, z, RADIO_PELIGRO, maxEstrellas(p, reino));
 	}
 
 	/**
@@ -789,8 +912,9 @@ final class EncargosMundo {
 	}
 
 	/**
-	 * Una embajada en marcha: una vez por el camino salen cazarrecompensas (lejos aún del destino) y, al llegar a la
-	 * plaza de la capital con la carta encima, se entrega. Devuelve si ha cambiado algo.
+	 * Una embajada en marcha: una vez por el camino salen cazarrecompensas (lejos aún del destino). La carta se da al
+	 * rey en persona, hablándole; solo si su reino ha perdido la capital se entrega al llegar a la plaza. Devuelve si
+	 * ha cambiado algo.
 	 */
 	private boolean embajada(MinecraftServer server, PoliticaMundo pol, ServerLevel level, ServerPlayer p, Jugador j, Encargo e, double d2) {
 		if (!e.emboscada && d2 > 350 * 350 && (d2 < 700 * 700 || level.getRandom().nextInt(240) == 0)) {
@@ -804,18 +928,19 @@ final class EncargosMundo {
 			}
 			return false;
 		}
-		// en las capitales ricas (con castillo) la carta se entrega al rey, en el salón del trono; en las demás, en la plaza
+		// con la capital en pie, la carta se da al rey en persona (al hablarle: DialogoCorte → entregaEnMano); si el
+		// reino ha perdido su capital, basta con llegar a la plaza
 		MapaTerreno.Capital destino = pol.capitalViva(e.enemigo);
-		boolean rica = destino != null && destino.nivel() == 2;
-		if (rica) {
-			if (d2 > 160 * 160 || !Embajadas.junto(level, p)) {
-				if (d2 < 24 * 24 && server.getTickCount() % 200 == 0) {
-					p.displayClientMessage(Component.translatableWithFallback("destinos.embajada.al_trono",
-							"Aquí te dirán que la carta es para el rey: búscalo en el salón del trono del castillo.").withStyle(ChatFormatting.YELLOW), true);
-				}
-				return false;
+		if (destino != null) {
+			if (d2 < 32 * 32 && server.getTickCount() % 200 == 0) {
+				boolean castillo = destino.nivel() == 2;
+				p.displayClientMessage(Component.translatableWithFallback(castillo ? "destinos.embajada.al_trono" : "destinos.embajada.al_rey",
+						castillo ? "La carta es para el rey en persona: búscalo en el castillo (de día, en el salón del trono) y háblale."
+								: "La carta es para el rey en persona: búscalo por la plaza y háblale.").withStyle(ChatFormatting.YELLOW), true);
 			}
-		} else if (d2 > 24 * 24) {
+			return false;
+		}
+		if (d2 > 24 * 24) {
 			return false;
 		}
 		if (!Embajadas.tiene(p, e.id)) {
@@ -897,10 +1022,49 @@ final class EncargosMundo {
 		sonido(server, p, "minecraft:block.bell.use", 0.8f, 1);
 	}
 
+	/** La embajada en marcha del jugador cuya carta lleva encima y va para el reino, o null. */
+	private Encargo cartaPara(Jugador j, ServerPlayer p, long reino) {
+		if (j != null) {
+			for (Encargo e : j.activos) {
+				if (e.tipo == Encargo.Tipo.embajada && e.enemigo == reino && Embajadas.tiene(p, e.id)) {
+					return e;
+				}
+			}
+		}
+		return null;
+	}
+
+	/** Si el jugador trae una carta para el rey del reino (para ofrecérsela al hablarle). */
+	boolean llevaCarta(ServerPlayer p, long reino) {
+		return cartaPara(jugadores.get(p.getUUID()), p, reino) != null;
+	}
+
+	/** El jugador da la carta al rey del reino en persona (DialogoCorte). Devuelve si la llevaba. */
+	boolean entregaEnMano(MinecraftServer server, PoliticaMundo pol, ServerPlayer p, long reino) {
+		Jugador j = jugadores.get(p.getUUID());
+		Encargo e = cartaPara(j, p, reino);
+		if (e == null) {
+			return false;
+		}
+		Embajadas.quita(p, e.id);
+		cumple(server, pol, p, j, e);
+		envia(server, p);
+		return true;
+	}
+
+	/** Baja la reputación con el reino (golpes y muertes en la corte). Devuelve la que queda. */
+	int castiga(ServerPlayer p, long reino, int delta) {
+		return sumaRep(p, reino, -delta);
+	}
+
 	/** Si el jugador lleva una carta de un reino que está en guerra con este (los guardias no le dejan pasar). */
 	boolean cartaDeEnemigo(ServerPlayer p, long reino, PoliticaMundo pol) {
 		Jugador j = jugadores.get(p.getUUID());
 		if (j == null) {
+			return false;
+		}
+		if (j.leal == reino) {
+			// a quien les ha jurado lealtad le dejan pasar con lo que traiga
 			return false;
 		}
 		for (Encargo e : j.activos) {
@@ -1113,9 +1277,12 @@ final class EncargosMundo {
 		if (e.tipo == Encargo.Tipo.embajada) {
 			PoliticaMundo pol = DestinosCore.politica();
 			MapaTerreno.Capital c = pol == null ? null : pol.capitalViva(e.enemigo);
-			return c != null && c.nivel() == 2
-					? Component.translatableWithFallback("destinos.encargo.estado.trono", "Lleva la carta sellada al rey, al salón del trono de su castillo.")
-					: Component.translatableWithFallback("destinos.encargo.estado.carta", "Lleva la carta sellada a la plaza de su capital.");
+			if (c == null) {
+				return Component.translatableWithFallback("destinos.encargo.estado.carta", "Lleva la carta sellada a la plaza de su capital.");
+			}
+			return c.nivel() == 2
+					? Component.translatableWithFallback("destinos.encargo.estado.trono", "Dale la carta sellada al rey en persona: de día está en el salón del trono de su castillo.")
+					: Component.translatableWithFallback("destinos.encargo.estado.rey", "Dale la carta sellada al rey en persona: está en la plaza de su capital.");
 		}
 		if (e.tipo == Encargo.Tipo.guerra) {
 			return e.campamento

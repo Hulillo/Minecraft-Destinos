@@ -1,7 +1,9 @@
 package es.hulillo.destinos;
 
 import es.hulillo.destinos.politica.Politica;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
@@ -93,26 +95,6 @@ final class Embajadas {
 		}
 	}
 
-	/**
-	 * Si el jugador está ante el trono de un castillo de capital: a 4 bloques o menos del respaldo de oro (dos bloques
-	 * de oro uno encima del otro, que solo lleva el trono).
-	 */
-	static boolean junto(ServerLevel level, ServerPlayer p) {
-		BlockPos c = p.blockPosition();
-		for (int dx = -4; dx <= 4; dx++) {
-			for (int dz = -4; dz <= 4; dz++) {
-				for (int dy = -1; dy <= 2; dy++) {
-					BlockPos b = c.offset(dx, dy, dz);
-					if (level.getBlockState(b).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK)
-							&& level.getBlockState(b.above()).is(net.minecraft.world.level.block.Blocks.GOLD_BLOCK)) {
-						return true;
-					}
-				}
-			}
-		}
-		return false;
-	}
-
 	// ------------------------------------------------------------------ cazarrecompensas
 
 	/** Una banda de cazarrecompensas sale a por el jugador desde detrás de él. Devuelve cuántos han salido. */
@@ -196,34 +178,54 @@ final class Embajadas {
 			if (!malaRep && !deEnemigo) {
 				continue;
 			}
-			calma.put(p.getUUID(), ahora + ESPERA_GUARDIAS);
-			int n = em.rep(p, reino) <= -50 ? 3 : 2;
-			int salen = 0;
-			for (int i = 0; i < n; i++) {
-				double a = level.getRandom().nextDouble() * Math.PI * 2;
-				BlockPos s = suelo(level, p.getBlockX() + (int) (Math.cos(a) * 14), p.getBlockZ() + (int) (Math.sin(a) * 14));
-				if (s == null) {
-					continue;
-				}
-				Mob g = EntityType.IRON_GOLEM.create(level, EntitySpawnReason.EVENT);
-				if (g == null) {
-					continue;
-				}
-				g.snapTo(s.getX() + 0.5, s.getY(), s.getZ() + 0.5, 0, 0);
-				g.addTag(GUARDIA);
-				g.setCustomName(Component.translatableWithFallback("destinos.embajada.guardia", "Guardia del %s", pol.nombreReino(server, reino)));
-				g.setTarget(p);
-				level.addFreshEntity(g);
-				guardias.put(g.getUUID(), p.getUUID());
-				salen++;
-			}
-			if (salen > 0) {
+			if (guardias(level, p, pol, reino, em.rep(p, reino) <= -50 ? 3 : 2) > 0) {
 				p.displayClientMessage(Component.translatableWithFallback(deEnemigo ? "destinos.embajada.guardias_guerra" : "destinos.embajada.guardias",
 						deEnemigo ? "¡Guardias! El %s está en guerra con quien te manda." : "¡Guardias! En el %s no te quieren por aquí.",
 						pol.nombreReino(server, reino)).withStyle(ChatFormatting.RED), true);
 				EncargosMundo.sonido(server, p, "minecraft:entity.iron_golem.repair", 1, 0.6f);
 			}
 		}
+	}
+
+	/**
+	 * Salen n gólems de la guardia del reino a por el jugador, a unos bloques de él en la superficie. Después ya no
+	 * vuelven a salir solos contra él en un rato. Devuelve cuántos han salido.
+	 */
+	static int guardias(ServerLevel level, ServerPlayer p, PoliticaMundo pol, long reino, int n) {
+		List<BlockPos> sitios = new ArrayList<>();
+		for (int i = 0; i < n; i++) {
+			double a = level.getRandom().nextDouble() * Math.PI * 2;
+			BlockPos s = suelo(level, p.getBlockX() + (int) (Math.cos(a) * 14), p.getBlockZ() + (int) (Math.sin(a) * 14));
+			if (s != null) {
+				sitios.add(s);
+			}
+		}
+		return guardias(level, p, pol, reino, sitios);
+	}
+
+	/** Un gólem de la guardia en cada sitio, a por el jugador (CorteCapital los saca de los patios del castillo). */
+	static int guardias(ServerLevel level, ServerPlayer p, PoliticaMundo pol, long reino, List<BlockPos> sitios) {
+		calma.put(p.getUUID(), level.getDayTime() + ESPERA_GUARDIAS);
+		int salen = 0;
+		for (BlockPos s : sitios) {
+			Mob g = EntityType.IRON_GOLEM.create(level, EntitySpawnReason.EVENT);
+			if (g == null) {
+				continue;
+			}
+			g.snapTo(s.getX() + 0.5, s.getY(), s.getZ() + 0.5, 0, 0);
+			g.addTag(GUARDIA);
+			g.setCustomName(Component.translatableWithFallback("destinos.embajada.guardia", "Guardia del %s", pol.nombreReino(level.getServer(), reino)));
+			g.setTarget(p);
+			level.addFreshEntity(g);
+			guardias.put(g.getUUID(), p.getUUID());
+			salen++;
+		}
+		return salen;
+	}
+
+	/** Si ya hay guardias persiguiendo al jugador. */
+	static boolean persiguen(UUID jugador) {
+		return guardias.containsValue(jugador);
 	}
 
 	/** Al morir un guardia, se suelta. */

@@ -78,6 +78,34 @@ final class Monedas {
 		da(p, new ItemStack(COBRE, cobre % 10));
 	}
 
+	/** Cuánto lleva encima el jugador, en cobre. */
+	static int cuanto(ServerPlayer p) {
+		int n = 0;
+		for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
+			n += valor(p.getInventory().getItem(i));
+		}
+		return n;
+	}
+
+	private static int valor(ItemStack s) {
+		return s.is(ORO) ? 100 * s.getCount() : s.is(PLATA) ? 10 * s.getCount() : s.is(COBRE) ? s.getCount() : 0;
+	}
+
+	/** Cobra una cantidad en cobre (devolviendo el cambio). Si no le llega, no toca nada y devuelve false. */
+	static boolean cobra(ServerPlayer p, int cobre) {
+		int tiene = cuanto(p);
+		if (tiene < cobre) {
+			return false;
+		}
+		for (int i = 0; i < p.getInventory().getContainerSize(); i++) {
+			if (valor(p.getInventory().getItem(i)) > 0) {
+				p.getInventory().setItem(i, ItemStack.EMPTY);
+			}
+		}
+		paga(p, tiene - cobre);
+		return true;
+	}
+
 	/** Las pilas de monedas que hacen esa cantidad en cobre (para meterlas en un cofre). */
 	static java.util.List<ItemStack> pilas(int cobre) {
 		java.util.List<ItemStack> l = new java.util.ArrayList<>();

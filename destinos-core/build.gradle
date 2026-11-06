@@ -53,6 +53,8 @@ dependencies {
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 	modCompileOnly "info.journeymap:journeymap-api-fabric:${project.journeymap_api_version}"
 	modCompileOnly "maven.modrinth:diorama-map:${project.diorama_version}"
+	// 3D Skin Layers: si está, la corte saca la capa exterior de su skin en 3D (solo para compilar; lo pone el jugador)
+	modCompileOnly "maven.modrinth:3dskinlayers:${project.skinlayers_version}"
 }
 
 // El datapack y los idiomas los genera datapack/build.py --mod (lo hace la CI antes de compilar)
