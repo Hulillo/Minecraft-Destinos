@@ -30,13 +30,24 @@ public final class MuelleCapital extends StructurePiece {
 	private final int x;
 	private final int z;
 	private final int dir;
+	/** Lo que se adentra en el agua (LARGO en las capitales; más en los puertos, con espigón en T al final). */
+	private final int largo;
 
 	MuelleCapital(int x, int z, int y, Direction dir) {
-		super(TIPO, 0, caja(x, z, y, dir));
+		this(x, z, y, dir, LARGO);
+	}
+
+	MuelleCapital(int x, int z, int y, Direction dir, int largo) {
+		super(TIPO, 0, caja(x, z, y, dir, largo));
 		this.x = x;
 		this.z = z;
 		this.dir = dir.get2DDataValue();
+		this.largo = largo;
 	}
+
+	/** Desde qué largo lleva espigón en T al final. */
+	private static final int CON_ESPIGON = 14;
+	private static final int ESPIGON = 4;
 
 	int x() {
 		return x;
@@ -50,10 +61,11 @@ public final class MuelleCapital extends StructurePiece {
 		return Direction.from2DDataValue(dir);
 	}
 
-	private static BoundingBox caja(int x, int z, int y, Direction d) {
-		int x1 = x + d.getStepX() * LARGO;
-		int z1 = z + d.getStepZ() * LARGO;
-		return new BoundingBox(Math.min(x, x1) - 2, y - 2, Math.min(z, z1) - 2, Math.max(x, x1) + 2, y + 3, Math.max(z, z1) + 2);
+	private static BoundingBox caja(int x, int z, int y, Direction d, int largo) {
+		int x1 = x + d.getStepX() * largo;
+		int z1 = z + d.getStepZ() * largo;
+		int m = largo >= CON_ESPIGON ? ESPIGON + 2 : 2;
+		return new BoundingBox(Math.min(x, x1) - m, y - 2, Math.min(z, z1) - m, Math.max(x, x1) + m, y + 3, Math.max(z, z1) + m);
 	}
 
 	private MuelleCapital(CompoundTag t) {
@@ -61,6 +73,7 @@ public final class MuelleCapital extends StructurePiece {
 		x = t.getIntOr("x", 0);
 		z = t.getIntOr("z", 0);
 		dir = t.getIntOr("dir", 0);
+		largo = t.getIntOr("largo", LARGO);
 	}
 
 	static void registra() {
@@ -72,6 +85,7 @@ public final class MuelleCapital extends StructurePiece {
 		t.putInt("x", x);
 		t.putInt("z", z);
 		t.putInt("dir", dir);
+		t.putInt("largo", largo);
 	}
 
 	@Override
@@ -90,8 +104,10 @@ public final class MuelleCapital extends StructurePiece {
 		BlockState valla = Blocks.SPRUCE_FENCE.defaultBlockState();
 		int ultimo = -1;
 		int aguaY = Integer.MIN_VALUE;
-		for (int i = 0; i <= LARGO; i++) {
-			for (int w = -1; w <= 1; w++) {
+		boolean espigon = largo >= CON_ESPIGON;
+		for (int i = 0; i <= largo; i++) {
+			int ancho = espigon && i >= largo - 2 ? ESPIGON : 1;
+			for (int w = -ancho; w <= ancho; w++) {
 				int cx = x + d.getStepX() * i + lado.getStepX() * w;
 				int cz = z + d.getStepZ() * i + lado.getStepZ() * w;
 				if (!caja.isInside(cx, caja.minY(), cz)) {
@@ -106,7 +122,7 @@ public final class MuelleCapital extends StructurePiece {
 				ultimo = Math.max(ultimo, i);
 				level.setBlock(pos.set(cx, y, cz), tabla, 2);
 				// pilotes hasta el fondo en las esquinas de cada tramo, con su noray encima
-				if (w != 0 && i % 3 == 0) {
+				if (Math.abs(w) == ancho && i % 3 == 0 || ancho > 1 && i == largo && w % 2 == 0) {
 					for (int k = y - 1; k > level.getMinY(); k--) {
 						BlockState b = level.getBlockState(pos.set(cx, k, cz));
 						if (!b.is(Blocks.WATER) && !b.canBeReplaced()) {
@@ -128,12 +144,18 @@ public final class MuelleCapital extends StructurePiece {
 			level.setBlock(pos.set(px, aguaY + 1, pz), valla, 2);
 			level.setBlock(pos.set(px, aguaY + 2, pz), Blocks.LANTERN.defaultBlockState(), 2);
 		}
-		for (int s = -1; s <= 1; s += 2) {
-			int bx = x + d.getStepX() * (ultimo - 1) + lado.getStepX() * 2 * s;
-			int bz = z + d.getStepZ() * (ultimo - 1) + lado.getStepZ() * 2 * s;
-			if (caja.isInside(bx, caja.minY(), bz) && level.getBlockState(pos.set(bx, aguaY, bz)).is(Blocks.WATER)
-					&& level.getBlockState(pos.set(bx, aguaY + 1, bz)).isAir()) {
-				SeresObra.pon(level, new Obra.Ser(SeresObra.BARCA, 0, 0, 0, d), new BlockPos(bx, aguaY + 1, bz), 0);
+		// en los muelles largos, una barca cada cinco bloques a cada lado (antes del espigón)
+		for (int k = ultimo - 1; k >= 2; k -= 5) {
+			for (int s = -1; s <= 1; s += 2) {
+				int bx = x + d.getStepX() * (espigon && k >= largo - 3 ? k - 4 : k) + lado.getStepX() * 2 * s;
+				int bz = z + d.getStepZ() * (espigon && k >= largo - 3 ? k - 4 : k) + lado.getStepZ() * 2 * s;
+				if (caja.isInside(bx, caja.minY(), bz) && level.getBlockState(pos.set(bx, aguaY, bz)).is(Blocks.WATER)
+						&& level.getBlockState(pos.set(bx, aguaY + 1, bz)).isAir()) {
+					SeresObra.pon(level, new Obra.Ser(SeresObra.BARCA, 0, 0, 0, d), new BlockPos(bx, aguaY + 1, bz), 0);
+				}
+			}
+			if (largo < CON_ESPIGON) {
+				break;
 			}
 		}
 	}

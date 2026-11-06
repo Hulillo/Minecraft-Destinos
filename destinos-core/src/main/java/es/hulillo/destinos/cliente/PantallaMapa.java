@@ -2001,9 +2001,22 @@ public final class PantallaMapa extends Screen {
 				leyendaMuestras.add(new Object[] {m[0], c.getVisualOrderText(), font.width(c)});
 			}
 		}
+		// si no cabe en una fila, en dos (más pegadas al mapa): así no se pierden las últimas muestras
+		int total = 0;
+		for (Object[] m : leyendaMuestras) {
+			total += 21 + (Integer) m[2];
+		}
+		boolean dos = total > x1 - x0;
+		if (dos) {
+			y = y1 + 3;
+		}
 		for (Object[] m : leyendaMuestras) {
 			if (x + 11 + (Integer) m[2] > x1) {
-				break;
+				if (!dos || y > y1 + 3) {
+					break;
+				}
+				x = x0;
+				y += 9;
 			}
 			x = muestra(g, x, y, (Integer) m[0], (FormattedCharSequence) m[1], (Integer) m[2]);
 		}

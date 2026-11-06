@@ -1154,6 +1154,8 @@ fn("humvil/ajusta", [
 ])
 fn("humvil/oficios", [
     "schedule function destinos:humvil/oficios 40t replace",
+    "# Humanoid Villagers vuelve a sus ajustes al reiniciarse: los nuestros, cada vez",
+    "scoreboard players set $human_pool humvil.settings 2",
     "execute as @a at @s as @e[type=minecraft:mannequin,tag=humvil.human,distance=..32] at @s run function destinos:humvil/oficio",
 ])
 fn("humvil/oficio", [

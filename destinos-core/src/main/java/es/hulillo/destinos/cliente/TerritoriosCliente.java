@@ -118,6 +118,20 @@ public final class TerritoriosCliente {
 		return capitales;
 	}
 
+	/**
+	 * Iconos de los pueblos propios para las capas de JourneyMap y Diorama, en cuadritos de 5×5 (por TipoPueblo:
+	 * puesto, aldea, mina, aserradero, puerto, ciudad): banderita, casa, pico, abeto, ancla y torre.
+	 */
+	public static final String[][] FORMAS_PUEBLO = {
+			{"xxx..", "xxxx.", "x....", "x....", "x...."},
+			{"..x..", ".xxx.", "xxxxx", ".x.x.", ".xxx."},
+			{"xxxxx", "x.x.x", "..x..", "..x..", "..x.."},
+			{"..x..", ".xxx.", "..x..", ".xxx.", "xxxxx"},
+			{"..x..", "xxxxx", "..x..", "x.x.x", ".xxx."},
+			{"x.x.x", "xxxxx", ".xxx.", ".x.x.", ".xxx."}};
+	/** Color de los iconos de los pueblos (pergamino claro). */
+	public static final int COLOR_PUEBLO = 0xEDE3C8;
+
 	/** v0.6.3: los pueblos propios de los ducados conocidos, para su icono en el mapa. */
 	public static List<PaquetePolitica.Pueblo> pueblos() {
 		return pueblos;
