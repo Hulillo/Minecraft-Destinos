@@ -49,6 +49,20 @@ jobs:
           javac -d prueba-guardado -sourcepath destinos-core/src/main/java herramientas/nbt-falso/*.java herramientas/PruebaPolitica.java destinos-core/src/main/java/es/hulillo/destinos/GuardadoPolitica.java
           java -cp prueba-guardado es.hulillo.destinos.PruebaGuardado
 
+      - name: Sonda temporal (API de 3D Skin Layers)
+        continue-on-error: true
+        run: |
+          curl -s 'https://api.modrinth.com/v2/project/zV5r3pPn/version?game_versions=%5B%221.21.11%22%5D&loaders=%5B%22fabric%22%5D' > v.json || true
+          python -c "import json;d=json.load(open('v.json'));[print('VERSION',v['version_number'],v['files'][0]['url']) for v in d[:3]]"
+          URL=$(python -c "import json;print(json.load(open('v.json'))[0]['files'][0]['url'])")
+          curl -sL "$URL" -o capas.jar
+          unzip -l capas.jar | grep -iE 'api|mesh' | head -60
+          mkdir capas && cd capas && unzip -q ../capas.jar
+          for c in $(find . -path '*api*' -name '*.class' | head -30); do javap -cp . "${c%.class}"; done
+          javap -cp . $(find . -name 'MeshHelper*.class' -o -name 'Mesh.class' -o -name 'SkinLayersAPI*.class' | sed 's/\.class$//' | head -10) || true
+          javap -cp . $(find . -name '*SkinUtil*.class' -o -name '*PlayerSettings*.class' | sed 's/\.class$//' | head -6) || true
+          cat fabric.mod.json
+
       - name: Compilar Destinos Core
         working-directory: destinos-core
         run: ./gradlew build --no-daemon
