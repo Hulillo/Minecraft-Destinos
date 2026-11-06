@@ -74,6 +74,7 @@ fn("init/load", [
     "scoreboard players operation #salWZ dr.const += #K_JZ dr.const",
     "function destinos:init/tablas",
     "schedule function destinos:bucle 20t replace",
+    "schedule function destinos:humvil/ajusta 40t replace",
 ])
 fn("init/sal", [
     "# Primera carga en este mundo: la sal sale de una secuencia sembrada con la semilla del mundo",
@@ -1086,6 +1087,69 @@ for i, (a, b) in enumerate(GEO): L(f"destinos.salvaje.{i}", a, b)
 for k, c in CULTURAS.items(): L(f"destinos.cultura.{k}", c["es"], c["en"])
 assert len(LEMAS) == N_LEMAS and len(RASGOS) == N_RASGOS and len(FAMAS) == N_FAMAS and len(GEO) == N_GEO
 
+
+# ---------------------------------------------------------------- Humanoid Villagers (v0.6.3)
+# Con Humanoid Villagers (datapack dentro de un mod: humvil), cada aldeano se vuelve invisible y encima va un maniquí
+# con modelo de jugador, nombre y skin. Dos arreglos, sin tocar su mod:
+#  - que no saque maniquíes con el nombre y la skin de los jugadores del mundo ($human_pool 2 = solo aleatorios): si
+#    no, a veces un aldeano se llama como tú y en sus charlas parece que hablas tú;
+#  - el oficio del aldeano en la línea de debajo del nombre (su "description", que trae "NPC"), y nombre y oficio solo
+#    al mirarlo (sin CustomNameVisible). Se mira cada 2 s, solo cerca de los jugadores, y solo se escribe si cambia.
+# Si Humanoid Villagers no está, no hay maniquíes con su etiqueta y nada de esto hace nada.
+OFICIOS = {
+    "minecraft:armorer": (("Armero", "Armera"), "Armorer"),
+    "minecraft:butcher": (("Carnicero", "Carnicera"), "Butcher"),
+    "minecraft:cartographer": (("Cartógrafo", "Cartógrafa"), "Cartographer"),
+    "minecraft:cleric": (("Clérigo", "Clériga"), "Cleric"),
+    "minecraft:farmer": (("Granjero", "Granjera"), "Farmer"),
+    "minecraft:fisherman": (("Pescador", "Pescadora"), "Fisherman"),
+    "minecraft:fletcher": (("Flechero", "Flechera"), "Fletcher"),
+    "minecraft:leatherworker": (("Peletero", "Peletera"), "Leatherworker"),
+    "minecraft:librarian": (("Bibliotecario", "Bibliotecaria"), "Librarian"),
+    "minecraft:mason": (("Cantero", "Cantera"), "Mason"),
+    "minecraft:shepherd": (("Pastor", "Pastora"), "Shepherd"),
+    "minecraft:toolsmith": (("Herrero", "Herrera"), "Toolsmith"),
+    "minecraft:weaponsmith": (("Espadero", "Espadera"), "Weaponsmith"),
+    "minecraft:nitwit": (("Vecino", "Vecina"), "Villager"),
+    "minecraft:none": (("Sin oficio", "Sin oficio"), "Unemployed"),
+    "nino": (("Niño", "Niña"), "Child"),
+    "ambulante": (("Mercader ambulante", "Mercader ambulante"), "Wandering trader"),
+}
+for k, ((m, f), en_) in OFICIOS.items():
+    L(f"destinos.oficio.{k}.m", m, en_); L(f"destinos.oficio.{k}.f", f, en_)
+fn("humvil/ajusta", [
+    "# Humanoid Villagers: solo maniquíes aleatorios, nunca con el nombre y la skin de un jugador (2 s después de cargar,",
+    "# cuando su datapack ya ha puesto sus ajustes; si no está, el marcador no existe y esto no hace nada)",
+    "scoreboard players set $human_pool humvil.settings 2",
+    "schedule function destinos:humvil/oficios 40t replace",
+])
+fn("humvil/oficios", [
+    "schedule function destinos:humvil/oficios 40t replace",
+    "execute as @a at @s as @e[type=minecraft:mannequin,tag=humvil.human,distance=..32] at @s run function destinos:humvil/oficio",
+])
+fn("humvil/oficio", [
+    "# @s: el maniquí de un aldeano; su aldeano (invisible) está debajo y lleva el mismo humvil.id",
+    "scoreboard players operation $id humvil.id = @s humvil.id",
+    "tag @e[type=!minecraft:mannequin,tag=humvil.human.transformed,distance=..3,predicate=humvil:lib/check_id,limit=1] add destinos.hv",
+    "execute unless entity @e[tag=destinos.hv,distance=..3,limit=1] run return 0",
+    'data modify storage destinos:tmp hv set value {p:"minecraft:none",g:"m",antes:""}',
+    "data modify storage destinos:tmp hv.p set from entity @e[tag=destinos.hv,distance=..3,limit=1] VillagerData.profession",
+    'execute if entity @e[tag=destinos.hv,distance=..3,type=minecraft:wandering_trader] run data modify storage destinos:tmp hv.p set value "ambulante"',
+    'execute as @e[tag=destinos.hv,distance=..3] if predicate humvil:flags/is_baby run data modify storage destinos:tmp hv.p set value "nino"',
+    'execute if score @e[tag=destinos.hv,distance=..3,limit=1] humvil.transform.gender matches 1 run data modify storage destinos:tmp hv.g set value "f"',
+    "tag @e[tag=destinos.hv,distance=..3] remove destinos.hv",
+    "data modify storage destinos:tmp hv.antes set from entity @s description.translate",
+    "function destinos:humvil/etiqueta with storage destinos:tmp hv",
+])
+fn("humvil/etiqueta", [
+    "# Solo si el oficio ha cambiado (escribir en una entidad la vuelve a cargar entera)",
+    'execute store success score #hv dr.calc run data modify storage destinos:tmp hv.antes set value "destinos.oficio.$(p).$(g)"',
+    "execute if score #hv dr.calc matches 0 run return 0",
+    'data modify entity @s description set value {translate:"destinos.oficio.$(p).$(g)",fallback:""}',
+    "data modify entity @s hide_description set value 0b",
+    "data modify entity @s CustomNameVisible set value 0b",
+])
+
 # ---------------------------------------------------------------- escribir
 if os.path.exists(OUT):
     shutil.rmtree(OUT)
@@ -1137,4 +1201,11 @@ if MOD:
                                            "terrain_adaptation": "beard_thin"})
     wj("worldgen/structure_set/capitales.json", {"structures": [{"structure": "destinos_core:capital", "weight": 1}],
                                                  "placement": {"type": "destinos_core:capital", "salt": 0}})
+    # v0.6.3 Pueblos especializados: un pueblo con oficio por ducado y puestos de vigía en las fronteras, en el sitio
+    # que elige Destinos Core (EleccionPueblo.java), trazados como capitales pequeñas (EstructuraPueblo.java)
+    wj("worldgen/structure/pueblo.json", {"type": "destinos_core:pueblo", "biomes": "#destinos_core:capital",
+                                          "step": "surface_structures", "spawn_overrides": {},
+                                          "terrain_adaptation": "beard_thin"})
+    wj("worldgen/structure_set/pueblos.json", {"structures": [{"structure": "destinos_core:pueblo", "weight": 1}],
+                                               "placement": {"type": "destinos_core:pueblo", "salt": 0}})
     print("variante del mod en", MOD)

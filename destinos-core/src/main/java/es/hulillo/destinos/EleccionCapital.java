@@ -45,7 +45,6 @@ final class EleccionCapital {
 		boolean montana = muestreador.culturaDeMontana(k[0], k[1])
 				&& Math.floorMod(Geo.hash(kx, kz, sal + K_CAPITAL), 100) < PROB_CAPITAL_MONTANA;
 		List<Candidata> candidatas = candidatas(kx, kz, k, montana);
-		int ducadosReino = candidatas.size();
 		// las mejores, mirando de cerca el agua alrededor de cada sitio posible: una capital entre islas o junto a
 		// un lago se queda en la plaza, porque las calles sobre el agua no se ponen
 		candidatas.sort((a, b) -> Double.compare(b.puntos(), a.puntos()));
@@ -80,18 +79,35 @@ final class EleccionCapital {
 			for (Candidata cand : candidatas) {
 				for (Sitio s : cand.sitios()) {
 					if (muestreador.capitalCabe(s.x(), s.z())) {
-						return capital(cand, s, montana, ducadosReino);
+						return capital(cand, s, montana, candidatas);
 					}
 				}
 			}
 			return null;
 		}
-		return capital(ganadora, sitio, montana, ducadosReino);
+		return capital(ganadora, sitio, montana, candidatas);
 	}
 
-	private static MapaTerreno.Capital capital(Candidata cand, Sitio s, boolean montana, int ducadosReino) {
-		double riqueza = riqueza(cand.recursos(), ducadosReino);
-		return new MapaTerreno.Capital(cand.cx(), cand.cz(), s.x(), s.z(), montana && s.montana(), nivel(riqueza), riqueza);
+	private static MapaTerreno.Capital capital(Candidata cand, Sitio s, boolean montana, List<Candidata> candidatas) {
+		double riqueza = riqueza(cand.recursos(), candidatas.size());
+		return new MapaTerreno.Capital(cand.cx(), cand.cz(), s.x(), s.z(), montana && s.montana(), nivel(riqueza), riqueza, ciudad(cand, candidatas));
+	}
+
+	/**
+	 * v0.6.3: la ciudad del reino, en el ducado más rico después del de la capital (a igual riqueza, el de más
+	 * puntos). NINGUNA si el reino no tiene otro ducado donde quepa.
+	 */
+	private static long ciudad(Candidata capital, List<Candidata> candidatas) {
+		Candidata mejor = null;
+		for (Candidata c : candidatas) {
+			if (c == capital) {
+				continue;
+			}
+			if (mejor == null || c.recursos() > mejor.recursos() || c.recursos() == mejor.recursos() && c.puntos() > mejor.puntos()) {
+				mejor = c;
+			}
+		}
+		return mejor == null ? MapaTerreno.Capital.NINGUNA : Geo.clave(mejor.cx(), mejor.cz());
 	}
 
 	/** Los ducados con señor del reino cerca de su centro (k), con sus puntos sin contar el agua. */

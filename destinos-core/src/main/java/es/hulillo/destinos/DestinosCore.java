@@ -58,6 +58,8 @@ public final class DestinosCore implements ModInitializer {
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> ComandosDestinos.registra(dispatcher));
 		ColocacionCapital.registra();
 		EstructuraCapital.registra();
+		ColocacionPueblo.registra();
+		EstructuraPueblo.registra();
 		CalleCapital.registra();
 		MurallaCapital.registra();
 		CastilloCapital.registra();

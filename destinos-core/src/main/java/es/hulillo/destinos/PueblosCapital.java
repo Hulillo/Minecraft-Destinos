@@ -92,10 +92,13 @@ public final class PueblosCapital {
 	private static final int SIN_PUEBLOS = 14;
 	/** Chunks alrededor de una capital sin otras obras de superficie (la capital mide hasta unos 8 chunks de radio). */
 	private static final int SIN_OBRAS = 12;
+	/** Lo mismo alrededor de los pueblos propios de los ducados (v0.6.3), que miden hasta unos 5 chunks de radio. */
+	private static final int PUEBLO_SIN_PUEBLOS = 8;
+	private static final int PUEBLO_SIN_OBRAS = 6;
 
 	/**
 	 * Si un pueblo suelto (del tag de pueblos o con "village" en el nombre, de cualquier mod) no debe salir aquí por
-	 * caer encima de una capital. Los pueblos agrandados de la propia capital no están en el registro: nunca se vetan.
+	 * caer encima de una capital o de un pueblo propio de un ducado. Los pueblos agrandados de la propia capital no están en el registro: nunca se vetan.
 	 */
 	public static boolean vetado(Structure estructura, Structure.GenerationContext ctx) {
 		if (estructura instanceof EstructuraCapital) {
@@ -107,12 +110,14 @@ public final class PueblosCapital {
 			return false;
 		}
 		if (estructuras.wrapAsHolder(estructura).is(StructureTags.VILLAGE) || id.getPath().contains("village")) {
-			return ColocacionCapital.capitalCerca(ctx.chunkPos().x, ctx.chunkPos().z, SIN_PUEBLOS) != null;
+			return ColocacionCapital.capitalCerca(ctx.chunkPos().x, ctx.chunkPos().z, SIN_PUEBLOS) != null
+					|| ColocacionPueblo.puebloCerca(ctx.chunkPos().x, ctx.chunkPos().z, PUEBLO_SIN_PUEBLOS) != null;
 		}
 		// y cualquier otra obra de superficie (mansiones, puestos de saqueadores, torres de los mods…) que caería
 		// dentro de la capital o pegada a ella
 		if (estructura.step() == net.minecraft.world.level.levelgen.GenerationStep.Decoration.SURFACE_STRUCTURES) {
-			return ColocacionCapital.capitalCerca(ctx.chunkPos().x, ctx.chunkPos().z, SIN_OBRAS) != null;
+			return ColocacionCapital.capitalCerca(ctx.chunkPos().x, ctx.chunkPos().z, SIN_OBRAS) != null
+					|| ColocacionPueblo.puebloCerca(ctx.chunkPos().x, ctx.chunkPos().z, PUEBLO_SIN_OBRAS) != null;
 		}
 		return false;
 	}

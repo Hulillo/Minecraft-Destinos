@@ -109,9 +109,20 @@ public final class MapaTerreno {
 	 * La capital de un reino: el ducado donde está y el sitio en bloques. montana: el reino es de cultura de
 	 * montaña y ha preferido levantarla en las alturas. nivel: lo rica y grande que es (0 pobre, 1 normal, 2 rica),
 	 * por los recursos de su ducado y los ducados del reino; decide su muralla. riqueza: el número del que sale el
-	 * nivel (para calibrarlo).
+	 * nivel (para calibrarlo). ciudad: el ducado (Geo.clave) de la ciudad del reino, el más rico después del de la
+	 * capital, o NINGUNA.
 	 */
-	public record Capital(int dcx, int dcz, int x, int z, boolean montana, int nivel, double riqueza) {
+	public record Capital(int dcx, int dcz, int x, int z, boolean montana, int nivel, double riqueza, long ciudad) {
+		public static final long NINGUNA = Long.MIN_VALUE;
+	}
+
+	/** v0.6.3: el oficio de un pueblo propio de un ducado (el tier va en Plano). */
+	public enum TipoPueblo {
+		puesto, aldea, mina, aserradero, puerto, ciudad
+	}
+
+	/** v0.6.3: un pueblo propio de un ducado (como la capital, pero con oficio): su ducado, su sitio y su oficio. */
+	public record Pueblo(int dcx, int dcz, int x, int z, TipoPueblo tipo) {
 	}
 
 	/** Territorio de un punto: ducado (celda), reino (celda), salvaje y si la casilla es mar. */
@@ -165,12 +176,16 @@ public final class MapaTerreno {
 	/** Capitales que algún hilo de generación está calculando ahora mismo (los demás le esperan). */
 	private final Map<Long, CompletableFuture<Capital>> enLinea = new ConcurrentHashMap<>();
 	private final EleccionCapital eleccion;
+	private final EleccionPueblo eleccionPueblo;
+	/** Pueblos propios de cada ducado ya elegidos (se eligen al pedirlos: unas pocas muestras de terreno ya leído). */
+	private final ConcurrentHashMap<Long, List<Pueblo>> pueblos = new ConcurrentHashMap<>();
 
 	public MapaTerreno(Muestreador muestreador, int sal, ExecutorService hilo) {
 		this.muestreador = muestreador;
 		this.sal = sal;
 		this.hilo = hilo;
 		this.eleccion = new EleccionCapital(muestreador, sal);
+		this.eleccionPueblo = new EleccionPueblo(muestreador, this, sal);
 	}
 
 	public int sal() {
@@ -608,6 +623,19 @@ public final class MapaTerreno {
 			enLinea.remove(k);
 			throw e;
 		}
+	}
+
+	/** v0.6.3: los pueblos propios del ducado (dcx, dcz): ninguno, uno con oficio y/o un puesto de vigía. */
+	public List<Pueblo> pueblos(int dcx, int dcz) {
+		long k = Geo.clave(dcx, dcz);
+		List<Pueblo> ya = pueblos.get(k);
+		if (ya != null) {
+			return ya;
+		}
+		// sin computeIfAbsent: el cálculo pide capitales, que también se guardan en mapas concurrentes
+		List<Pueblo> nuevos = List.copyOf(eleccionPueblo.calcula(dcx, dcz));
+		List<Pueblo> otro = pueblos.putIfAbsent(k, nuevos);
+		return otro != null ? otro : nuevos;
 	}
 
 	/** Terreno en el centro de cada casilla de la ventana (con margen). */

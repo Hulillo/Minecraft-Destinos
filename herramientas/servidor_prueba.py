@@ -33,6 +33,10 @@ COMANDOS = [
     "data get storage destinos:politica turno",
     # la capital (el pueblo del bioma, agrandado): que se pueda generar
     "place structure destinos_core:capital 0 80 600",
+    # v0.6.3: un pueblo propio (con /place sale una aldea) y los pueblos de los ducados de alrededor
+    "forceload add 400 -1400 560 -1240",
+    "place structure destinos_core:pueblo 480 80 -1320",
+    "destinoscore pueblos",
     # la capital que ha salido sola al cargar los chunks: que su chunk la tenga y los de alrededor la conozcan
     "execute positioned 196 100 667 run destinoscore capital",
     # encargos: lo que ofrecería hoy un tablón en la zona ya calculada
@@ -116,6 +120,13 @@ if capitales < 1:
 diag = re.search(r"capital del reino en .*", salida)
 if not diag or "su chunk tiene la capital" not in diag.group(0) or "NO la conoce" in diag.group(0):
     sys.exit("la capital del mapa no está entera en el mundo: " + (diag.group(0) if diag else "sin /destinoscore capital"))
+if not re.search(r"Destinos Core: aldea en ", salida):
+    print("\n".join(l.rstrip() for l in lineas if "aldea" in l or "pueblo" in l.lower())[-3000:])
+    sys.exit("el pueblo de prueba (destinos_core:pueblo) no se ha generado")
+pueblos = re.search(r"pueblos propios en 5×5 ducados.*", salida)
+if not pueblos:
+    sys.exit("/destinoscore pueblos no ha contestado")
+print("Pueblos:", pueblos.group(0))
 revision = re.search(r"reinos revisados en .*", salida)
 if not revision:
     sys.exit("/destinoscore revisa no ha contestado")
