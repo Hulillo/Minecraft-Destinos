@@ -42,6 +42,8 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	private final NombresPolitica nombres;
 	/** Capitales ya elegidas de los reinos conocidos (no se guardan: salen siempre igual del terreno). */
 	private final Map<Long, MapaTerreno.Capital> capitales = new HashMap<>();
+	/** v0.6.3: los pueblos propios de cada ducado conocido (por Grafo.id), para los mapas. */
+	private final Map<Long, List<MapaTerreno.Pueblo>> pueblos = new HashMap<>();
 	/** Reinos sin sitio para capital (no se vuelve a mirar). */
 	private final Set<Long> sinCapital = new HashSet<>();
 	private long siguiente;
@@ -107,7 +109,9 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		List<PaquetePolitica.Capital> coronas = new ArrayList<>();
 		capitales.forEach((reino, c) -> coronas.add(new PaquetePolitica.Capital(c.x(), c.z(), Grafo.x(reino), Grafo.z(reino),
 				politica.capitalPerdida(grafo, reino))));
-		return new PaquetePolitica(politica.turno(), guerras, coronas);
+		List<PaquetePolitica.Pueblo> iconos = new ArrayList<>();
+		pueblos.values().forEach(l -> l.forEach(p -> iconos.add(new PaquetePolitica.Pueblo(p.x(), p.z(), p.tipo().ordinal()))));
+		return new PaquetePolitica(politica.turno(), guerras, coronas, iconos);
 	}
 
 	/**
@@ -142,6 +146,18 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 			capitales.put(reino, c.get());
 			grafo.fijaCapital(reino, Grafo.id(c.get().dcx(), c.get().dcz()));
 			nuevas = true;
+		}
+		// los pueblos propios de los ducados conocidos, cuando ya se sabe la capital de su reino (sin bloquear)
+		for (Map.Entry<Long, Grafo.Ducado> e : grafo.ducados().entrySet()) {
+			Grafo.Ducado d = e.getValue();
+			if (d.salvajeBase() || pueblos.containsKey(e.getKey()) || !capitales.containsKey(d.reinoBase()) && !sinCapital.contains(d.reinoBase())) {
+				continue;
+			}
+			List<MapaTerreno.Pueblo> l = mapa.pueblosSiListos(d.dcx(), d.dcz());
+			if (l != null) {
+				pueblos.put(e.getKey(), l);
+				nuevas |= !l.isEmpty();
+			}
 		}
 		if (politica.reinoProtegido() == Politica.NADIE) {
 			for (ServerPlayer p : server.getPlayerList().getPlayers()) {

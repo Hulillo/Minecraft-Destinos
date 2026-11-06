@@ -952,6 +952,8 @@ MAPA = {
     "anio": ("Año %s · turno %s · %s reinos conocidos", "Year %s · turn %s · %s known kingdoms"),
     "vacio": ("Aún no hay mapa: el servidor está calculando los territorios de alrededor…", "No map yet: the server is working out the lands around you…"),
     "leyenda.capital": ("♛ Capital", "♛ Capital"),
+    "leyenda.pueblos": ("⌂ Aldea ⛏ Mina ♠ Aserradero", "⌂ Village ⛏ Mine ♠ Sawmill"),
+    "leyenda.pueblos2": ("⚓ Puerto ♜ Ciudad ⚑ Puesto", "⚓ Port ♜ City ⚑ Outpost"),
     "leyenda.frente": ("Frente de guerra", "War front"),
     "leyenda.salvaje": ("Tierras salvajes", "Wildlands"),
     "leyenda.reciente": ("Cambió de dueño", "Changed hands"),

@@ -179,6 +179,8 @@ public final class MapaTerreno {
 	private final EleccionPueblo eleccionPueblo;
 	/** Pueblos propios de cada ducado ya elegidos (se eligen al pedirlos: unas pocas muestras de terreno ya leído). */
 	private final ConcurrentHashMap<Long, List<Pueblo>> pueblos = new ConcurrentHashMap<>();
+	/** Los mismos, pedidos sin bloquear (para los mapas): se eligen en el hilo del terreno. */
+	private final ConcurrentHashMap<Long, CompletableFuture<List<Pueblo>>> pueblosEnCamino = new ConcurrentHashMap<>();
 
 	public MapaTerreno(Muestreador muestreador, int sal, ExecutorService hilo) {
 		this.muestreador = muestreador;
@@ -636,6 +638,21 @@ public final class MapaTerreno {
 		List<Pueblo> nuevos = List.copyOf(eleccionPueblo.calcula(dcx, dcz));
 		List<Pueblo> otro = pueblos.putIfAbsent(k, nuevos);
 		return otro != null ? otro : nuevos;
+	}
+
+	/** Los pueblos propios del ducado sin bloquear: null si aún se están eligiendo (y los pide). */
+	public List<Pueblo> pueblosSiListos(int dcx, int dcz) {
+		List<Pueblo> ya = pueblos.get(Geo.clave(dcx, dcz));
+		if (ya != null) {
+			return ya;
+		}
+		CompletableFuture<List<Pueblo>> f = pueblosEnCamino.computeIfAbsent(Geo.clave(dcx, dcz),
+				k -> CompletableFuture.supplyAsync(() -> pueblos(dcx, dcz), hilo));
+		if (!f.isDone()) {
+			return null;
+		}
+		pueblosEnCamino.remove(Geo.clave(dcx, dcz));
+		return f.isCompletedExceptionally() ? List.of() : f.join();
 	}
 
 	/** Terreno en el centro de cada casilla de la ventana (con margen). */

@@ -1572,7 +1572,23 @@ public final class PantallaMapa extends Screen {
 			}
 			g.drawString(font, corona, x - font.width(corona) / 2, y - 4, c.perdida() ? 0xFF8A8577 : ORO, true);
 		}
+		// v0.6.3: los pueblos propios de los ducados, con el icono de su oficio (orden de MapaTerreno.TipoPueblo)
+		for (PaquetePolitica.Pueblo p : TerritoriosCliente.pueblos()) {
+			int x = pantallaX(p.x());
+			int y = pantallaY(p.z());
+			if (x < x0 - 8 || x > x1 + 8 || y < y0 - 8 || y > y1 + 8 || p.tipo() < 0 || p.tipo() >= ICONOS_PUEBLO.length) {
+				continue;
+			}
+			if (TerritoriosCliente.zona(Math.floorDiv(p.x(), CASILLA), Math.floorDiv(p.z(), CASILLA)) == null) {
+				continue;
+			}
+			g.drawString(font, ICONOS_PUEBLO[p.tipo()], x - font.width(ICONOS_PUEBLO[p.tipo()]) / 2, y - 4, COLOR_PUEBLO, true);
+		}
 	}
+
+	/** Puesto de vigía, aldea, mina, aserradero, puerto y ciudad. */
+	private static final String[] ICONOS_PUEBLO = {"⚑", "⌂", "⛏", "♠", "⚓", "♜"};
+	private static final int COLOR_PUEBLO = 0xFFEDE3C8;
 
 	/**
 	 * El nombre de cada reino en lo más metido de sus tierras conocidas (lejos de fronteras y costas), en dos líneas
