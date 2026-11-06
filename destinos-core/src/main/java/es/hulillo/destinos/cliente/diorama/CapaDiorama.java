@@ -162,6 +162,23 @@ public final class CapaDiorama {
 				}
 				corona(lienzo, sx, sy, Math.max(2, Math.min(4, Math.round(px / 20))), c.perdida() ? Colores.GRIS : Colores.ORO);
 			}
+			// v0.6.3: los pueblos propios, con el icono de su oficio
+			int sp = Math.max(1, Math.min(3, Math.round(px / 28)));
+			for (PaquetePolitica.Pueblo p : TerritoriosCliente.pueblos()) {
+				if (p.tipo() < 0 || p.tipo() >= TerritoriosCliente.FORMAS_PUEBLO.length) {
+					continue;
+				}
+				int alto = TerritoriosCliente.altura(Math.floorDiv(p.x(), C), Math.floorDiv(p.z(), C));
+				if (alto == TerritoriosCliente.SIN_ALTURA) {
+					continue;
+				}
+				int sx = Math.round(vista.screenX(p.x()));
+				int sy = Math.round(vista.screenY(Projection.v(alto, p.z())));
+				if (sx < vista.x() || sx >= vista.x() + vista.width() || sy < vista.y() || sy >= vista.y() + vista.height()) {
+					continue;
+				}
+				icono(lienzo, sx, sy, sp, TerritoriosCliente.COLOR_PUEBLO, TerritoriosCliente.FORMAS_PUEBLO[p.tipo()]);
+			}
 		}
 		// los encargos en curso y las mazmorras despertadas, encima de todo
 		int s = Math.max(2, Math.min(3, Math.round(px / 24)));

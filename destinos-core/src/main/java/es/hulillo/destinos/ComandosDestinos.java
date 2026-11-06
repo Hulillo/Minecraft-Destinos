@@ -38,6 +38,8 @@ final class ComandosDestinos {
 				.then(Commands.literal("territorio").executes(ctx -> territorio(ctx.getSource())))
 				.then(Commands.literal("estado").executes(ctx -> estado(ctx.getSource())))
 				.then(Commands.literal("capital").executes(ctx -> capital(ctx.getSource())))
+				.then(Commands.literal("pueblos").executes(ctx -> pueblos(ctx.getSource())))
+				.then(Commands.literal("cotilleo").executes(ctx -> cotilleo(ctx.getSource())))
 				.then(Commands.literal("revisa").executes(ctx -> revisa(ctx.getSource(), 2))
 						.then(Commands.argument("reinos", IntegerArgumentType.integer(0, 6))
 								.executes(ctx -> revisa(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "reinos")))))
@@ -172,6 +174,29 @@ final class ComandosDestinos {
 		return 1;
 	}
 
+	/**
+	 * v0.6.3 Para los cotilleos de Humanoid Villagers (destinos:humvil/cotilleos): deja en el storage
+	 * destinos:cotilleo lo que se sabe del sitio donde se ejecuta (PoliticaMundo.cotilleo). 1 si hay algo que contar,
+	 * 0 si no (sin datapack, sin la zona calculada o fuera del mundo normal). Sin mensajes: lo llama una función.
+	 */
+	private static int cotilleo(CommandSourceStack fuente) {
+		MinecraftServer server = fuente.getServer();
+		MapaTerreno m = DestinosCore.mapa(server);
+		PoliticaMundo pol = DestinosCore.politica();
+		if (m == null || pol == null || fuente.getLevel().dimension() != Level.OVERWORLD) {
+			return 0;
+		}
+		BlockPos pos = BlockPos.containing(fuente.getPosition());
+		MapaTerreno.Resultado r = m.consultaSiLista(pos.getX(), pos.getZ());
+		if (r == null) {
+			return 0;
+		}
+		r = pol.aplica(r);
+		server.getCommandStorage().set(Identifier.fromNamespaceAndPath("destinos", "cotilleo"),
+				pol.cotilleo(server, r.dcx(), r.dcz(), r.kx(), r.kz(), r.salvaje()));
+		return 1;
+	}
+
 	private static int estado(CommandSourceStack fuente) {
 		MapaTerreno m = DestinosCore.mapa(fuente.getServer());
 		String texto = m == null
@@ -236,6 +261,44 @@ final class ComandosDestinos {
 				+ (conoce ? "la conoce" : "NO la conoce") + (dentro ? " · estás dentro de una pieza" : "");
 		DestinosCore.LOG.info(texto);
 		fuente.sendSuccess(() -> Component.literal(texto), false);
+		return 1;
+	}
+
+	/**
+	 * /destinoscore pueblos: los pueblos propios (v0.6.3) de los 5×5 ducados alrededor, del más cercano al más lejano,
+	 * con su oficio y su sitio. Se eligen fuera del hilo del servidor (miran el terreno) y contesta al acabar.
+	 */
+	private static int pueblos(CommandSourceStack fuente) {
+		MinecraftServer server = fuente.getServer();
+		MapaTerreno m = DestinosCore.mapa(server);
+		if (m == null) {
+			fuente.sendFailure(Component.literal("Destinos Core: esperando al datapack (no hay sal todavía)"));
+			return 0;
+		}
+		BlockPos aqui = BlockPos.containing(fuente.getPosition());
+		int dcx = Geo.celdaDucado(aqui.getX());
+		int dcz = Geo.celdaDucado(aqui.getZ());
+		CompletableFuture.supplyAsync(() -> {
+			long inicio = System.currentTimeMillis();
+			List<MapaTerreno.Pueblo> todos = new ArrayList<>();
+			for (int x = dcx - 2; x <= dcx + 2; x++) {
+				for (int z = dcz - 2; z <= dcz + 2; z++) {
+					todos.addAll(m.pueblos(x, z));
+				}
+			}
+			todos.sort(java.util.Comparator.comparingDouble(p -> aqui.distToCenterSqr(p.x(), aqui.getY(), p.z())));
+			StringBuilder sb = new StringBuilder("Destinos Core: " + todos.size() + " pueblos propios en 5×5 ducados (" + (System.currentTimeMillis() - inicio) + " ms)");
+			for (int k = 0; k < Math.min(10, todos.size()); k++) {
+				MapaTerreno.Pueblo p = todos.get(k);
+				sb.append("\n · ").append(p.tipo()).append(" en ").append(p.x()).append(" ").append(p.z()).append(" (a ")
+						.append((int) Math.sqrt(aqui.distToCenterSqr(p.x(), aqui.getY(), p.z()))).append(" bloques)");
+			}
+			return sb.toString();
+		}).whenComplete((texto, error) -> server.execute(() -> {
+			String linea = error != null ? "Destinos Core: la búsqueda de pueblos ha fallado: " + error : texto;
+			DestinosCore.LOG.info(linea);
+			fuente.sendSuccess(() -> Component.literal(linea), false);
+		}));
 		return 1;
 	}
 

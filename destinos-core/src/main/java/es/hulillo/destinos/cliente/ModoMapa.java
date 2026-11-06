@@ -178,6 +178,8 @@ enum ModoMapa {
 		switch (this) {
 			case REINOS -> {
 				l.add(new Object[] {ORO, t("capital", "♛ Capital")});
+				l.add(new Object[] {0xFFEDE3C8, t("pueblos", "⌂ Aldea ⛏ Mina ♠ Aserradero")});
+				l.add(new Object[] {0xFFEDE3C8, t("pueblos2", "⚓ Puerto ♜ Ciudad ⚑ Puesto")});
 				l.add(new Object[] {FRENTE, t("frente", "Frente de guerra")});
 				l.add(new Object[] {SALVAJE, t("salvaje", "Tierras salvajes")});
 				l.add(new Object[] {mezcla(PERGAMINO, ORO, 0.6), t("reciente", "Cambió de dueño")});

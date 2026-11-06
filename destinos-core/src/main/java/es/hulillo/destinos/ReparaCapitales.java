@@ -35,6 +35,7 @@ final class ReparaCapitales {
 	private static final int CADA = 100;
 	private static final int DISTANCIA = 192;
 	private static final Identifier CAPITAL = Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "capital");
+	private static final Identifier PUEBLO = Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "pueblo");
 	/** Bloques de más alrededor de cada pieza donde se talan árboles, y hondura máxima del relleno bajo las casas. */
 	private static final int MARGEN = 3;
 	private static final int RELLENO = 12;
@@ -55,7 +56,28 @@ final class ReparaCapitales {
 		if (!(estructura instanceof EstructuraCapital capital)) {
 			return;
 		}
+		Structure dePueblo = level.registryAccess().lookupOrThrow(Registries.STRUCTURE).getValue(PUEBLO);
 		for (ServerPlayer p : level.players()) {
+			// v0.6.3: y los pueblos propios de los ducados de alrededor, que con C2ME se pierden igual
+			if (dePueblo instanceof EstructuraPueblo pueblo) {
+				int pdx = Geo.celdaDucado(p.getBlockX());
+				int pdz = Geo.celdaDucado(p.getBlockZ());
+				for (int ox = -1; ox <= 1; ox++) {
+					for (int oz = -1; oz <= 1; oz++) {
+						java.util.List<MapaTerreno.Pueblo> lista = m.pueblosSiListos(pdx + ox, pdz + oz);
+						if (lista == null) {
+							continue;
+						}
+						for (MapaTerreno.Pueblo q : lista) {
+							long dx = q.x() - p.getBlockX();
+							long dz = q.z() - p.getBlockZ();
+							if (dx * dx + dz * dz <= (long) DISTANCIA * DISTANCIA) {
+								mira(level, pueblo, q.x(), q.z(), q.tipo().name());
+							}
+						}
+					}
+				}
+			}
 			for (Geo.Reino reino : Geo.reinosCerca(Geo.celdaDucado(p.getBlockX()), Geo.celdaDucado(p.getBlockZ()), m.sal())) {
 				var lista = m.capitalSiLista(reino.kx(), reino.kz());
 				if (lista == null || lista.isEmpty()) {
@@ -65,14 +87,15 @@ final class ReparaCapitales {
 				long dx = c.x() - p.getBlockX();
 				long dz = c.z() - p.getBlockZ();
 				if (dx * dx + dz * dz <= (long) DISTANCIA * DISTANCIA) {
-					mira(level, capital, c);
+					mira(level, capital, c.x(), c.z(), "capital");
 				}
 			}
 		}
 	}
 
-	private void mira(ServerLevel level, EstructuraCapital capital, MapaTerreno.Capital c) {
-		ChunkPos sitio = new ChunkPos(c.x() >> 4, c.z() >> 4);
+	/** Pone la estructura (capital o pueblo) cuyo sitio es (x, z) si su chunk está generado sin ella. */
+	private void mira(ServerLevel level, EstructuraCapital capital, int x0, int z0, String que) {
+		ChunkPos sitio = new ChunkPos(x0 >> 4, z0 >> 4);
 		if (miradas.contains(sitio.toLong())) {
 			return;
 		}
@@ -85,10 +108,10 @@ final class ReparaCapitales {
 			miradas.add(sitio.toLong());
 			return;
 		}
-		StructureStart inicio = capital.inicio(level, c.x(), c.z());
+		StructureStart inicio = capital.inicio(level, x0, z0);
 		if (inicio == null || !inicio.isValid()) {
 			miradas.add(sitio.toLong());
-			DestinosCore.LOG.warn("Destinos Core: la capital de {}, {} no está en el mundo y tampoco se ha podido poner ahora", c.x(), c.z());
+			DestinosCore.LOG.warn("Destinos Core: {} de {}, {} no está en el mundo y tampoco se ha podido poner ahora", que, x0, z0);
 			return;
 		}
 		BoundingBox caja = inicio.getBoundingBox();
@@ -103,8 +126,8 @@ final class ReparaCapitales {
 			}
 		}
 		miradas.add(sitio.toLong());
-		DestinosCore.LOG.warn("Destinos Core: la capital de {}, {} se preparó pero no llegó a su chunk; se pone ahora ({} piezas)",
-				c.x(), c.z(), inicio.getPieces().size());
+		DestinosCore.LOG.warn("Destinos Core: {} de {}, {} se preparó pero no llegó a su chunk; se pone ahora ({} piezas)",
+				que, x0, z0, inicio.getPieces().size());
 		for (StructurePiece pieza : inicio.getPieces()) {
 			// el adorno abarca toda la capital: con él se talaría el bosque entero de alrededor
 			if (!(pieza instanceof AdornoCapital)) {

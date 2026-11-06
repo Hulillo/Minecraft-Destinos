@@ -161,6 +161,31 @@ final class CapaJourneyMap implements TerritoriosCliente.Oyente {
 					.setStrokeWidth(2.0F);
 			muestra(new Area(forma), estilo, coronas, "la corona de una capital");
 		}
+		// v0.6.3: los pueblos propios, con el icono de su oficio (cuadritos de 12 bloques)
+		ShapeProperties claro = new ShapeProperties()
+				.setFillColor(TerritoriosCliente.COLOR_PUEBLO)
+				.setFillOpacity(0.95F)
+				.setStrokeColor(0x000000)
+				.setStrokeOpacity(1.0F)
+				.setStrokeWidth(2.0F);
+		for (PaquetePolitica.Pueblo p : TerritoriosCliente.pueblos()) {
+			if (p.tipo() < 0 || p.tipo() >= TerritoriosCliente.FORMAS_PUEBLO.length) {
+				continue;
+			}
+			String[] f = TerritoriosCliente.FORMAS_PUEBLO[p.tipo()];
+			Area area = new Area();
+			int lado = 12;
+			int x0 = p.x() - f[0].length() * lado / 2;
+			int z0 = p.z() - f.length * lado / 2;
+			for (int j = 0; j < f.length; j++) {
+				for (int i = 0; i < f[j].length(); i++) {
+					if (f[j].charAt(i) == 'x') {
+						area.add(new Area(new Rectangle(x0 + i * lado, z0 + j * lado, lado, lado)));
+					}
+				}
+			}
+			muestra(area, claro, coronas, "el icono de un pueblo");
+		}
 	}
 
 	/** Un rombo dorado por encargo en curso y una calavera por mazmorra despertada (roja si es de noche y sin encargo). */

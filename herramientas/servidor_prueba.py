@@ -33,8 +33,15 @@ COMANDOS = [
     "data get storage destinos:politica turno",
     # la capital (el pueblo del bioma, agrandado): que se pueda generar
     "place structure destinos_core:capital 0 80 600",
+    # v0.6.3: un pueblo propio (con /place sale una aldea) y los pueblos de los ducados de alrededor
+    "forceload add 400 -1400 560 -1240",
+    "place structure destinos_core:pueblo 480 80 -1320",
+    "destinoscore pueblos",
     # la capital que ha salido sola al cargar los chunks: que su chunk la tenga y los de alrededor la conozcan
     "execute positioned 196 100 667 run destinoscore capital",
+    # los cotilleos de Humanoid Villagers: lo que se sabe de la zona ya calculada al principio (#vx #vz, reino)
+    "execute positioned 1234 100 -5678 run destinoscore cotilleo",
+    "data get storage destinos:cotilleo hay",
     # encargos: lo que ofrecería hoy un tablón en la zona ya calculada
     "destinoscore encargos 1234 -5678",
     "destinoscore tablones",
@@ -116,6 +123,17 @@ if capitales < 1:
 diag = re.search(r"capital del reino en .*", salida)
 if not diag or "su chunk tiene la capital" not in diag.group(0) or "NO la conoce" in diag.group(0):
     sys.exit("la capital del mapa no está entera en el mundo: " + (diag.group(0) if diag else "sin /destinoscore capital"))
+if not re.search(r"Destinos Core: aldea en ", salida):
+    print("\n".join(l.rstrip() for l in lineas if "aldea" in l or "pueblo" in l.lower())[-3000:])
+    sys.exit("el pueblo de prueba (destinos_core:pueblo) no se ha generado")
+pueblos = re.search(r"pueblos propios en 5×5 ducados.*", salida)
+if not pueblos:
+    sys.exit("/destinoscore pueblos no ha contestado")
+print("Pueblos:", pueblos.group(0))
+cotilleo = re.search(r"destinos:cotilleo has the following contents: .*", salida)
+if not cotilleo or "reino" not in cotilleo.group(0):
+    sys.exit("destinoscore cotilleo no ha dejado nada que contar: " + (cotilleo.group(0) if cotilleo else "sin respuesta"))
+print("Cotilleo:", cotilleo.group(0))
 revision = re.search(r"reinos revisados en .*", salida)
 if not revision:
     sys.exit("/destinoscore revisa no ha contestado")
@@ -124,7 +142,7 @@ if "capitales en el agua: 0" not in revision.group(0):
 if not rica:
     print("AVISO: no hay ninguna capital rica en los reinos revisados; el castillo no se ha probado")
 else:
-    if not re.search(r"capital en .*muralla de nivel 2, con castillo", salida):
+    if not re.search(r"capital en .*\(nivel 2, con castillo", salida):
         print("\n".join(l.rstrip() for l in lineas if "Destinos Core" in l)[-4000:])
         sys.exit("la capital rica no se ha generado con su castillo")
     if not re.search(rf"capital del reino en {rx}, {rz} .*su chunk tiene la capital", salida):
