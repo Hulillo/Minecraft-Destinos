@@ -260,15 +260,26 @@ public class EstructuraCapital extends Structure {
 		int alturaPlaza = terreno.relieve(px, pz, PlazaMayor.base(nivelPlaza))[0];
 		int rPlaza = PlazaMayor.maximo(nivelPlaza) + 2;
 		// 3. las casas nobles alrededor
-		List<CasaNoble> nobles = nobles(terreno, px, pz, rPlaza, alturaPlaza, castillo, plano.nobles(), estilo, madera, color, grandes);
+		List<PiezaObra> nobles = alrededor(terreno, px, pz, rPlaza, alturaPlaza, castillo, plano.nobles(), CasaNoble.FONDO, 1,
+				(x, z, y, giro) -> new CasaNoble(x, z, y, giro, estilo, madera, color), grandes);
 		grandes.addAll(nobles);
+		// y en los pueblos, la obra de su oficio (la torre, la bocamina, la serrería, la lonja, el molino, la taberna): la
+		// mina busca lo alto (hacia el monte) y el puerto lo bajo (hacia el agua)
+		if (plano.tipo() != null) {
+			MapaTerreno.TipoPueblo oficio = plano.tipo();
+			int alto = oficio == MapaTerreno.TipoPueblo.mina ? 2 : oficio == MapaTerreno.TipoPueblo.puerto ? -2 : 0;
+			List<PiezaObra> obra = alrededor(terreno, px, pz, rPlaza, alturaPlaza, castillo, 1, ObraOficio.FONDO, alto,
+					(x, z, y, giro) -> new ObraOficio(oficio, x, z, y, giro, estilo, madera, color), grandes);
+			grandes.addAll(obra);
+			nobles.addAll(obra);
+		}
 		// adónde van las calles que salen de la plaza: el castillo, las puertas de la muralla y las casas nobles; por
 		// ahí la plaza se abre
 		List<int[]> destinos = new ArrayList<>();
 		castillo.ifPresent(c -> destinos.add(c.entrada()));
 		int desdeMuralla = destinos.size();
 		destinos.addAll(puertas(terreno, cx, cz, radio, nivel));
-		for (CasaNoble n : nobles) {
+		for (PiezaObra n : nobles) {
 			destinos.add(puerta(n.getBoundingBox(), n.cx, n.cz, px, pz));
 		}
 		int[] entradas = new int[destinos.size()];
@@ -538,7 +549,7 @@ public class EstructuraCapital extends Structure {
 			DestinosCore.LOG.info("Destinos Core: {} en {}, {}, {} (nivel {}{}): {} calles, {} tramos de ronda y {} callejones, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
 					plano.nombre(), px, alturaPlaza, pz, nivel,
 					(castillo.isPresent() ? ", con castillo" : "") + (mercado.isPresent() ? ", con mercado" : "")
-							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " casas nobles") + ", " + plazuelas.size() + " placitas (descartes: cerca " + sinPlazuela[0] + ", cuesta " + sinPlazuela[1] + ", calle " + sinPlazuela[2]
+							+ (nobles.isEmpty() ? "" : ", " + nobles.size() + " obras grandes (casas nobles y de oficio)") + ", " + plazuelas.size() + " placitas (descartes: cerca " + sinPlazuela[0] + ", cuesta " + sinPlazuela[1] + ", calle " + sinPlazuela[2]
 							+ ", resto " + sinPlazuela[3] + "), " + portones.size() + " puertas, " + muelles.size() + " muelles" + (faro.isPresent() ? ", con faro" : "") + ", " + huertos.size() + " huertos",
 					principales.size(), rondas.size(), callejones.size(), casas.size(), gente.size(), terreno.puntos(), ms, motivos[0], motivos[1], motivos[2], motivos[3], motivos[4],
 					motivos[5], motivos[6], ColocacionCapital.quien());
@@ -1063,33 +1074,40 @@ public class EstructuraCapital extends Structure {
 		return 0;
 	}
 
+	/** Hace la obra (casa noble, obra de oficio) en (x, z) a la altura y y con el giro dado. */
+	@FunctionalInterface
+	private interface Obrero {
+		PiezaObra en(int x, int z, int y, int giro);
+	}
+
 	/**
-	 * Hasta n casas nobles alrededor de la plaza, con la puerta hacia ella: en las ocho direcciones y a tres
-	 * distancias, primero donde el terreno es llano y alto (el barrio noble sube hacia el castillo).
+	 * Hasta n obras grandes alrededor de la plaza, con la puerta hacia ella: en las ocho direcciones y a tres
+	 * distancias, primero donde el terreno es llano y, según alto, alto (alto > 0: el barrio noble sube hacia el
+	 * castillo, la mina hacia el monte) o bajo (alto < 0: la lonja hacia el agua).
 	 */
-	private static List<CasaNoble> nobles(TerrenoCapital terreno, int px, int pz, int rPlaza, int alturaPlaza, Optional<CastilloCapital> castillo, int n,
-			int estilo, int madera, int color, List<StructurePiece> grandes) {
-		List<CasaNoble> elegidas = new ArrayList<>();
+	private static List<PiezaObra> alrededor(TerrenoCapital terreno, int px, int pz, int rPlaza, int alturaPlaza, Optional<CastilloCapital> castillo, int n,
+			int fondo, int alto, Obrero obrero, List<StructurePiece> grandes) {
+		List<PiezaObra> elegidas = new ArrayList<>();
 		if (n == 0) {
 			return elegidas;
 		}
-		int distancia = rPlaza + CasaNoble.FONDO + PiezaObra.TALUD + 3;
-		List<CasaNoble> sitios = new ArrayList<>();
+		int distancia = rPlaza + fondo + PiezaObra.TALUD + 3;
+		List<PiezaObra> sitios = new ArrayList<>();
 		List<Double> notas = new ArrayList<>();
 		for (int[] d : OCHO) {
 			double largo = Math.hypot(d[0], d[1]);
 			for (int mas : new int[] {0, 8, 16}) {
 				int x = px + (int) Math.round(d[0] / largo * (distancia + mas));
 				int z = pz + (int) Math.round(d[1] / largo * (distancia + mas));
-				int[] rel = terreno.relieve(x, z, CasaNoble.FONDO);
+				int[] rel = terreno.relieve(x, z, fondo);
 				if (rel[1] > MAX_DESNIVEL_NOBLE) {
 					continue;
 				}
-				CasaNoble c = new CasaNoble(x, z, rel[0], CastilloCapital.giroHacia(-d[0], -d[1]), estilo, madera, color);
+				PiezaObra c = obrero.en(x, z, rel[0], CastilloCapital.giroHacia(-d[0], -d[1]));
 				if (terreno.aguaEsquinas(c.getBoundingBox()) || grandes.stream().anyMatch(g -> solapa(g.getBoundingBox(), c.getBoundingBox()))) {
 					continue;
 				}
-				double nota = rel[1] * K_DESNIVEL - (rel[0] - alturaPlaza) + mas / 4.0;
+				double nota = rel[1] * K_DESNIVEL - alto * (rel[0] - alturaPlaza) + mas / 4.0;
 				if (castillo.isPresent()) {
 					nota += Math.hypot(x - castillo.get().cx, z - castillo.get().cz) / 16;
 				}
@@ -1104,7 +1122,7 @@ public class EstructuraCapital extends Structure {
 					mejor = i;
 				}
 			}
-			CasaNoble c = sitios.remove(mejor);
+			PiezaObra c = sitios.remove(mejor);
 			notas.remove(mejor);
 			if (elegidas.stream().noneMatch(e -> solapa(e.getBoundingBox(), c.getBoundingBox()))) {
 				elegidas.add(c);

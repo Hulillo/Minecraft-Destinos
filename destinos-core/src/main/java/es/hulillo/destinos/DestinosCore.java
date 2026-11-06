@@ -65,6 +65,7 @@ public final class DestinosCore implements ModInitializer {
 		CastilloCapital.registra();
 		AdornoCapital.registra();
 		CasaNoble.registra();
+		ObraOficio.registra();
 		PlazaMercado.registra();
 		PlazuelaCapital.registra();
 		PuertaCapital.registra();
