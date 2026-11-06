@@ -52,15 +52,11 @@ jobs:
       - name: Sonda temporal (API de 3D Skin Layers)
         continue-on-error: true
         run: |
-          curl -s 'https://api.modrinth.com/v2/project/zV5r3pPn/version?game_versions=%5B%221.21.11%22%5D&loaders=%5B%22fabric%22%5D' > v.json || true
-          python -c "import json;d=json.load(open('v.json'));[print('VERSION',v['version_number'],v['files'][0]['url']) for v in d[:3]]"
-          URL=$(python -c "import json;print(json.load(open('v.json'))[0]['files'][0]['url'])")
-          curl -sL "$URL" -o capas.jar
-          unzip -l capas.jar | grep -iE 'api|mesh' | head -60
+          curl -sL 'https://cdn.modrinth.com/data/zV5r3pPn/versions/DsBJ7HB2/skinlayers3d-fabric-1.11.4-mc1.21.11.jar' -o capas.jar
           mkdir capas && cd capas && unzip -q ../capas.jar
-          for c in $(find . -path '*api*' -name '*.class' | head -30); do javap -cp . "${c%.class}"; done
-          javap -cp . $(find . -name 'MeshHelper*.class' -o -name 'Mesh.class' -o -name 'SkinLayersAPI*.class' | sed 's/\.class$//' | head -10) || true
-          javap -cp . $(find . -name '*SkinUtil*.class' -o -name '*PlayerSettings*.class' | sed 's/\.class$//' | head -6) || true
+          for c in $(find dev/tr7zw/skinlayers/api -name '*.class' | sed 's/\.class$//' | tr / .); do javap -p -cp . "$c"; done
+          for c in $(find . -iname '*SkinUtil*.class' -o -iname '*PlayerSettings*.class' -o -iname '*CustomizableModelPart*.class' -o -iname '*SolidPixelWrapper*.class' | sed 's|^\./||;s/\.class$//' | tr / . | head -8); do javap -p -cp . "$c"; done
+          ls dev/tr7zw/skinlayers dev/tr7zw/skinlayers/* | head -80
           cat fabric.mod.json
 
       - name: Compilar Destinos Core
