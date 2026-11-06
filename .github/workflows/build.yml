@@ -53,21 +53,6 @@ jobs:
         working-directory: destinos-core
         run: ./gradlew build --no-daemon
 
-      - name: Sonda temporal (3D Skin Layers con nombres de Mojang)
-        continue-on-error: true
-        run: |
-          MC=$PWD/$(find destinos-core/.gradle/loom-cache/minecraftMaven -name 'minecraft-merged-*.jar' | grep -v sources | head -1)
-          SL=$PWD/$(find destinos-core/.gradle/loom-cache/remapped_mods -name '3dskinlayers*.jar' | head -1)
-          echo "MC=$MC SL=$SL"
-          mkdir sl && cd sl && unzip -q "$SL" && cd ..
-          javap -cp sl dev.tr7zw.skinlayers.accessor.ModelPartInjector
-          javap -p -cp sl dev.tr7zw.skinlayers.api.Mesh dev.tr7zw.skinlayers.api.MeshHelper dev.tr7zw.skinlayers.api.OffsetProvider dev.tr7zw.skinlayers.mixin.ModelPartMixin dev.tr7zw.skinlayers.mixin.PlayerModelMixin dev.tr7zw.skinlayers.mixin.PlayerRendererMixin
-          javap -c -p -cp sl dev.tr7zw.skinlayers.mixin.ModelPartMixin | grep -E 'invoke|getfield|Method|private|public|ifeq|ifne' | head -150
-          javap -c -p -cp sl dev.tr7zw.skinlayers.mixin.PlayerRendererMixin | grep -E 'invoke|Method|private|public' | head -80
-          javap -c -p -cp sl dev.tr7zw.skinlayers.mixin.PlayerModelMixin | grep -E 'invoke|Method|private|public' | head -60
-          cat sl/skinlayers3d.mixins.json
-          javap -cp "$MC" net.minecraft.client.model.geom.ModelPart net.minecraft.client.model.HumanoidModel net.minecraft.client.model.Model 2>&1 | head -120
-
       - name: Arrancar un servidor de Minecraft con el mod y comprobar que el datapack carga sin errores
         run: python herramientas/servidor_prueba.py
         timeout-minutes: 20
