@@ -39,6 +39,9 @@ COMANDOS = [
     "destinoscore pueblos",
     # la capital que ha salido sola al cargar los chunks: que su chunk la tenga y los de alrededor la conozcan
     "execute positioned 196 100 667 run destinoscore capital",
+    # los cotilleos de Humanoid Villagers: lo que se sabe de la zona de la capital
+    "execute positioned 196 100 667 run destinoscore cotilleo",
+    "data get storage destinos:cotilleo hay",
     # encargos: lo que ofrecería hoy un tablón en la zona ya calculada
     "destinoscore encargos 1234 -5678",
     "destinoscore tablones",
@@ -127,6 +130,10 @@ pueblos = re.search(r"pueblos propios en 5×5 ducados.*", salida)
 if not pueblos:
     sys.exit("/destinoscore pueblos no ha contestado")
 print("Pueblos:", pueblos.group(0))
+cotilleo = re.search(r"destinos:cotilleo has the following contents: .*", salida)
+if not cotilleo or "reino" not in cotilleo.group(0):
+    sys.exit("destinoscore cotilleo no ha dejado nada que contar: " + (cotilleo.group(0) if cotilleo else "sin respuesta"))
+print("Cotilleo:", cotilleo.group(0))
 revision = re.search(r"reinos revisados en .*", salida)
 if not revision:
     sys.exit("/destinoscore revisa no ha contestado")

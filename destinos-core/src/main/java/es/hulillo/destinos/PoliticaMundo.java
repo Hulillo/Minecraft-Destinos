@@ -14,6 +14,7 @@ import java.util.Objects;
 import java.util.Set;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
@@ -583,6 +584,53 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	Component nombreReino(MinecraftServer server, long reino) {
 		nombres.aseguraReino(server, reino);
 		return nombres.reino(server, reino);
+	}
+
+	/**
+	 * v0.6.3 Lo que se cuenta la gente del ducado (dcx, dcz) del reino (kx, kz) para los cotilleos de Humanoid
+	 * Villagers: el duque, el ducado, el rey, el reino y, si hay guerra, el enemigo (el primero). Lo que no hay no
+	 * va; "hay" dice qué hay.
+	 */
+	CompoundTag cotilleo(MinecraftServer server, int dcx, int dcz, int kx, int kz, boolean salvaje) {
+		CompoundTag t = new CompoundTag();
+		CompoundTag hay = new CompoundTag();
+		Gente g = politica.gente();
+		int anio = politica.anio();
+		long ducado = Grafo.id(dcx, dcz);
+		if (grafo.ducado(ducado) != null) {
+			pon(server, t, "ducado", nombreDucado(server, ducado));
+			Persona duque = g.duque(ducado);
+			if (duque != null && duque.vivo()) {
+				pon(server, t, "duque", NombresPolitica.conTitulo(duque, anio));
+				hay.putBoolean("duque", true);
+			}
+		}
+		if (!salvaje) {
+			long reino = Grafo.id(kx, kz);
+			pon(server, t, "reino", nombreReino(server, reino));
+			hay.putBoolean("reino", true);
+			Persona rey = g.rey(reino);
+			if (rey != null && rey.vivo()) {
+				pon(server, t, "rey", NombresPolitica.conTitulo(rey, anio));
+				hay.putBoolean("rey", true);
+			}
+			List<Long> enemigos = enemigos(reino);
+			if (!enemigos.isEmpty()) {
+				pon(server, t, "enemigo", nombreReino(server, enemigos.get(0)));
+				hay.putBoolean("guerra", true);
+			} else {
+				hay.putBoolean("paz", true);
+			}
+		}
+		t.put("hay", hay);
+		return t;
+	}
+
+	/** El texto c en t[clave], como componente de texto en NBT (lo lee interpret:true). */
+	private static void pon(MinecraftServer server, CompoundTag t, String clave, Component c) {
+		net.minecraft.network.chat.ComponentSerialization.CODEC
+				.encodeStart(server.registryAccess().createSerializationContext(net.minecraft.nbt.NbtOps.INSTANCE), c)
+				.result().ifPresent(tag -> t.put(clave, tag));
 	}
 
 	/** La capital del reino si se conoce y sigue siendo suya; si no, null. */

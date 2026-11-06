@@ -1119,6 +1119,33 @@ OFICIOS = {
 }
 for k, ((m, f), en_) in OFICIOS.items():
     L(f"destinos.oficio.{k}.m", m, en_); L(f"destinos.oficio.{k}.f", f, en_)
+
+# Cotilleos nuestros para las charlas de Humanoid Villagers (solo con Destinos Core: destinoscore cotilleo deja en el
+# storage destinos:cotilleo el duque, el ducado, el rey, el reino y el enemigo de donde están; ver la variante del mod).
+# Cada charla: lo que tiene que haber (hay.<x>) y sus frases [(quién habla, español, inglés, datos que lleva)].
+COTILLEOS = [
+    ("duque", [(1, "¿Has visto a %s? Dicen que este año sube el tributo.", "Have you seen %s? They say the tithe goes up this year.", ["duque"]),
+               (2, "Mientras no le dé por subir también el pan...", "As long as bread doesn't go up too...", [])]),
+    ("duque", [(1, "En %s mandan los de siempre.", "Same old folk rule over %s.", ["ducado"]),
+               (2, "%s solo se acuerda de nosotros para cobrar.", "%s only remembers us when taxes are due.", ["duque"])]),
+    ("duque", [(1, "Dicen que %s salió a cazar y volvió sin nada.", "They say %s went hunting and came back empty-handed.", ["duque"]),
+               (2, "Como siempre. Los venados de aquí son más listos que los señores.", "As always. Our deer are smarter than our lords.", [])]),
+    ("rey", [(1, "Dicen que %s ya no sale de su castillo.", "They say %s never leaves the castle anymore.", ["rey"]),
+             (2, "Los reyes de %s nunca han pisado el barro.", "The kings of %s never set foot in the mud.", ["reino"])]),
+    ("rey", [(1, "¿Sabes cuántos años tiene %s?", "Do you know how old %s is?", ["rey"]),
+             (2, "Ni idea. Los reyes no envejecen en las monedas.", "No idea. Kings never age on coins.", [])]),
+    ("guerra", [(1, "¿Te has enterado? Estamos en guerra con %s.", "Have you heard? We're at war with %s.", ["enemigo"]),
+                (2, "Ya se llevaron a mi primo en la leva. Ojalá vuelva.", "They already took my cousin in the levy. I hope he comes back.", [])]),
+    ("guerra", [(1, "Si los de %s llegan hasta aquí, yo me echo al monte.", "If the %s lot get this far, I'm off to the hills.", ["enemigo"]),
+                (2, "Calla, que te oye el sargento.", "Hush, the sergeant will hear you.", [])]),
+    ("guerra", [(1, "El grano se va todo al ejército de %s.", "All the grain goes to the army of %s.", ["reino"]),
+                (2, "Y luego nos dirán que no hay pan.", "And then they'll tell us there's no bread.", [])]),
+    ("paz", [(1, "Desde que no hay guerra, el mercado va mejor.", "Since there's no war, the market's doing better.", []),
+             (2, "Ya veremos lo que dura la paz en %s.", "We'll see how long peace lasts in %s.", ["reino"])]),
+]
+for i, (_, frases) in enumerate(COTILLEOS, 1):
+    for j, (_, es_, en_, _) in enumerate(frases, 1):
+        L(f"destinos.cotilleo.{i}.{j}", es_, en_)
 fn("humvil/ajusta", [
     "# Humanoid Villagers: solo maniquíes aleatorios, nunca con el nombre y la skin de un jugador (2 s después de cargar,",
     "# cuando su datapack ya ha puesto sus ajustes; si no está, el marcador no existe y esto no hace nada)",
@@ -1212,4 +1239,22 @@ if MOD:
                                           "terrain_adaptation": "beard_thin"})
     wj("worldgen/structure_set/pueblos.json", {"structures": [{"structure": "destinos_core:pueblo", "weight": 1}],
                                                "placement": {"type": "destinos_core:pueblo", "salt": 0}})
+    # Los cotilleos: una función más en el pool de charlas de dos de Humanoid Villagers (si el mod no está, el tag
+    # queda suelto y no hace nada). Los nombres se leen del storage al decirlos (interpret: son componentes de texto).
+    def frase(i, j, quien, datos):
+        con = ",".join(f"{{storage:'destinos:cotilleo',nbt:'{d}',interpret:true}}" for d in datos)
+        txt = f"{{translate:'destinos.cotilleo.{i}.{j}'" + (f",with:[{con}]" if datos else "") + "}"
+        return f'{{participant:{quien},text:"{txt}"}}'
+    lineas = ["# Lo que se sabe de aquí (destinoscore cotilleo): si nada, sin cotilleos nuestros",
+              "data remove storage destinos:cotilleo hay",
+              "execute store result score #cot dr.calc at @s run destinoscore cotilleo",
+              "execute unless score #cot dr.calc matches 1 run return 0"]
+    for i, (hay, frases) in enumerate(COTILLEOS, 1):
+        charla = ",".join(frase(i, j, q, d) for j, (q, _, _, d) in enumerate(frases, 1))
+        lineas.append(f"execute if data storage destinos:cotilleo hay.{hay} run data modify storage humvil:pool conversations append value [{charla}]")
+    q = os.path.join(MOD, "data/destinos/function/humvil/cotilleos.mcfunction")
+    open(q, "w", encoding="utf-8").write("\n".join(lineas) + "\n")
+    q = os.path.join(MOD, "data/humvil/tags/function/pool/conversations/2_participants.json")
+    os.makedirs(os.path.dirname(q), exist_ok=True)
+    open(q, "w", encoding="utf-8").write(json.dumps({"replace": False, "values": [{"id": "destinos:humvil/cotilleos", "required": False}]}, indent=2) + "\n")
     print("variante del mod en", MOD)

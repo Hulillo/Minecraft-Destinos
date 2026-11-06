@@ -39,6 +39,7 @@ final class ComandosDestinos {
 				.then(Commands.literal("estado").executes(ctx -> estado(ctx.getSource())))
 				.then(Commands.literal("capital").executes(ctx -> capital(ctx.getSource())))
 				.then(Commands.literal("pueblos").executes(ctx -> pueblos(ctx.getSource())))
+				.then(Commands.literal("cotilleo").executes(ctx -> cotilleo(ctx.getSource())))
 				.then(Commands.literal("revisa").executes(ctx -> revisa(ctx.getSource(), 2))
 						.then(Commands.argument("reinos", IntegerArgumentType.integer(0, 6))
 								.executes(ctx -> revisa(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "reinos")))))
@@ -170,6 +171,29 @@ final class ComandosDestinos {
 		Marcador.escribe(server, "#tkz", r.kz());
 		Marcador.escribe(server, "#tw", r.salvaje() ? 1 : 0);
 		Marcador.escribe(server, "#tmar", r.oceano() ? 1 : 0);
+		return 1;
+	}
+
+	/**
+	 * v0.6.3 Para los cotilleos de Humanoid Villagers (destinos:humvil/cotilleos): deja en el storage
+	 * destinos:cotilleo lo que se sabe del sitio donde se ejecuta (PoliticaMundo.cotilleo). 1 si hay algo que contar,
+	 * 0 si no (sin datapack, sin la zona calculada o fuera del mundo normal). Sin mensajes: lo llama una función.
+	 */
+	private static int cotilleo(CommandSourceStack fuente) {
+		MinecraftServer server = fuente.getServer();
+		MapaTerreno m = DestinosCore.mapa(server);
+		PoliticaMundo pol = DestinosCore.politica();
+		if (m == null || pol == null || fuente.getLevel().dimension() != Level.OVERWORLD) {
+			return 0;
+		}
+		BlockPos pos = BlockPos.containing(fuente.getPosition());
+		MapaTerreno.Resultado r = m.consultaSiLista(pos.getX(), pos.getZ());
+		if (r == null) {
+			return 0;
+		}
+		r = pol.aplica(r);
+		server.getCommandStorage().set(Identifier.fromNamespaceAndPath("destinos", "cotilleo"),
+				pol.cotilleo(server, r.dcx(), r.dcz(), r.kx(), r.kz(), r.salvaje()));
 		return 1;
 	}
 
