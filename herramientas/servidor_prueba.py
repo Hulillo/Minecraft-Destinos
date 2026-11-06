@@ -142,7 +142,7 @@ if "capitales en el agua: 0" not in revision.group(0):
 if not rica:
     print("AVISO: no hay ninguna capital rica en los reinos revisados; el castillo no se ha probado")
 else:
-    if not re.search(r"capital en .*muralla de nivel 2, con castillo", salida):
+    if not re.search(r"capital en .*\(nivel 2, con castillo", salida):
         print("\n".join(l.rstrip() for l in lineas if "Destinos Core" in l)[-4000:])
         sys.exit("la capital rica no se ha generado con su castillo")
     if not re.search(rf"capital del reino en {rx}, {rz} .*su chunk tiene la capital", salida):
