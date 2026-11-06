@@ -356,7 +356,7 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 			reinos.add(new PaqueteFichas.Reino(Grafo.x(id), Grafo.z(id), nombreReino(server, id), res.poder(),
 					NombresPolitica.redondea(res.habitantes()), res.ducados(), e == null ? 60 : e.estabilidad, i + 1, capital, perdida,
 					senor, guerras, aliados, p == null ? 0 : encargos.rep(p, id), nombres.cultura(server, id), cronica, fondo,
-					Estandarte.de(Grafo.x(id), Grafo.z(id), sal(), fondo), union, nombreUnion, corte(id), linaje(id)));
+					Estandarte.de(Grafo.x(id), Grafo.z(id), sal(), fondo), union, nombreUnion, corte(id, p != null && encargos.leal(p) == id), linaje(id)));
 		}
 		Map<Long, Integer> peligro = peligros(server);
 		FaunaDucados fauna = FaunaDucados.de(server.overworld(), sal());
@@ -391,10 +391,13 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	}
 
 	/** La corte del reino para su ficha: rey (o regente), consorte, heredero, ley de herencia, general y consejo. */
-	private List<Component> corte(long reino) {
+	private List<Component> corte(long reino, boolean leal) {
 		Gente g = politica.gente();
 		int anio = politica.anio();
 		List<Component> l = new ArrayList<>();
+		if (leal) {
+			l.add(Component.translatableWithFallback("destinos.corte.leal", "⚜ Le has jurado lealtad").withStyle(ChatFormatting.GOLD));
+		}
 		Persona rey = g.rey(reino);
 		if (rey == null) {
 			return l;
@@ -638,6 +641,11 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		return politica.anio();
 	}
 
+	/** Quien heredaría hoy la corona del reino (según su ley), o null. */
+	Persona heredero(long reino) {
+		return politica.gente().heredero(politica, reino);
+	}
+
 	/**
 	 * Un jugador ha matado a alguien de la corte: muere en la política, si era rey sube el heredero en el acto, se
 	 * anuncia a todos y se guarda.
@@ -654,6 +662,77 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 			anuncia(server, sucesos);
 			guarda(server);
 		}
+	}
+
+	/** Cómo va la guerra del reino, contado desde donde está el jugador: contra quién y dónde está cada frente. */
+	List<Component> guerra(MinecraftServer server, ServerPlayer p, long reino) {
+		List<Component> l = new ArrayList<>();
+		for (long enemigo : enemigos(reino)) {
+			long ataque = frente(reino, enemigo);
+			long defensa = frente(enemigo, reino);
+			Component otro = nombreReino(server, enemigo);
+			if (ataque != Politica.NADIE) {
+				int[] c = Geo.centroDucado(Grafo.x(ataque), Grafo.z(ataque), sal());
+				l.add(Component.translatableWithFallback("destinos.corte.guerra.ataque", "⚔ Contra el %s atacamos %s%s.", otro,
+						nombreDucado(server, ataque), NombresPolitica.donde(p, c[0], c[1])));
+			}
+			if (defensa != Politica.NADIE) {
+				int[] c = Geo.centroDucado(Grafo.x(defensa), Grafo.z(defensa), sal());
+				l.add(Component.translatableWithFallback("destinos.corte.guerra.defensa", "⛨ El %s nos ataca en %s%s.", otro,
+						nombreDucado(server, defensa), NombresPolitica.donde(p, c[0], c[1])));
+			}
+			if (ataque == Politica.NADIE && defensa == Politica.NADIE) {
+				l.add(Component.translatableWithFallback("destinos.corte.guerra.sin_frente", "⚔ Estamos en guerra con el %s, aunque aún no hay frente abierto.", otro));
+			}
+		}
+		return l;
+	}
+
+	/**
+	 * Lo que se rumorea en la corte sobre los reinos de alrededor, sacado del estado de verdad de la política: guerras,
+	 * reyes viejos o niños, reinos sin heredero o revueltos, y quién querría paz o alianza con nosotros. Como mucho n,
+	 * los mismos durante todo el día.
+	 */
+	List<Component> rumores(MinecraftServer server, long reino, long dia, int n) {
+		Gente g = politica.gente();
+		int anio = politica.anio();
+		List<Component> todos = new ArrayList<>();
+		Set<Politica.Par> guerras = new HashSet<>();
+		for (long v : vecinos(reino)) {
+			Component nv = nombreReino(server, v);
+			for (long e : enemigos(v)) {
+				if (e != reino && guerras.add(Politica.Par.de(v, e))) {
+					todos.add(Component.translatableWithFallback("destinos.corte.rumor.guerra", "Dicen que el %s y el %s andan a la greña.", nv,
+							nombreReino(server, e)));
+				}
+			}
+			Persona rey = g.rey(v);
+			if (rey != null && rey.vivo()) {
+				if (rey.edad(anio) >= 60) {
+					todos.add(Component.translatableWithFallback("destinos.corte.rumor.viejo", "Cuentan que %s, del %s, está ya muy viejo.",
+							NombresPolitica.nombre(rey), nv));
+				} else if (rey.edad(anio) < Gente.ADULTO) {
+					todos.add(Component.translatableWithFallback("destinos.corte.rumor.nino", "En el %s reina un niño, %s: su consejo hace y deshace.", nv,
+							NombresPolitica.nombre(rey)));
+				}
+				if (g.heredero(politica, v) == null) {
+					todos.add(Component.translatableWithFallback("destinos.corte.rumor.sin_heredero", "El %s no tiene heredero. Como muera su rey, habrá lío.", nv));
+				}
+			}
+			Politica.Reino e = politica.reinos().get(v);
+			if (e != null && e.estabilidad < 30) {
+				todos.add(Component.translatableWithFallback("destinos.corte.rumor.revuelto", "En el %s el pueblo anda revuelto. No me extrañaría una revuelta.", nv));
+			}
+			Politica.Carta c = politica.carta(reino, v);
+			if (c == Politica.Carta.alianza) {
+				todos.add(Component.translatableWithFallback("destinos.corte.rumor.alianza", "En el %s hay quien habla de aliarse con nosotros.", nv));
+			} else if (c == Politica.Carta.paz) {
+				todos.add(Component.translatableWithFallback("destinos.corte.rumor.paz", "Se dice que el %s firmaría la paz si alguien llevara la carta adecuada.", nv));
+			}
+		}
+		java.util.SplittableRandom rnd = new java.util.SplittableRandom(dia * 0x9E3779B97F4A7C15L ^ reino);
+		java.util.Collections.shuffle(todos, new java.util.Random(rnd.nextLong()));
+		return todos.subList(0, Math.min(n, todos.size()));
 	}
 
 	/** Lo último que ha pasado en el reino (como mucho n sucesos, del más nuevo al más viejo), para contarlo en la corte. */

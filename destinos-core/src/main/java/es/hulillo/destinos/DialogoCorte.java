@@ -19,6 +19,7 @@ final class DialogoCorte {
 	/** Para contestar hay que seguir cerca de quien habla. */
 	private static final double ALCANCE = 8;
 	private static final int NOTICIAS = 3;
+	private static final int RUMORES = 3;
 	/** Con esta reputación o más, te reciben como a un amigo. */
 	private static final int REP_AMIGO = 30;
 
@@ -47,10 +48,25 @@ final class DialogoCorte {
 			return;
 		}
 		MinecraftServer server = p.level().getServer();
+		EncargosMundo em = EncargosMundo.de(server);
+		boolean rey = c.cargo == RutinaCorte.Cargo.rey;
+		boolean general = c.cargo == RutinaCorte.Cargo.general;
+		boolean consejero = c.cargo == RutinaCorte.Cargo.consejero;
 		Component texto = switch (r.clave()) {
 			case "quien" -> quien(server, pol, c, x);
 			case "noticias" -> noticias(server, pol, c);
 			case "donde" -> donde(server, pol, c);
+			case "familia" -> familia(pol, x);
+			case "servir" -> rey ? em.encargoDeCorte(server, p, c.blockPosition(), false) : null;
+			case "jurar" -> rey ? em.jura(server, pol, p, c.reino) : null;
+			case "perdon" -> rey ? em.perdon(server, pol, p, c.reino) : null;
+			case "presente" -> em.presente(server, pol, p, c.reino);
+			case "alistarse" -> general ? em.encargoDeCorte(server, p, c.blockPosition(), true) : null;
+			case "guerra" -> general ? lista(pol.guerra(server, p, c.reino), "destinos.corte.guerra.paz",
+					"Ahora mismo no hay guerra. Que dure.") : null;
+			case "rumores" -> consejero ? lista(pol.rumores(server, c.reino, server.overworld().getDayTime() / 24000, RUMORES),
+					"destinos.corte.rumor.nada", "Nada que merezca la pena contar. Los reinos de alrededor andan tranquilos.") : null;
+			case "peligros" -> consejero ? peligros(server, em, p, c) : null;
 			case "carta" -> EncargosMundo.de(server).entregaEnMano(server, pol, p, c.reino)
 					? Component.translatableWithFallback("destinos.corte.carta.gracias", "Leeré tu carta con atención. Dile a quien te envía que tendrá respuesta.")
 					: Component.translatableWithFallback("destinos.corte.carta.nada", "No traes nada para mí.");
@@ -75,16 +91,55 @@ final class DialogoCorte {
 				opciones(p, c)));
 	}
 
+	/** Lo que se le puede decir: depende de su cargo, de tu reputación y de lo que lleves. */
 	private static List<PaqueteDialogo.Opcion> opciones(ServerPlayer p, CuerpoPersona c) {
 		List<PaqueteDialogo.Opcion> l = new ArrayList<>();
 		MinecraftServer server = p.level().getServer();
-		if (c.cargo == RutinaCorte.Cargo.rey && EncargosMundo.de(server).llevaCarta(p, c.reino)) {
-			l.add(opcion("carta", "✉ Entregar la carta sellada"));
+		EncargosMundo em = EncargosMundo.de(server);
+		int rep = em.rep(p, c.reino);
+		boolean odio = rep <= Embajadas.REP_GUARDIAS;
+		switch (c.cargo) {
+			case rey -> {
+				if (em.llevaCarta(p, c.reino)) {
+					l.add(opcion("carta", "✉ Entregar la carta sellada"));
+				}
+				if (rep < 0) {
+					l.add(opcion("perdon", "⚖ Pido perdón (pagaré la multa)"));
+				}
+				if (!odio) {
+					l.add(opcion("servir", "⚔ ¿Puedo servir a la corona?"));
+					if (rep >= EncargosMundo.REP_LEALTAD && em.leal(p) != c.reino) {
+						l.add(opcion("jurar", "⚜ Os juro lealtad"));
+					}
+				}
+			}
+			case general -> {
+				if (!odio) {
+					l.add(opcion("alistarse", "⚔ Quiero alistarme"));
+					l.add(opcion("guerra", "⚑ ¿Cómo va la guerra?"));
+				}
+			}
+			case consejero -> {
+				if (!odio) {
+					l.add(opcion("rumores", "✎ ¿Qué se dice de otros reinos?"));
+					l.add(opcion("peligros", "☠ ¿Sabéis de algún peligro por aquí?"));
+				}
+			}
+			case consorte, hijo -> {
+				if (!odio) {
+					l.add(opcion("familia", "⚘ Contadme de vuestra familia"));
+				}
+			}
 		}
-		l.add(opcion("quien", "¿Quién eres?"));
-		l.add(opcion("noticias", "¿Qué se cuenta por aquí?"));
-		if (c.cargo != RutinaCorte.Cargo.rey) {
-			l.add(opcion("donde", "¿Dónde puedo encontrar al rey?"));
+		if (!odio) {
+			l.add(opcion("quien", "¿Quién eres?"));
+			l.add(opcion("noticias", "¿Qué se cuenta por aquí?"));
+			if (c.cargo != RutinaCorte.Cargo.rey) {
+				l.add(opcion("donde", "¿Dónde puedo encontrar al rey?"));
+			}
+			if (l.size() < 7 && c.cargo != RutinaCorte.Cargo.hijo) {
+				l.add(opcion("presente", "❖ Un presente para vos (20 cobre)"));
+			}
 		}
 		l.add(opcion("adios", "Adiós"));
 		return l;
@@ -144,6 +199,74 @@ final class DialogoCorte {
 		}
 		return Component.translatableWithFallback("destinos.corte.donde", "A estas horas, %s está %s.", NombresPolitica.conTitulo(rey, pol.anio()),
 				Component.translatableWithFallback("destinos.corte.sitio." + s.name(), SITIOS[s.ordinal()]));
+	}
+
+	/** Varias líneas en un solo texto; si no hay ninguna, el texto de "nada". */
+	private static Component lista(List<Component> l, String nada, String nadaEs) {
+		if (l.isEmpty()) {
+			return Component.translatableWithFallback(nada, nadaEs);
+		}
+		MutableComponent t = Component.empty();
+		for (int i = 0; i < l.size(); i++) {
+			t.append(i == 0 ? Component.empty() : Component.literal("\n")).append(l.get(i));
+		}
+		return t;
+	}
+
+	/** El consejero avisa de la mazmorra más cercana que puedas hacer. */
+	private static Component peligros(MinecraftServer server, EncargosMundo em, ServerPlayer p, CuerpoPersona c) {
+		Mazmorra m = em.peligroCerca(server, p, c.reino, c.getBlockX(), c.getBlockZ());
+		if (m == null) {
+			return Component.translatableWithFallback("destinos.corte.peligro.nada", "Por estas tierras no se sabe de nada que dé miedo. Aún.");
+		}
+		return Component.translatableWithFallback("destinos.corte.peligro", "Dicen que en %s%s algo se ha despertado. Cosa de %s★: ve preparado.",
+				MazmorrasMundo.nombre(server, m), NombresPolitica.donde(p, m.x(), m.z()), m.estrellas);
+	}
+
+	/** Su familia contada por él mismo: padres, hermanos, pareja, hijos y quién heredará. */
+	private static Component familia(PoliticaMundo pol, Persona x) {
+		es.hulillo.destinos.politica.Gente g = pol.gente();
+		List<Component> l = new ArrayList<>();
+		String gx = x.mujer ? "f" : "m";
+		Persona padre = x.padre == Persona.NADIE ? null : g.persona(x.padre);
+		Persona madre = x.madre == Persona.NADIE ? null : g.persona(x.madre);
+		if (padre != null && madre != null) {
+			l.add(Component.translatableWithFallback("destinos.corte.familia.padres", "Mis padres son %s y %s.", vive(padre), vive(madre)));
+			int hermanos = 0;
+			for (Persona h : g.hijos(padre)) {
+				if (h.id != x.id && h.vivo()) {
+					hermanos++;
+				}
+			}
+			if (hermanos > 0) {
+				l.add(Component.translatableWithFallback("destinos.corte.familia.hermanos", "Tengo %s hermanos con vida.", hermanos));
+			}
+		}
+		Persona pareja = g.conyuge(x);
+		if (pareja != null) {
+			l.add(Component.translatableWithFallback("destinos.corte.familia.casado." + gx, x.mujer ? "Estoy casada con %s." : "Estoy casado con %s.",
+					NombresPolitica.nombre(pareja)));
+		}
+		int hijos = (int) g.hijos(x).stream().filter(Persona::vivo).count();
+		if (hijos > 0) {
+			l.add(Component.translatableWithFallback("destinos.corte.familia.hijos", "Tengo %s hijos.", hijos));
+		}
+		Persona heredero = pol.heredero(x.reino);
+		if (heredero != null && heredero.id != x.id) {
+			l.add(Component.translatableWithFallback("destinos.corte.familia.heredero", "Algún día reinará %s. Ya veremos qué tal.",
+					NombresPolitica.nombre(heredero)));
+		} else if (heredero != null) {
+			l.add(Component.translatableWithFallback("destinos.corte.familia.yo", "Y algún día la corona será mía. Pesa solo de pensarlo."));
+		}
+		if (l.isEmpty()) {
+			return Component.translatableWithFallback("destinos.corte.familia.nada", "Mi familia es la corte. No hay mucho más que contar.");
+		}
+		return lista(l, "", "");
+	}
+
+	/** El nombre, con una cruz si ya murió. */
+	private static Component vive(Persona x) {
+		return x.vivo() ? NombresPolitica.nombre(x) : Component.translatableWithFallback("destinos.corte.familia.muerto", "%s (†)", NombresPolitica.nombre(x));
 	}
 
 	/** Dónde está alguien, para "¿Dónde está el rey?" (en el orden de RutinaCorte.Sitio). */
