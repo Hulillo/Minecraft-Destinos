@@ -151,12 +151,15 @@ pueblos = re.search(r"pueblos propios en 5×5 ducados.*", salida)
 if not pueblos:
     sys.exit("/destinoscore pueblos no ha contestado")
 print("Pueblos:", pueblos.group(0))
+# la generación nueva (ObrasMundo): la capital la construyen sus chunks al decorarse, sin depender de la estructura
+if not re.search(r"se empieza a construir capital de ", salida):
+    sys.exit("ningún chunk ha empezado a construir la capital (ObrasMundo)")
 cotilleo = re.search(r"destinos:cotilleo has the following contents: .*", salida)
 if not cotilleo or "reino" not in cotilleo.group(0):
     sys.exit("destinoscore cotilleo no ha dejado nada que contar: " + (cotilleo.group(0) if cotilleo else "sin respuesta"))
 print("Cotilleo:", cotilleo.group(0))
 print("Maniquí:", "\n".join(l.rstrip() for l in lineas if "Roberto" in l or "destinos:tmp" in l or "hvprueba" in l))
-if not re.search(r"has the following entity data: \{.*destinos\.oficio\.minecraft:farmer", salida):
+if not re.search(r"has the following entity data: \{.*translate: \"destinos\.oficio\.minecraft:farmer", salida):
     sys.exit("el maniquí de prueba no tiene el oficio bajo el nombre")
 revision = re.search(r"reinos revisados en .*", salida)
 if not revision:
