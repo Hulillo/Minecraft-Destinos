@@ -353,6 +353,8 @@ public class EstructuraCapital extends Structure {
 		long rMax = (long) (radio - RONDA_MURO) * (radio - RONDA_MURO);
 		int[] motivos = new int[7];
 		int[] sinPlazuela = new int[4];
+		// en los puertos, los muelles van antes que las casas: si no, las casas se quedan toda la orilla y no cabe ninguno
+		List<MuelleCapital> primeros = new ArrayList<>();
 		java.util.function.BiPredicate<BoundingBox, Integer> cabeCon = (b, maxDesnivel) -> {
 			for (int[] e : new int[][] {{b.minX(), b.minZ()}, {b.maxX(), b.minZ()}, {b.minX(), b.maxZ()}, {b.maxX(), b.maxZ()}}) {
 				long dx = e[0] - cx;
@@ -375,6 +377,12 @@ public class EstructuraCapital extends Structure {
 			for (StructurePiece o : casas) {
 				if (solapa(o.getBoundingBox(), b)) {
 					motivos[3]++;
+					return false;
+				}
+			}
+			for (MuelleCapital o : primeros) {
+				if (solapa(o.getBoundingBox().inflatedBy(1), b)) {
+					motivos[2]++;
 					return false;
 				}
 			}
@@ -408,6 +416,12 @@ public class EstructuraCapital extends Structure {
 			trazado.veta(q.getBoundingBox());
 		}
 
+		if (plano.tipo() == MapaTerreno.TipoPueblo.puerto) {
+			int[] redondo = new int[MurallaCapital.ARCOS];
+			java.util.Arrays.fill(redondo, radio);
+			primeros.addAll(muelles(terreno, redondo, cx, cz, radio, plano.muelles(), MUELLE_PUERTO, enCalle, casas, grandes, mayor));
+			primeros.forEach(m -> obras.add(m.getBoundingBox()));
+		}
 		fase(fases, reloj, "placitas");
 		// y los callejones: de cada calle, cada tanto, uno de través hacia un lado y otro (manzanas por dentro)
 		List<List<int[]>> callejones = new ArrayList<>();
@@ -489,8 +503,8 @@ public class EstructuraCapital extends Structure {
 		List<StructurePiece> enMuralla = muralla.stream().filter(m -> !terreno.todoAgua(m.getBoundingBox())).toList();
 		fase(fases, reloj, "muralla y puertas");
 		// y muelles con barcas en la orilla del río, el lago o el mar, dentro de la muralla
-		List<MuelleCapital> muelles = muelles(terreno, contorno, cx, cz, radio, plano.muelles(),
-				plano.tipo() == MapaTerreno.TipoPueblo.puerto ? MUELLE_PUERTO : MuelleCapital.LARGO, enCalle, casas, grandes, mayor);
+		List<MuelleCapital> muelles = !primeros.isEmpty() ? primeros
+				: muelles(terreno, contorno, cx, cz, radio, plano.muelles(), MuelleCapital.LARGO, enCalle, casas, grandes, mayor);
 		// el faro, junto al muelle que da a mar abierto
 		Optional<FaroCapital> faro = !plano.faro() ? Optional.empty() : faro(terreno, contorno, cx, cz, muelles, enCalle, casas, grandes, estilo, madera, color);
 		// los huertos de las afueras, fuera de la muralla
