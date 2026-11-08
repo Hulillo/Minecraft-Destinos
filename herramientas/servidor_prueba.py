@@ -172,8 +172,8 @@ else:
     if not re.search(r"capital en .*\(nivel 2, con castillo", salida):
         print("\n".join(l.rstrip() for l in lineas if "Destinos Core" in l)[-4000:])
         sys.exit("la capital rica no se ha generado con su castillo")
-    if not re.search(rf"capital del reino en {rx}, {rz} .*su chunk tiene la capital", salida):
-        sys.exit("la capital rica no está en su chunk")
+    if not re.search(rf"capital del reino en {rx}, {rz} .*su plano tiene", salida):
+        sys.exit("la capital rica no tiene plano")
 if "Tried to load a DUMMY block entity" in salida:
     sys.exit("hay bloques con datos (estandartes, barriles…) puestos fuera de su sitio: " + re.search(r"Tried to load a DUMMY.*", salida).group(0))
 if "plaza mayor de la capital" not in salida:
