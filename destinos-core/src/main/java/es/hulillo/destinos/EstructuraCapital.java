@@ -592,7 +592,8 @@ public class EstructuraCapital extends Structure {
 			}
 			// y lo último, el adorno, que ya ve todo lo demás puesto
 			BoundingBox.encapsulatingBoxes(cajas).ifPresent(caja -> pon.accept(
-					new AdornoCapital(px, alturaPlaza, pz, estilo, color, caja, techo, false, 0, mayor.nivel(), mayor.semilla(), mayor.entradas(), enBadlands).escudo(escudo)));
+					new AdornoCapital(px, alturaPlaza, pz, estilo, color, caja, techo, false, 0, mayor.nivel(), mayor.semilla(), mayor.entradas(), enBadlands,
+					plano.tipo() == null ? -1 : plano.tipo().ordinal()).escudo(escudo)));
 			DestinosCore.LOG.info("Destinos Core: {} en {}, {}, {} (nivel {}{}): {} calles, {} tramos de ronda y {} callejones, {} casas, {} de gente, {} puntos de terreno, trazada en {} ms (casas que no caben: fuera {}, plaza {}, obra {}, casa {}, calle {}, agua {}, cuesta {}) · pedida por {}",
 					plano.nombre(), px, alturaPlaza, pz, nivel,
 					(castillo.isPresent() ? ", con castillo" : "") + (mercado.isPresent() ? ", con mercado" : "")
@@ -1409,11 +1410,7 @@ public class EstructuraCapital extends Structure {
 	 * del mar), según el generador y sin generar el chunk: la superficie con agua y el fondo sin ella.
 	 */
 	private static boolean mojado(Structure.GenerationContext ctx, int x, int z) {
-		int superficie = ctx.chunkGenerator().getBaseHeight(x, z, Heightmap.Types.WORLD_SURFACE_WG, ctx.heightAccessor(),
-				ctx.randomState());
-		int fondo = ctx.chunkGenerator().getBaseHeight(x, z, Heightmap.Types.OCEAN_FLOOR_WG, ctx.heightAccessor(),
-				ctx.randomState());
-		return superficie - fondo >= 2;
+		return TerrenoCapital.columna(ctx, x, z)[1] >= 2;
 	}
 
 	/** Altura de la superficie en (x, z) según el generador, sin generar el chunk. */
