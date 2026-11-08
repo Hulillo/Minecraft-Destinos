@@ -122,6 +122,64 @@ public final class PueblosCapital {
 		return false;
 	}
 
+	/** Lo que sobresalen de su radio, como mucho, la muralla, los huertos y los muelles de un asentamiento. */
+	private static final int ORILLA = 40;
+	/** Hasta dónde llega una estructura desde el chunk donde empieza (los pueblos de jigsaw, unos 8 chunks). */
+	private static final int LARGO_ESTRUCTURA = 9;
+
+	/**
+	 * Si alguna pieza de una estructura ya preparada (de Minecraft o de mods, en cualquier paso) cae encima de una
+	 * capital o un pueblo propio: su muralla, sus casas, sus huertos. El veto de vetado mira solo dónde empieza la
+	 * estructura, y una grande que empezaba lejos aún llegaba a la muralla. Con el plano ya trazado se mira su caja;
+	 * si no, el círculo que puede ocupar. Lo que va bajo tierra (minas, ciudades antiguas) se deja.
+	 */
+	public static boolean choca(Structure estructura, Structure.GenerationContext ctx, Iterable<StructurePiece> piezas) {
+		if (estructura instanceof EstructuraCapital) {
+			return false;
+		}
+		int cx = ctx.chunkPos().x;
+		int cz = ctx.chunkPos().z;
+		int alcance = ObrasMundo.ALCANCE + LARGO_ESTRUCTURA;
+		MapaTerreno.Capital c = ColocacionCapital.capitalCerca(cx, cz, alcance);
+		if (c != null && pisa(ctx, piezas, ObrasMundo.CAPITAL, c.x(), c.z(), MurallaCapital.radio(2) + ORILLA)) {
+			return true;
+		}
+		for (MapaTerreno.Pueblo p : ColocacionPueblo.pueblosCerca(cx, cz, alcance)) {
+			if (pisa(ctx, piezas, ObrasMundo.PUEBLO, p.x(), p.z(), EstructuraCapital.Plano.pueblo(p.tipo(), 0, 0).radio() + ORILLA)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Si alguna pieza cae en el asentamiento con sitio en (x, z): en su caja si ya está trazado, o a menos de radio. */
+	private static boolean pisa(Structure.GenerationContext ctx, Iterable<StructurePiece> piezas, Identifier que, int x, int z, int radio) {
+		ObrasMundo.Plan plan = ObrasMundo.trazado(que, x, z);
+		net.minecraft.world.level.levelgen.structure.BoundingBox caja = plan == null || plan.caja() == null ? null : plan.caja().inflatedBy(4);
+		// lo que queda más de ocho bloques por debajo del suelo del sitio no estorba
+		int suelo = caja != null ? caja.minY() : TerrenoCapital.columna(ctx, x, z)[0] - 8;
+		long r2 = (long) radio * radio;
+		for (StructurePiece pieza : piezas) {
+			net.minecraft.world.level.levelgen.structure.BoundingBox b = pieza.getBoundingBox();
+			if (b.maxY() < suelo) {
+				continue;
+			}
+			if (caja != null) {
+				if (b.intersects(caja)) {
+					return true;
+				}
+				continue;
+			}
+			// el punto de la caja más cercano al sitio
+			long dx = Math.clamp(x, b.minX(), b.maxX()) - x;
+			long dz = Math.clamp(z, b.minZ(), b.maxZ()) - z;
+			if (dx * dx + dz * dz <= r2) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/**
 	 * Un pueblo de verdad para copiar: del tag de pueblos o con "village" en el nombre, pero no los campamentos,
 	 * ruinas o pueblos dispersos que algunos mods llaman así (structory:outcast_villager_*,

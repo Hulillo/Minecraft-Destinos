@@ -414,9 +414,8 @@ public final class MurallaCapital extends StructurePiece {
 	}
 
 	/**
-	 * Donde la muralla cruza el agua (un río, la orilla de un lago): una reja de hierro desde el fondo hasta dos por
-	 * encima del agua, que deja pasar el agua pero no a la gente, y encima la muralla. En las pobres, la empalizada
-	 * sigue por el agua sobre pilotes.
+	 * Donde la muralla cruza el agua (un río, la orilla de un lago): pilotes de madera desde el fondo hasta la línea
+	 * del agua, una reja de dos encima (de hierro, o de valla en las pobres) y encima la muralla.
 	 */
 	private void reja(WorldGenLevel level, BlockPos.MutableBlockPos pos, int alto) {
 		int agua = pos.getY();
@@ -428,12 +427,12 @@ public final class MurallaCapital extends StructurePiece {
 			fondo--;
 		}
 		BlockState barrote = nivel == 0 ? Blocks.SPRUCE_FENCE.defaultBlockState() : Blocks.IRON_BARS.defaultBlockState();
-		for (int y = fondo; y <= agua + 2; y++) {
-			BlockState b = barrote;
-			if (y <= agua && b.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED)) {
-				b = b.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.WATERLOGGED, true);
-			}
-			level.setBlock(pos.set(x, y, z), b, 2);
+		// bajo el agua, pilotes de madera maciza hasta la línea del agua; la reja, solo por encima
+		for (int y = fondo; y <= agua; y++) {
+			level.setBlock(pos.set(x, y, z), Blocks.SPRUCE_LOG.defaultBlockState(), 2);
+		}
+		for (int y = agua + 1; y <= agua + 2; y++) {
+			level.setBlock(pos.set(x, y, z), barrote, 2);
 		}
 		for (int y = agua + 3; y <= agua + Math.max(alto, 4); y++) {
 			level.setBlock(pos.set(x, y, z), bloque, 2);
