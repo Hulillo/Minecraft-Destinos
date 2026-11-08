@@ -1150,12 +1150,17 @@ fn("humvil/ajusta", [
     "# Humanoid Villagers: solo maniquíes aleatorios, nunca con el nombre y la skin de un jugador (2 s después de cargar,",
     "# cuando su datapack ya ha puesto sus ajustes; si no está, el marcador no existe y esto no hace nada)",
     "scoreboard players set $human_pool humvil.settings 2",
+    "# su línea de debajo del nombre a la vista (la nuestra, con el oficio): si no, cada tick la vuelve a ocultar",
+    "scoreboard players set $npc_tag humvil.settings 0",
+    "scoreboard players set $custom_npc_tag humvil.settings 0",
     "schedule function destinos:humvil/oficios 40t replace",
 ])
 fn("humvil/oficios", [
     "schedule function destinos:humvil/oficios 40t replace",
     "# Humanoid Villagers vuelve a sus ajustes al reiniciarse: los nuestros, cada vez",
     "scoreboard players set $human_pool humvil.settings 2",
+    "scoreboard players set $npc_tag humvil.settings 0",
+    "scoreboard players set $custom_npc_tag humvil.settings 0",
     "execute as @a at @s as @e[type=minecraft:mannequin,tag=humvil.human,distance=..32] at @s run function destinos:humvil/oficio",
 ])
 fn("humvil/oficio", [
@@ -1178,8 +1183,9 @@ fn("humvil/etiqueta", [
     "# Solo si el oficio ha cambiado (escribir en una entidad la vuelve a cargar entera)",
     'execute store success score #hv dr.calc run data modify storage destinos:tmp hv.antes set value "destinos.oficio.$(p).$(g)"',
     "execute if score #hv dr.calc matches 0 run return 0",
-    'data modify entity @s description set value {translate:"destinos.oficio.$(p).$(g)",fallback:""}',
+    "# primero a la vista: el maniquí oculto no guarda su descripción y la perdería al escribir lo siguiente",
     "data modify entity @s hide_description set value 0b",
+    'data modify entity @s description set value {translate:"destinos.oficio.$(p).$(g)",fallback:""}',
     "data modify entity @s CustomNameVisible set value 0b",
 ])
 
@@ -1231,14 +1237,14 @@ if MOD:
         "#minecraft:is_overworld", {"id": "#c:is_overworld", "required": False}]})
     wj("worldgen/structure/capital.json", {"type": "destinos_core:capital", "biomes": "#destinos_core:capital",
                                            "step": "surface_structures", "spawn_overrides": {},
-                                           "terrain_adaptation": "beard_thin"})
+                                           "terrain_adaptation": "none"})
     wj("worldgen/structure_set/capitales.json", {"structures": [{"structure": "destinos_core:capital", "weight": 1}],
                                                  "placement": {"type": "destinos_core:capital", "salt": 0}})
     # v0.6.3 Pueblos especializados: un pueblo con oficio por ducado y puestos de vigía en las fronteras, en el sitio
     # que elige Destinos Core (EleccionPueblo.java), trazados como capitales pequeñas (EstructuraPueblo.java)
     wj("worldgen/structure/pueblo.json", {"type": "destinos_core:pueblo", "biomes": "#destinos_core:capital",
                                           "step": "surface_structures", "spawn_overrides": {},
-                                          "terrain_adaptation": "beard_thin"})
+                                          "terrain_adaptation": "none"})
     wj("worldgen/structure_set/pueblos.json", {"structures": [{"structure": "destinos_core:pueblo", "weight": 1}],
                                                "placement": {"type": "destinos_core:pueblo", "salt": 0}})
     # Los cotilleos: una función más en el pool de charlas de dos de Humanoid Villagers (si el mod no está, el tag

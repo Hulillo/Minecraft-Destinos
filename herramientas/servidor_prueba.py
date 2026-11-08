@@ -142,7 +142,7 @@ if capitales < 1:
     print("\n".join(l.rstrip() for l in lineas if "capital" in l or "structure" in l.lower())[-3000:])
     sys.exit("la capital de prueba no se ha generado")
 diag = re.search(r"capital del reino en .*", salida)
-if not diag or "su chunk tiene la capital" not in diag.group(0) or "NO la conoce" in diag.group(0):
+if not diag or "su plano tiene" not in diag.group(0):
     sys.exit("la capital del mapa no está entera en el mundo: " + (diag.group(0) if diag else "sin /destinoscore capital"))
 if not re.search(r"Destinos Core: aldea en ", salida):
     print("\n".join(l.rstrip() for l in lineas if "aldea" in l or "pueblo" in l.lower())[-3000:])

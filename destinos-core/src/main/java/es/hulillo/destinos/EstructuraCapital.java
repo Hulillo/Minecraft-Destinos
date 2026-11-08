@@ -156,6 +156,9 @@ public class EstructuraCapital extends Structure {
 		synchronized (PREPARADAS) {
 			PREPARADAS.clear();
 		}
+		synchronized (MARCAS) {
+			MARCAS.clear();
+		}
 		CatalogoCapital.olvida();
 	}
 
@@ -173,8 +176,36 @@ public class EstructuraCapital extends Structure {
 		return findGenerationPoint(ctx);
 	}
 
+	/**
+	 * Para el sistema de estructuras de Minecraft (/locate, RoadWeaver…) solo una señal que ocupa lo que ocupa el
+	 * asentamiento: lo de verdad lo pone ObrasMundo chunk a chunk, desde el plano entero.
+	 */
 	@Override
 	public Optional<Structure.GenerationStub> findGenerationPoint(Structure.GenerationContext ctx) {
+		long clave = (ctx.chunkPos().toLong() * 31 + ctx.seed()) * 31 + getClass().getName().hashCode();
+		synchronized (MARCAS) {
+			Optional<Structure.GenerationStub> ya = MARCAS.get(clave);
+			if (ya != null) {
+				return ya;
+			}
+		}
+		Optional<Structure.GenerationStub> marca = entera(ctx).map(stub -> {
+			BoundingBox caja = stub.getPiecesBuilder().getBoundingBox();
+			return new Structure.GenerationStub(stub.position(), b -> b.addPiece(new MarcaAsentamiento(caja)));
+		});
+		synchronized (MARCAS) {
+			if (MARCAS.size() > 512) {
+				MARCAS.clear();
+			}
+			MARCAS.put(clave, marca);
+		}
+		return marca;
+	}
+
+	private static final Map<Long, Optional<Structure.GenerationStub>> MARCAS = new java.util.HashMap<>();
+
+	/** El asentamiento entero, con todas sus piezas (se traza una vez por sitio). */
+	private Optional<Structure.GenerationStub> entera(Structure.GenerationContext ctx) {
 		// la generación y las búsquedas de estructuras (/locate, RoadWeaver…) preguntan por el mismo chunk: la
 		// capital se prepara una vez y las demás veces se reutiliza
 		long clave = (ctx.chunkPos().toLong() * 31 + ctx.seed()) * 31 + getClass().getName().hashCode();
@@ -1318,10 +1349,10 @@ public class EstructuraCapital extends Structure {
 		return tierraFirme(ctx, x, z) && pueblo(ctx, biomaCentro(ctx)).isPresent();
 	}
 
-	/** La capital del chunk de (x, z) montada fuera de la generación del mundo (para ReparaCapitales), o null. */
+	/** La capital del chunk de (x, z) montada fuera de la generación del mundo (para ObrasMundo), o null. */
 	StructureStart inicio(ServerLevel level, int x, int z) {
 		Structure.GenerationContext ctx = contexto(level, x, z);
-		return findGenerationPoint(ctx).map(stub -> new StructureStart(this, ctx.chunkPos(), 0, stub.getPiecesBuilder().build()))
+		return entera(ctx).map(stub -> new StructureStart(this, ctx.chunkPos(), 0, stub.getPiecesBuilder().build()))
 				.orElse(null);
 	}
 

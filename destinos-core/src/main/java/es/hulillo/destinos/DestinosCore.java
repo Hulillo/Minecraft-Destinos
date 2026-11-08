@@ -50,7 +50,6 @@ public final class DestinosCore implements ModInitializer {
 	/** Mapa para el que se mandaron las zonas: si cambia (otra sal), se manda todo otra vez. */
 	private static MapaTerreno mapaEnviado;
 	private static PoliticaMundo politica;
-	private static final ReparaCapitales REPARA = new ReparaCapitales();
 	private static final Identifier MUNDO = Identifier.fromNamespaceAndPath("destinos", "mundo");
 
 	@Override
@@ -66,6 +65,7 @@ public final class DestinosCore implements ModInitializer {
 		AdornoCapital.registra();
 		CasaNoble.registra();
 		ObraOficio.registra();
+		MarcaAsentamiento.registra();
 		PlazaMercado.registra();
 		PlazuelaCapital.registra();
 		PuertaCapital.registra();
@@ -130,7 +130,7 @@ public final class DestinosCore implements ModInitializer {
 			mapa = null;
 			politica = null;
 			EstructuraCapital.olvida();
-			REPARA.olvida();
+			ObrasMundo.olvida();
 			CartelesCapital.olvida();
 			TablonesPueblos.olvida();
 			EncargosMundo.olvida();
@@ -172,9 +172,6 @@ public final class DestinosCore implements ModInitializer {
 					LOG.warn("Destinos Core: no se pudo guardar el terreno leído", e);
 				}
 			});
-		}
-		if (m != null) {
-			REPARA.tick(server, m);
 		}
 		CartelesCapital.tick(server);
 		TablonesPueblos.tick(server);

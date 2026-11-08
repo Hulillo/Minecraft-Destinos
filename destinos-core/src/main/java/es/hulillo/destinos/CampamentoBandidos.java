@@ -28,6 +28,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.storage.loot.BuiltInLootTables;
 
@@ -45,7 +46,15 @@ final class CampamentoBandidos {
 	}
 
 	static Montado monta(ServerLevel level, int x, int z, int estrellas, int id) {
-		BlockPos c = seco(level, x, z);
+		BlockPos c = allana(level, seco(level, x, z));
+		try {
+			return montaEn(level, c, estrellas);
+		} finally {
+			llano = null;
+		}
+	}
+
+	private static Montado montaEn(ServerLevel level, BlockPos c, int estrellas) {
 		level.setBlock(c, Blocks.CAMPFIRE.defaultBlockState(), 3);
 		BlockPos tienda1 = suelo(level, c.getX() + 4, c.getZ() - 1);
 		BlockPos tienda2 = suelo(level, c.getX() - 4, c.getZ() + 1);
@@ -76,9 +85,17 @@ final class CampamentoBandidos {
 	 * capitán con el estandarte en la cabeza (como los de las incursiones).
 	 */
 	static Montado montaGuerra(ServerLevel level, int x, int z, int estrellas, int rgb, Component reino) {
+		BlockPos c = allana(level, seco(level, x, z));
+		try {
+			return montaGuerraEn(level, c, estrellas, rgb, reino);
+		} finally {
+			llano = null;
+		}
+	}
+
+	private static Montado montaGuerraEn(ServerLevel level, BlockPos c, int estrellas, int rgb, Component reino) {
 		DyeColor tinte = DyeColor.byId(AdornoCapital.tinte(rgb));
 		BlockState lana = bloque(tinte, "wool", Blocks.RED_WOOL).defaultBlockState();
-		BlockPos c = seco(level, x, z);
 		level.setBlock(c, Blocks.CAMPFIRE.defaultBlockState(), 3);
 		BlockPos capitania = suelo(level, c.getX() + 5, c.getZ());
 		tienda(level, capitania, lana);
@@ -210,9 +227,101 @@ final class CampamentoBandidos {
 		return s.canBeReplaced() && s.getFluidState().isEmpty();
 	}
 
-	/** El primer hueco encima del suelo (sin contar hojas). */
+	/** El llano del campamento que se está montando (su centro a la altura del suelo), o null. */
+	private static BlockPos llano;
+	/** Radio del llano del campamento y anchura del talud que lo une al terreno de alrededor. */
+	private static final int LLANO = 8;
+	private static final int TALUD = 4;
+	private static final int MAX_RELLENO = 8;
+
+	/** El primer hueco encima del suelo: en el llano del campamento, su altura; fuera, el suelo de verdad. */
 	private static BlockPos suelo(ServerLevel level, int x, int z) {
-		return new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+		if (!level.hasChunk(x >> 4, z >> 4)) {
+			return new BlockPos(x, llano != null ? llano.getY() : level.getSeaLevel(), z);
+		}
+		if (llano != null && (long) (x - llano.getX()) * (x - llano.getX()) + (long) (z - llano.getZ()) * (z - llano.getZ()) <= (long) LLANO * LLANO) {
+			return new BlockPos(x, llano.getY(), z);
+		}
+		return new BlockPos(x, tierra(level, x, z), z);
+	}
+
+	/** La altura del primer hueco sobre la tierra o la roca de (x, z), sin contar árboles, hojas ni plantas. */
+	private static int tierra(ServerLevel level, int x, int z) {
+		BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos(x, level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z) - 1, z);
+		while (p.getY() > level.getMinY()) {
+			BlockState s = level.getBlockState(p);
+			if (!s.isAir() && !encima(s)) {
+				break;
+			}
+			p.move(0, -1, 0);
+		}
+		return p.getY() + 1;
+	}
+
+	/** Lo que hay encima del suelo y no es suelo: árboles, hojas, plantas, nieve, setas gigantes. */
+	private static boolean encima(BlockState s) {
+		return s.is(BlockTags.LOGS) || s.is(BlockTags.LEAVES) || s.is(BlockTags.FLOWERS) || s.canBeReplaced() && s.getFluidState().isEmpty()
+				|| s.is(Blocks.VINE) || s.is(Blocks.BAMBOO) || s.is(Blocks.SWEET_BERRY_BUSH) || s.is(Blocks.MOSS_CARPET) || s.is(Blocks.SNOW)
+				|| s.is(Blocks.BEE_NEST) || s.is(Blocks.COCOA) || s.is(Blocks.MANGROVE_ROOTS) || s.is(Blocks.BROWN_MUSHROOM_BLOCK)
+				|| s.is(Blocks.RED_MUSHROOM_BLOCK) || s.is(Blocks.MUSHROOM_STEM) || s.is(Blocks.CACTUS) || s.is(Blocks.SUGAR_CANE)
+				|| SueloNatural.deTerreno(s);
+	}
+
+	/**
+	 * Allana un redondel alrededor de c a la altura más repetida del suelo de verdad: tala lo que haya encima (árboles
+	 * incluidos), rebaja lo que sobresale y rellena los huecos, y lo une al terreno de alrededor con un talud. Devuelve
+	 * el centro a la altura del llano, que queda como el suelo del campamento.
+	 */
+	private static BlockPos allana(ServerLevel level, BlockPos c) {
+		List<Integer> alturas = new ArrayList<>();
+		for (int dx = -LLANO; dx <= LLANO; dx += 2) {
+			for (int dz = -LLANO; dz <= LLANO; dz += 2) {
+				if (dx * dx + dz * dz <= LLANO * LLANO && level.hasChunk((c.getX() + dx) >> 4, (c.getZ() + dz) >> 4)) {
+					alturas.add(tierra(level, c.getX() + dx, c.getZ() + dz));
+				}
+			}
+		}
+		if (alturas.isEmpty()) {
+			return c;
+		}
+		java.util.Collections.sort(alturas);
+		int y = alturas.get(alturas.size() / 2);
+		BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
+		int lejos = LLANO + TALUD;
+		for (int dx = -lejos; dx <= lejos; dx++) {
+			for (int dz = -lejos; dz <= lejos; dz++) {
+				double d = Math.sqrt(dx * dx + dz * dz);
+				if (d > lejos) {
+					continue;
+				}
+				int x = c.getX() + dx;
+				int z = c.getZ() + dz;
+				if (!level.hasChunk(x >> 4, z >> 4)) {
+					continue;
+				}
+				int holgura = d <= LLANO ? 0 : (int) Math.ceil(d - LLANO);
+				// por encima del llano (con el talud, un bloque más por cada bloque de distancia): fuera tierra y árboles
+				int corte = y + holgura;
+				for (int yy = level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z); yy >= corte; yy--) {
+					BlockState s = level.getBlockState(p.set(x, yy, z));
+					if (!s.isAir() && s.getFluidState().isEmpty() && (encima(s) || SueloNatural.natural(s) || s.is(BlockTags.BASE_STONE_OVERWORLD)
+							|| s.is(BlockTags.DIRT) || s.is(BlockTags.SAND))) {
+						level.setBlock(p, Blocks.AIR.defaultBlockState(), 2);
+					}
+				}
+				// por debajo: tierra hasta el llano (o hasta el talud), con hierba arriba
+				int relleno = y - holgura;
+				for (int yy = relleno - 1; yy >= relleno - MAX_RELLENO; yy--) {
+					BlockState s = level.getBlockState(p.set(x, yy, z));
+					if (!s.isAir() && !(encima(s) && s.getFluidState().isEmpty())) {
+						break;
+					}
+					level.setBlock(p, (yy == relleno - 1 ? Blocks.GRASS_BLOCK : Blocks.DIRT).defaultBlockState(), 2);
+				}
+			}
+		}
+		llano = new BlockPos(c.getX(), y, c.getZ());
+		return llano;
 	}
 
 	/** Un sitio en tierra seca cerca de (x, z), en espiral; si no hay ninguno cargado, (x, z) tal cual. */
@@ -225,12 +334,12 @@ final class CampamentoBandidos {
 			if (!level.isLoaded(new BlockPos(px, 64, pz))) {
 				continue;
 			}
-			BlockPos p = suelo(level, px, pz);
-			if (level.getBlockState(p.below()).getFluidState().isEmpty() && libre(level, p)) {
+			BlockPos p = new BlockPos(px, tierra(level, px, pz), pz);
+			if (level.getBlockState(p.below()).getFluidState().isEmpty()) {
 				return p;
 			}
 		}
-		return suelo(level, x, z);
+		return new BlockPos(x, tierra(level, x, z), z);
 	}
 
 	/**

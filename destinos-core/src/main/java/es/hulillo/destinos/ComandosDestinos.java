@@ -9,7 +9,6 @@ import java.util.function.BiConsumer;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
@@ -17,8 +16,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.Heightmap;
-import net.minecraft.world.level.levelgen.structure.Structure;
-import net.minecraft.world.level.levelgen.structure.StructureStart;
 
 /** /destinoscore: lo que usa el datapack (territorio), diagnósticos y la política viva. */
 final class ComandosDestinos {
@@ -243,22 +240,16 @@ final class ComandosDestinos {
 			fuente.sendFailure(Component.literal("Destinos Core: por aquí no hay ningún reino con capital"));
 			return 0;
 		}
-		Structure estructura = level.registryAccess().lookupOrThrow(Registries.STRUCTURE)
-				.getValue(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "capital"));
-		if (estructura == null) {
-			fuente.sendFailure(Component.literal("Destinos Core: no está registrada la estructura destinos_core:capital"));
-			return 0;
-		}
-		StructureStart start = level.getChunk(cap.x() >> 4, cap.z() >> 4).getStartForStructure(estructura);
-		String delInicio = start == null || !start.isValid()
-				? "su chunk NO tiene la capital"
-				: "su chunk tiene la capital: " + start.getPieces().size() + " piezas, de " + start.getBoundingBox().minX() + ", "
-						+ start.getBoundingBox().minZ() + " a " + start.getBoundingBox().maxX() + ", " + start.getBoundingBox().maxZ();
-		boolean conoce = !level.getChunk(aqui).getReferencesForStructure(estructura).isEmpty();
-		boolean dentro = level.structureManager().getStructureWithPieceAt(aqui, estructura).isValid();
+		// el plano de la capital (ObrasMundo): lo que se construye en cada chunk nuevo que toca
+		ObrasMundo.Plan plan = ObrasMundo.plan(level, ObrasMundo.CAPITAL, cap.x(), cap.z());
+		String delPlano = plan.caja() == null
+				? "su plano está VACÍO"
+				: "su plano tiene " + plan.piezas().size() + " piezas, de " + plan.caja().minX() + ", " + plan.caja().minZ() + " a "
+						+ plan.caja().maxX() + ", " + plan.caja().maxZ();
+		boolean dentro = plan.caja() != null && plan.piezas().stream()
+				.anyMatch(pz -> !(pz instanceof AdornoCapital) && pz.getBoundingBox().isInside(aqui));
 		String texto = "Destinos Core: capital del reino en " + cap.x() + ", " + cap.z() + " (chunk " + (cap.x() >> 4) + ", "
-				+ (cap.z() >> 4) + ", nivel " + cap.nivel() + ") · " + delInicio + " · este chunk "
-				+ (conoce ? "la conoce" : "NO la conoce") + (dentro ? " · estás dentro de una pieza" : "");
+				+ (cap.z() >> 4) + ", nivel " + cap.nivel() + ") · " + delPlano + (dentro ? " · estás dentro de una pieza" : "");
 		DestinosCore.LOG.info(texto);
 		fuente.sendSuccess(() -> Component.literal(texto), false);
 		return 1;

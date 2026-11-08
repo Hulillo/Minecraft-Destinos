@@ -87,6 +87,17 @@ public final class ColocacionPueblo extends StructurePlacement {
 		return null;
 	}
 
+	/** Los pueblos propios a menos de radio chunks (en cada eje) del chunk (cx, cz). */
+	static List<MapaTerreno.Pueblo> pueblosCerca(int cx, int cz, int radio) {
+		List<MapaTerreno.Pueblo> r = new ArrayList<>(1);
+		for (MapaTerreno.Pueblo p : cerca(cx, cz)) {
+			if (Math.abs((p.x() >> 4) - cx) <= radio && Math.abs((p.z() >> 4) - cz) <= radio) {
+				r.add(p);
+			}
+		}
+		return r;
+	}
+
 	/** El pueblo propio a menos de radio chunks (en cada eje) del chunk (cx, cz), o null. */
 	static MapaTerreno.Pueblo puebloCerca(int cx, int cz, int radio) {
 		for (MapaTerreno.Pueblo p : cerca(cx, cz)) {
