@@ -11,6 +11,14 @@ open(os.path.join(RUN, "server.properties"), "w").write(
     "online-mode=false\nlevel-seed=184467221\nspawn-protection=0\nsync-chunk-writes=false\n"
     # sin jugadores el servidor se pausa a los 60 s y deja de hacer ticks (los tablones se ponen en un tick)
     "pause-when-empty-seconds=-1\n")
+# Humanoid Villagers no está en el servidor de prueba: su predicado de ids, de mentira, para probar el oficio del maniquí
+HV = os.path.join(RUN, "world", "datapacks", "humvil_de_prueba")
+os.makedirs(os.path.join(HV, "data", "humvil", "predicate", "lib"), exist_ok=True)
+open(os.path.join(HV, "pack.mcmeta"), "w").write('{"pack":{"description":"prueba","min_format":88,"max_format":99}}')
+open(os.path.join(HV, "data", "humvil", "predicate", "lib", "check_id.json"), "w").write(
+    '{"condition":"minecraft:value_check","value":{"type":"minecraft:score","target":{"type":"minecraft:fixed","name":"$id"},'
+    '"score":"humvil.id"},"range":{"min":{"type":"minecraft:score","target":{"type":"minecraft:context","target":"this"},'
+    '"score":"humvil.id"},"max":{"type":"minecraft:score","target":{"type":"minecraft:context","target":"this"},"score":"humvil.id"}}}')
 
 # La zona se calcula en segundo plano: se repite geo/territorio hasta que #tlisto sea 1
 ESPERA = ["scoreboard players set #vx dr.calc 1234", "scoreboard players set #vz dr.calc -5678",
@@ -42,6 +50,19 @@ COMANDOS = [
     # los cotilleos de Humanoid Villagers: lo que se sabe de la zona ya calculada al principio (#vx #vz, reino)
     "execute positioned 1234 100 -5678 run destinoscore cotilleo",
     "data get storage destinos:cotilleo hay",
+    # el oficio bajo el nombre del maniquí de Humanoid Villagers (aldeano invisible + maniquí con el mismo humvil.id)
+    "scoreboard objectives add humvil.id dummy",
+    "scoreboard objectives add humvil.transform.gender dummy",
+    'summon minecraft:villager -80 200 600 {NoAI:1b,NoGravity:1b,Tags:["humvil.human.transformed","hvprueba"],'
+    'VillagerData:{profession:"minecraft:farmer",level:1,type:"minecraft:plains"}}',
+    'summon minecraft:mannequin -80 200 600 {NoGravity:1b,CustomNameVisible:1b,CustomName:"Roberto",hide_description:1b,'
+    'Tags:["humvil.human","hvprueba"]}',
+    "scoreboard players set @e[tag=hvprueba] humvil.id 7",
+    "execute as @e[type=minecraft:mannequin,tag=hvprueba] at @s run function destinos:humvil/oficio",
+    "data get entity @e[type=minecraft:mannequin,tag=hvprueba,limit=1] description",
+    "data get entity @e[type=minecraft:mannequin,tag=hvprueba,limit=1] hide_description",
+    "data get entity @e[type=minecraft:mannequin,tag=hvprueba,limit=1] CustomNameVisible",
+    "data get storage destinos:tmp hv",
     # encargos: lo que ofrecería hoy un tablón en la zona ya calculada
     "destinoscore encargos 1234 -5678",
     "destinoscore tablones",
@@ -134,6 +155,9 @@ cotilleo = re.search(r"destinos:cotilleo has the following contents: .*", salida
 if not cotilleo or "reino" not in cotilleo.group(0):
     sys.exit("destinoscore cotilleo no ha dejado nada que contar: " + (cotilleo.group(0) if cotilleo else "sin respuesta"))
 print("Cotilleo:", cotilleo.group(0))
+print("Maniquí:", "\n".join(l.rstrip() for l in lineas if "Roberto" in l or "destinos:tmp" in l or "hvprueba" in l))
+if not re.search(r"has the following entity data: \{.*destinos\.oficio\.minecraft:farmer", salida):
+    sys.exit("el maniquí de prueba no tiene el oficio bajo el nombre")
 revision = re.search(r"reinos revisados en .*", salida)
 if not revision:
     sys.exit("/destinoscore revisa no ha contestado")

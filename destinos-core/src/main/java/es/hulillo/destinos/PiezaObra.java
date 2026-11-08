@@ -350,10 +350,17 @@ abstract class PiezaObra extends StructurePiece {
 		ResourceKey<LootTable> tabla;
 		if (cofre && h < RAROS_POR_MIL) {
 			tabla = TESOROS.get(h % TESOROS.size());
+		} else if (botinPropio() != null) {
+			tabla = botinPropio();
 		} else {
 			tabla = deCuarto(cuarto(obra(), u, ly, v), cofre, h);
 		}
 		RandomizableContainer.setBlockEntityLootTable(level, azar, pos, tabla);
+	}
+
+	/** El botín de toda la obra cuando es de un oficio (la mina, la serrería...); null = según el cuarto. */
+	protected ResourceKey<LootTable> botinPropio() {
+		return null;
 	}
 
 	/** Cofres de tesoro: uno de cada tantos (por mil), en cualquier cuarto. */

@@ -3,8 +3,10 @@ package es.hulillo.destinos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -12,6 +14,7 @@ import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.RailShape;
 import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
+import net.minecraft.world.level.storage.loot.LootTable;
 
 /**
  * v0.6.3 La obra del oficio de un pueblo propio, mirando a su plaza: la torre de vigía con empalizada del puesto, la
@@ -47,6 +50,27 @@ public final class ObraOficio extends PiezaObra {
 	protected void addAdditionalSaveData(net.minecraft.world.level.levelgen.structure.pieces.StructurePieceSerializationContext ctx, CompoundTag t) {
 		super.addAdditionalSaveData(ctx, t);
 		t.putInt("oficio", oficio.ordinal());
+	}
+
+	/** El botín de cada oficio (data/destinos_core/loot_table/chests/oficio/<oficio>.json): flechas y armas en el
+	 *  puesto, mineral en la mina, troncos y carbón en el aserradero, pescado en el puerto, grano en la aldea, comida y
+	 *  bebida en la taberna de la ciudad. */
+	private static final ResourceKey<LootTable>[] BOTIN = botines();
+
+	@SuppressWarnings("unchecked")
+	private static ResourceKey<LootTable>[] botines() {
+		MapaTerreno.TipoPueblo[] tipos = MapaTerreno.TipoPueblo.values();
+		ResourceKey<LootTable>[] b = new ResourceKey[tipos.length];
+		for (MapaTerreno.TipoPueblo t : tipos) {
+			b[t.ordinal()] = ResourceKey.create(Registries.LOOT_TABLE,
+					Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "chests/oficio/" + t.name()));
+		}
+		return b;
+	}
+
+	@Override
+	protected ResourceKey<LootTable> botinPropio() {
+		return BOTIN[oficio.ordinal()];
 	}
 
 	@Override
