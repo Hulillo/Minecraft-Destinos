@@ -73,6 +73,7 @@ public final class DestinosCore implements ModInitializer {
 		TablonBlock.registra();
 		Monedas.registra();
 		TornadosEstacion.registra();
+		CuerpoPersona.registra();
 		PayloadTypeRegistry.playS2C().register(PaqueteTerritorio.TIPO, PaqueteTerritorio.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaqueteVerMapa.TIPO, PaqueteVerMapa.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaquetePolitica.TIPO, PaquetePolitica.CODEC);
@@ -81,9 +82,11 @@ public final class DestinosCore implements ModInitializer {
 		PayloadTypeRegistry.playS2C().register(PaqueteMazmorra.TIPO, PaqueteMazmorra.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaqueteFichas.TIPO, PaqueteFichas.CODEC);
 		PayloadTypeRegistry.playS2C().register(PaqueteArbol.TIPO, PaqueteArbol.CODEC);
+		PayloadTypeRegistry.playS2C().register(PaqueteDialogo.TIPO, PaqueteDialogo.CODEC);
 		PayloadTypeRegistry.playC2S().register(PaqueteAccionEncargo.TIPO, PaqueteAccionEncargo.CODEC);
 		PayloadTypeRegistry.playC2S().register(PaquetePedirMapa.TIPO, PaquetePedirMapa.CODEC);
 		PayloadTypeRegistry.playC2S().register(PaquetePedirArbol.TIPO, PaquetePedirArbol.CODEC);
+		PayloadTypeRegistry.playC2S().register(PaqueteRespuesta.TIPO, PaqueteRespuesta.CODEC);
 		// Fabric ya entrega los paquetes en el hilo del servidor
 		ServerPlayNetworking.registerGlobalReceiver(PaqueteAccionEncargo.TIPO, (paquete, contexto) ->
 				EncargosMundo.accion(contexto.player(), paquete));
@@ -95,6 +98,7 @@ public final class DestinosCore implements ModInitializer {
 				ServerPlayNetworking.send(contexto.player(), a);
 			}
 		});
+		ServerPlayNetworking.registerGlobalReceiver(PaqueteRespuesta.TIPO, (paquete, contexto) -> DialogoCorte.responde(contexto.player(), paquete));
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
 				EncargosMundo.de(server).envia(server, handler.getPlayer()));
 		ServerLivingEntityEvents.AFTER_DEATH.register((muerto, fuente) -> {
@@ -133,6 +137,7 @@ public final class DestinosCore implements ModInitializer {
 			EncargosMundo.olvida();
 			MazmorrasMundo.olvida();
 			FaunaDucados.olvida();
+			CorteCapital.olvida();
 			mapaEnviado = null;
 			ENVIO.olvidaTodo();
 		});
@@ -177,6 +182,7 @@ public final class DestinosCore implements ModInitializer {
 		TablonesPueblos.tick(server);
 		EncargosMundo.de(server).tick(server);
 		MazmorrasMundo.de(server).tick(server);
+		CorteCapital.tick(server);
 	}
 
 	private static void precarga(MinecraftServer server) {

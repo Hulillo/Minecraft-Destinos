@@ -1,4 +1,6 @@
+import es.hulillo.destinos.AspectoPersona;
 import es.hulillo.destinos.Geo;
+import es.hulillo.destinos.RutinaCorte;
 import es.hulillo.destinos.politica.Grafo;
 import es.hulillo.destinos.politica.Politica;
 import es.hulillo.destinos.politica.Suceso;
@@ -29,6 +31,10 @@ public final class PruebaPolitica {
 			embajada(sal);
 		}
 		gente();
+		for (int sal : new int[] {184467221, 99, 1999999999, -123456}) {
+			asesinato(sal);
+		}
+		corte();
 		System.out.println("OK: política reproducible, reino protegido a salvo y mapa vivo sin caos");
 	}
 
@@ -274,6 +280,117 @@ public final class PruebaPolitica {
 			falla("sal " + sal + ": no se han podido probar las cartas de paz y alianza");
 		}
 		System.out.println("sal " + sal + ": embajadas OK (paz y alianza)");
+	}
+
+	/**
+	 * v0.7.1 La corte: si un jugador mata al rey, en la misma llamada hay rey nuevo vivo (sucesión, herencia o crisis)
+	 * y todo queda en la crónica; matar a un muerto no hace nada.
+	 */
+	private static void asesinato(int sal) {
+		Grafo g = grafo(sal);
+		Politica p = new Politica(sal);
+		for (int t = 1; t <= 10 * Politica.TURNOS_POR_ANIO; t++) {
+			p.turno(g, s -> {
+			});
+		}
+		int muertos = 0;
+		for (long reino : p.reinosVivos(g)) {
+			if (muertos == 4) {
+				break;
+			}
+			es.hulillo.destinos.politica.Persona rey = p.gente().rey(reino);
+			List<Suceso> sucesos = p.asesinato(rey.id, "hulio");
+			es.hulillo.destinos.politica.Persona nuevo = p.gente().rey(reino);
+			if (sucesos.isEmpty() || sucesos.get(0).tipo() != Suceso.Tipo.asesinato || !"hulio".equals(sucesos.get(0).ayuda())) {
+				falla("sal " + sal + ": matar al rey " + rey + " no deja el asesinato: " + sucesos);
+			}
+			if (rey.vivo() || nuevo == null || !nuevo.vivo() || nuevo.id == rey.id) {
+				falla("sal " + sal + ": tras matar a " + rey + " el reino " + reino + " no tiene rey nuevo vivo (" + nuevo + ")");
+			}
+			boolean sube = sucesos.stream().anyMatch(s -> s.tipo() == Suceso.Tipo.sucesion || s.tipo() == Suceso.Tipo.herencia
+					|| s.tipo() == Suceso.Tipo.crisis);
+			if (!sube || !p.cronica().containsAll(sucesos)) {
+				falla("sal " + sal + ": la sucesión tras el asesinato no sale o no está en la crónica: " + sucesos);
+			}
+			if (!p.asesinato(rey.id, "hulio").isEmpty()) {
+				falla("sal " + sal + ": se puede matar dos veces a " + rey);
+			}
+			muertos++;
+		}
+		// y el reino sigue funcionando: unos turnos más sin reinos sin rey
+		for (int t = 1; t <= Politica.TURNOS_POR_ANIO; t++) {
+			p.turno(g, s -> {
+			});
+			for (long reino : p.reinosVivos(g)) {
+				es.hulillo.destinos.politica.Persona rey = p.gente().rey(reino);
+				if (rey == null || !rey.vivo()) {
+					falla("sal " + sal + ": tras los asesinatos el reino " + reino + " se queda sin rey");
+				}
+			}
+		}
+		if (muertos == 0) {
+			falla("sal " + sal + ": no había reyes que matar");
+		}
+		System.out.println("sal " + sal + ": " + muertos + " reyes asesinados, todos con sucesor en el acto");
+	}
+
+	/** v0.7.1 La corte: la rutina cubre todo el día y todos los cargos, y la skin sale entera y siempre igual. */
+	private static void corte() {
+		for (long t = 0; t < 24000; t += 250) {
+			RutinaCorte.Franja f = RutinaCorte.Franja.de(t);
+			if (RutinaCorte.Franja.de(t + 24000 * 7) != f || RutinaCorte.Franja.de(t - 24000) != f) {
+				falla("la franja de la hora " + t + " cambia con el día");
+			}
+			for (RutinaCorte.Cargo c : RutinaCorte.Cargo.values()) {
+				RutinaCorte.Sitio s = RutinaCorte.sitio(c, f);
+				if (!RutinaCorte.delCastillo(s) || RutinaCorte.plazas(s) < 1 || RutinaCorte.punto(s, 7).length != 3) {
+					falla("el sitio de " + c + " a las " + t + " no vale: " + s);
+				}
+			}
+			if (RutinaCorte.delCastillo(RutinaCorte.sinCastillo(f, true)) || RutinaCorte.delCastillo(RutinaCorte.sinCastillo(f, false))) {
+				falla("sin castillo, la corte acaba en el castillo");
+			}
+		}
+		if (RutinaCorte.Franja.de(1000) != RutinaCorte.Franja.manana || RutinaCorte.Franja.de(6500) != RutinaCorte.Franja.comida
+				|| RutinaCorte.Franja.de(9000) != RutinaCorte.Franja.tarde || RutinaCorte.Franja.de(18000) != RutinaCorte.Franja.noche) {
+			falla("las franjas del día no caen donde deben");
+		}
+		if (RutinaCorte.sitio(RutinaCorte.Cargo.rey, RutinaCorte.Franja.manana) != RutinaCorte.Sitio.trono) {
+			falla("por la mañana el rey no está en el trono");
+		}
+		// la comida junta a los cinco: tiene que haber sitio para todos
+		if (RutinaCorte.plazas(RutinaCorte.Sitio.comedor) < RutinaCorte.Cargo.values().length) {
+			falla("en el comedor no caben todos");
+		}
+		java.util.Set<Integer> distintas = new java.util.HashSet<>();
+		java.util.SplittableRandom r = new java.util.SplittableRandom(71);
+		for (int cargo = 0; cargo <= AspectoPersona.NOBLE; cargo++) {
+			for (int i = 0; i < 40; i++) {
+				int a = AspectoPersona.arma(r.nextInt(8), r.nextInt(8), r.nextInt(4), r.nextInt(16), cargo, r.nextBoolean(), r.nextInt(6) == 0,
+						r.nextBoolean(), r.nextInt(5) == 0, r.nextInt(256));
+				int[] px = AspectoPersona.pixeles(a);
+				if (!java.util.Arrays.equals(px, AspectoPersona.pixeles(a))) {
+					falla("la skin " + a + " no sale siempre igual");
+				}
+				// la base de la cabeza, el cuerpo, los brazos y las piernas no puede tener agujeros
+				for (int[] caja : new int[][] {{0, 0, 8, 8, 8}, {16, 16, 8, 12, 4}, {40, 16, 4, 12, 4}, {32, 48, 4, 12, 4}, {0, 16, 4, 12, 4},
+						{16, 48, 4, 12, 4}}) {
+					int ox = caja[0], oy = caja[1], w = caja[2], h = caja[3], d = caja[4];
+					for (int y = oy + d; y < oy + d + h; y++) {
+						for (int x = ox; x < ox + 2 * (w + d); x++) {
+							if ((px[y * 64 + x] >>> 24) != 0xFF) {
+								falla("la skin " + a + " tiene un agujero en " + x + "," + y);
+							}
+						}
+					}
+				}
+				distintas.add(java.util.Arrays.hashCode(px));
+			}
+		}
+		if (distintas.size() < 200) {
+			falla("las skins se parecen demasiado: " + distintas.size() + " distintas de 240");
+		}
+		System.out.println("corte: rutina completa y " + distintas.size() + " skins distintas");
 	}
 
 	private static int cuenta(Politica p, Grafo g, long reino) {

@@ -3,7 +3,9 @@ package es.hulillo.destinos.cliente;
 import com.mojang.blaze3d.platform.InputConstants;
 import es.hulillo.destinos.DestinosCore;
 import es.hulillo.destinos.MapaTerreno;
+import es.hulillo.destinos.CuerpoPersona;
 import es.hulillo.destinos.PaqueteArbol;
+import es.hulillo.destinos.PaqueteDialogo;
 import es.hulillo.destinos.PaqueteEncargos;
 import es.hulillo.destinos.PaqueteFichas;
 import es.hulillo.destinos.PaqueteMazmorra;
@@ -21,6 +23,7 @@ import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -47,6 +50,8 @@ public final class DestinosCoreCliente implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteMazmorra.TIPO, (paquete, contexto) -> BarraMazmorra.recibe(paquete));
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteFichas.TIPO, (paquete, contexto) -> FichasCliente.recibe(paquete));
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteArbol.TIPO, (paquete, contexto) -> PantallaMapa.recibeArbol(paquete));
+		ClientPlayNetworking.registerGlobalReceiver(PaqueteDialogo.TIPO, (paquete, contexto) -> PantallaDialogo.abre(paquete));
+		EntityRendererRegistry.register(CuerpoPersona.TIPO, RenderPersona::new);
 		ClientPlayNetworking.registerGlobalReceiver(PaqueteVerMapa.TIPO, (paquete, contexto) -> {
 			PantallaMapa.centra(paquete.x(), paquete.z());
 			contexto.client().setScreen(new PantallaMapa(teclaMapa));
@@ -57,6 +62,7 @@ public final class DestinosCoreCliente implements ClientModInitializer {
 			PantallaMapa.olvida();
 			HudEncargos.borra();
 			BarraMazmorra.borra();
+			TexturasPersona.borra();
 		}));
 		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "encargos"), HudEncargos::pinta);
 		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "mazmorra"), BarraMazmorra::pinta);
