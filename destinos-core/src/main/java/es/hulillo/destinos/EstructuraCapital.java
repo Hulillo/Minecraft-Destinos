@@ -676,7 +676,9 @@ public class EstructuraCapital extends Structure {
 		for (int k = 0; k < n; k++) {
 			h[k] = terreno.alto(c.get(k)[0], c.get(k)[1]);
 		}
+		double[] suelo = h.clone();
 		h = sinZanjas(c, h);
+		double[] tapado = h.clone();
 		for (int pasada = 0; pasada < 3; pasada++) {
 			double[] g = h.clone();
 			for (int k = 1; k + 1 < n; k++) {
@@ -687,9 +689,18 @@ public class EstructuraCapital extends Structure {
 		int[] y = new int[n];
 		for (int k = 0; k < n; k++) {
 			y[k] = (int) Math.round(h[k]);
+			// fuera de una zanja tapada, la calle no se separa del suelo más de lo que se rellena o se rebaja: si no, al
+			// suavizar quedaba por encima de un hoyo (un puente que no lleva a ningún sitio) o metida en un monte
+			if (tapado[k] <= suelo[k]) {
+				y[k] = (int) Math.clamp(y[k], Math.round(suelo[k]) - PERFIL_CORTE, Math.round(suelo[k]) + PERFIL_RELLENO);
+			}
 		}
 		return y;
 	}
+
+	/** Lo que la calle puede ir como mucho por debajo (rebajando) o por encima (rellenando) del suelo, fuera de las zanjas. */
+	private static final int PERFIL_CORTE = 3;
+	private static final int PERFIL_RELLENO = 2;
 
 	/** Cada punto de la calle, subido hasta la orilla más baja de la zanja en que está (si está en una). */
 	private static double[] sinZanjas(List<int[]> c, double[] h) {
