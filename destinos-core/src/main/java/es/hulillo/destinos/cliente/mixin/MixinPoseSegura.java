@@ -26,7 +26,10 @@ public abstract class MixinPoseSegura {
 		try {
 			original.call(modelo, estado);
 		} catch (RuntimeException fallo) {
-			if (!deSmoothMount(fallo)) {
+			// tras muchos fallos iguales Java los lanza sin pila (OmitStackTraceInFastThrow): si ya vimos el de Smooth
+			// Mount, un NullPointerException sin pila es el mismo
+			boolean sinPila = fallo.getStackTrace().length == 0 && fallo instanceof NullPointerException && destinos$avisado;
+			if (!sinPila && !deSmoothMount(fallo)) {
 				throw fallo;
 			}
 			if (!destinos$avisado) {
