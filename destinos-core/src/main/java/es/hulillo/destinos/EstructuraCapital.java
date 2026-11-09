@@ -462,7 +462,7 @@ public class EstructuraCapital extends Structure {
 		if (plano.tipo() == MapaTerreno.TipoPueblo.puerto) {
 			int[] redondo = new int[MurallaCapital.ARCOS];
 			java.util.Arrays.fill(redondo, radio);
-			primeros.addAll(muelles(terreno, redondo, cx, cz, radio, plano.muelles(), MUELLE_PUERTO, enCalle, casas, grandes, mayor));
+			primeros.addAll(muelles(terreno, redondo, cx, cz, radio, plano.muelles(), MUELLE_PUERTO, enCalle, casas, grandes, mayor, 2, GRANDE_PUERTO));
 			primeros.forEach(m -> obras.add(m.getBoundingBox()));
 		}
 		fase(fases, reloj, "placitas");
@@ -548,7 +548,7 @@ public class EstructuraCapital extends Structure {
 		fase(fases, reloj, "muralla y puertas");
 		// y muelles con barcas en la orilla del río, el lago o el mar, dentro de la muralla
 		List<MuelleCapital> muelles = !primeros.isEmpty() ? primeros
-				: muelles(terreno, contorno, cx, cz, radio, plano.muelles(), MuelleCapital.LARGO, enCalle, casas, grandes, mayor);
+				: muelles(terreno, contorno, cx, cz, radio, plano.muelles(), MuelleCapital.LARGO, enCalle, casas, grandes, mayor, 1, GRANDE_OTROS);
 		// el faro, junto al muelle que da a mar abierto
 		Optional<FaroCapital> faro = !plano.faro() ? Optional.empty() : faro(terreno, contorno, cx, cz, muelles, enCalle, casas, grandes, estilo, madera, color);
 		// los huertos de las afueras, fuera de la muralla
@@ -739,16 +739,24 @@ public class EstructuraCapital extends Structure {
 		return r;
 	}
 
+	/** Lo que se adentran los muelles de los puertos (con espigón en T); si no hay agua para tanto, uno normal. */
+	private static final int MUELLE_PUERTO = 18;
+	/** Lo que se adentran los puertos grandes (con plataforma de carga y grúas): en los puertos, y en el resto. */
+	private static final int GRANDE_PUERTO = 26;
+	private static final int GRANDE_OTROS = 18;
+	private static final int GRANDE_VARIA = 7;
+	private static final int K_MUELLE = 5520431;
+
 	/**
 	 * Hasta `cuantos` muelles: en la rejilla del terreno, dentro de la muralla, puntos de tierra con agua a 4 y a 8
 	 * bloques en algún sentido (una orilla de verdad, no un charco), libres de calles, casas y obras; separados entre sí.
+	 * Los `grandesQuiero` primeros, donde hay agua abierta para tanto, son puertos grandes con plataforma de carga.
 	 */
-	/** Lo que se adentran los muelles de los puertos (con espigón en T); si no hay agua para tanto, uno normal. */
-	private static final int MUELLE_PUERTO = 18;
 
 	private static List<MuelleCapital> muelles(TerrenoCapital terreno, int[] contorno, int cx, int cz, int radio, int cuantos, int largo, Set<Long> enCalle,
-			List<StructurePiece> casas, List<StructurePiece> grandes, PlazaMayor plaza) {
+			List<StructurePiece> casas, List<StructurePiece> grandes, PlazaMayor plaza, int grandesQuiero, int largoGrande) {
 		List<MuelleCapital> r = new ArrayList<>();
+		int[] grandesPuestos = {0};
 		int paso = TerrenoCapital.PASO;
 		int lejos = radio + 10;
 		for (int dx = -lejos; dx <= lejos && r.size() < cuantos; dx += paso) {
@@ -763,6 +771,14 @@ public class EstructuraCapital extends Structure {
 				for (Direction d : Direction.Plane.HORIZONTAL) {
 					if (!terreno.agua(x + d.getStepX() * 4, z + d.getStepZ() * 4) || !terreno.agua(x + d.getStepX() * 8, z + d.getStepZ() * 8)) {
 						continue;
+					}
+					if (grandesPuestos[0] < grandesQuiero) {
+						MuelleCapital g = puertoGrande(terreno, x, z, d, largoGrande, casas, grandes, r);
+						if (g != null) {
+							r.add(g);
+							grandesPuestos[0]++;
+							break;
+						}
 					}
 					boolean hondo = largo > MuelleCapital.LARGO && terreno.agua(x + d.getStepX() * (largo - 4), z + d.getStepZ() * (largo - 4))
 							&& terreno.agua(x + d.getStepX() * largo, z + d.getStepZ() * largo);
@@ -779,6 +795,38 @@ public class EstructuraCapital extends Structure {
 			}
 		}
 		return r;
+	}
+
+	/**
+	 * Un puerto grande desde la orilla (x, z) hacia d, si hay agua abierta para él (a lo largo y a los dos lados de la
+	 * plataforma) y no pisa casas, obras ni otros muelles; si no cabe tan largo, se prueba algo más corto. null si no.
+	 */
+	private static MuelleCapital puertoGrande(TerrenoCapital terreno, int x, int z, Direction d, int largoBase, List<StructurePiece> casas,
+			List<StructurePiece> grandes, List<MuelleCapital> otros) {
+		int semilla = Geo.hash(x, z, K_MUELLE);
+		Direction lado = d.getClockWise();
+		int ancho = 6;
+		for (int largo = largoBase + Math.floorMod(semilla, GRANDE_VARIA); largo >= largoBase - 4; largo -= 5) {
+			boolean abierta = true;
+			for (int i : new int[] {4, 8, largo / 2, largo - 4, largo}) {
+				abierta &= terreno.agua(x + d.getStepX() * i, z + d.getStepZ() * i);
+			}
+			for (int s : new int[] {-1, 1}) {
+				for (int i : new int[] {largo / 2, largo - 3}) {
+					abierta &= terreno.agua(x + d.getStepX() * i + lado.getStepX() * ancho * s, z + d.getStepZ() * i + lado.getStepZ() * ancho * s);
+				}
+			}
+			if (!abierta) {
+				continue;
+			}
+			MuelleCapital m = MuelleCapital.puerto(x, z, terreno.alto(x + d.getStepX() * 6, z + d.getStepZ() * 6), d, largo, semilla);
+			BoundingBox b = m.getBoundingBox();
+			if (casas.stream().noneMatch(c -> solapa(c.getBoundingBox(), b)) && grandes.stream().noneMatch(g -> solapa(g.getBoundingBox(), b))
+					&& otros.stream().noneMatch(o -> solapa(o.getBoundingBox(), b))) {
+				return m;
+			}
+		}
+		return null;
 	}
 
 	/**
