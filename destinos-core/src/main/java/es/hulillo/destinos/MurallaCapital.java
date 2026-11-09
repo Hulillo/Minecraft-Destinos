@@ -462,7 +462,11 @@ public final class MurallaCapital extends StructurePiece {
 				// empalizada en punta (un tronco sí y otro no, más alto); almenas en el borde de fuera (por dentro queda
 				// el adarve, el paso de ronda por lo alto de la muralla)
 				boolean almena = (x + z) % 2 == 0 && (nivel == 0 || hondo >= grueso - 1.5);
-				SueloNatural.tala(level, caja, x, z);
+				// los árboles fuera; pero no la propia empalizada de un tramo vecino (troncos sobre tierra: la tala se
+				// la llevaría entera)
+				if (!esMuralla(level.getBlockState(pos.set(x, SueloNatural.cima(level, x, z), z)))) {
+					SueloNatural.tala(level, caja, x, z);
+				}
 				columna(level, pos, x, z, pie, pie + ALTO[nivel] + (almena ? 1 : 0), andado + t * largo);
 			}
 		}
@@ -530,6 +534,10 @@ public final class MurallaCapital extends StructurePiece {
 		if (aqui.canBeReplaced() || SueloNatural.natural(aqui)) {
 			level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
 		}
+	}
+
+	private boolean esMuralla(BlockState b) {
+		return b.is(bloque(false).getBlock()) || b.is(bloque(true).getBlock());
 	}
 
 	/** El material de la muralla según el nivel (y de arenisca en la arena). */
