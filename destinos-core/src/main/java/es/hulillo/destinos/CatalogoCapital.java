@@ -38,7 +38,8 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemp
 final class CatalogoCapital {
 	/** Una casa que se puede poner: su elemento y, sin girar, dónde está su entrada y hacia dónde mira. */
 	/**
-	 * Una casa del catálogo. puerta: a qué altura del puzle de la entrada está el pie de su puerta (0 o 1), o
+	 * Una casa del catálogo. puerta: a qué altura del puzle de la entrada está el pie de su puerta (0 o 1; uno menos si
+	 * delante lleva un peldaño, para que el peldaño quede encima del suelo), o
 	 * SIN_PUERTA si no se encontró: unas casas llevan el puzle a la altura del suelo de la calle y otras a la del
 	 * umbral, y por eso unas salían subidas un escalón y otras hundidas.
 	 */
@@ -197,6 +198,7 @@ final class CatalogoCapital {
 					new net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings();
 			int mejor = SIN_PUERTA;
 			int distancia = Integer.MAX_VALUE;
+			BlockPos pie = null;
 			for (net.minecraft.world.level.block.Block b : Puertas.TODAS) {
 				for (StructureTemplate.StructureBlockInfo i : t.get().filterBlocks(BlockPos.ZERO, ajustes, b)) {
 					if (i.state().getValue(net.minecraft.world.level.block.DoorBlock.HALF)
@@ -207,19 +209,45 @@ final class CatalogoCapital {
 					if (dh < distancia) {
 						distancia = dh;
 						mejor = i.pos().getY() - entrada.getY();
+						pie = i.pos();
 					}
 				}
 			}
-			return distancia <= 3 && (mejor == 0 || mejor == 1) ? mejor : SIN_PUERTA;
+			if (distancia > 3 || mejor != 0 && mejor != 1) {
+				return SIN_PUERTA;
+			}
+			// con un peldaño (escalón o losa) pegado a la puerta y un bloque más abajo, la casa sube uno: el peldaño se
+			// apoya encima del suelo en vez de quedar hundido en un hoyo
+			return peldano(t.get(), ajustes, pie) ? mejor - 1 : mejor;
 		} catch (RuntimeException fallo) {
 			return SIN_PUERTA;
 		}
 	}
 
 	/** Todas las puertas que hay (de los mods también), sacadas la primera vez que hacen falta (el registro ya está lleno). */
+	/** Si al lado del pie de la puerta, un bloque más abajo, hay un escalón o una losa (el peldaño de la entrada). */
+	private static boolean peldano(StructureTemplate t,
+			net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings ajustes, BlockPos pie) {
+		java.util.Set<BlockPos> cerca = new java.util.HashSet<>();
+		for (Direction d : Direction.Plane.HORIZONTAL) {
+			cerca.add(pie.below().relative(d));
+		}
+		for (net.minecraft.world.level.block.Block b : Puertas.PELDANOS) {
+			for (StructureTemplate.StructureBlockInfo i : t.filterBlocks(BlockPos.ZERO, ajustes, b)) {
+				if (cerca.contains(i.pos())) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	private static final class Puertas {
 		static final List<net.minecraft.world.level.block.Block> TODAS = net.minecraft.core.registries.BuiltInRegistries.BLOCK.stream()
 				.filter(b -> b instanceof net.minecraft.world.level.block.DoorBlock).toList();
+		static final List<net.minecraft.world.level.block.Block> PELDANOS = net.minecraft.core.registries.BuiltInRegistries.BLOCK.stream()
+				.filter(b -> b instanceof net.minecraft.world.level.block.StairBlock || b instanceof net.minecraft.world.level.block.SlabBlock)
+				.toList();
 	}
 
 	/** Las listas a las que puede apuntar un puzle de una casa sin que le falte nada: vacía, calles, gente y adornos. */
