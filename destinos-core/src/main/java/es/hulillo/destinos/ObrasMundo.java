@@ -288,6 +288,11 @@ public final class ObrasMundo {
 		}
 	}
 
+	/** Los seres que se sacan si quedan atascados o en el agua (lo que ponen los pueblos y su gente). */
+	private static final java.util.Set<String> DE_TIERRA = java.util.Set.of("minecraft:villager", "minecraft:iron_golem", "minecraft:cat",
+			"minecraft:horse", "minecraft:donkey", "minecraft:sheep", "minecraft:pig", "minecraft:chicken", "minecraft:cow",
+			"minecraft:zombie_villager", "minecraft:armor_stand", "minecraft:mannequin", "minecraft:wandering_trader", "destinos_core:persona");
+
 	/** Lo que se busca alrededor de un ser atascado: hasta tantos bloques a los lados, y de uno abajo a tres arriba. */
 	private static final int HUECO = 4;
 
@@ -306,7 +311,12 @@ public final class ObrasMundo {
 			double x = p.getDoubleOr(0, 0);
 			double y = p.getDoubleOr(1, 0);
 			double z = p.getDoubleOr(2, 0);
-			int alto = ser.getStringOr("id", "").endsWith("iron_golem") ? 3 : 2;
+			String id = ser.getStringOr("id", "");
+			// solo la gente y los animales de tierra de los pueblos: las barcas y los bichos de agua van en el agua
+			if (!DE_TIERRA.contains(id)) {
+				continue;
+			}
+			int alto = id.endsWith("iron_golem") ? 3 : 2;
 			int bx = net.minecraft.util.Mth.floor(x);
 			int by = net.minecraft.util.Mth.floor(y);
 			int bz = net.minecraft.util.Mth.floor(z);

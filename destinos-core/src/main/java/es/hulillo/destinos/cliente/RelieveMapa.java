@@ -21,6 +21,8 @@ final class RelieveMapa {
 	/** Casillas de río que en realidad son un lago (muchas juntas): se pintan como agua, no como rayas. */
 	static final byte LAGO = 4;
 	static final byte AGUA = OCEANO | LAGO;
+	/** Lago que ya viene del servidor (agua de río por todos lados): centro de lago aunque sea pequeño. */
+	static final byte LAGO_SEGURO = 8;
 
 	/** Cada cuántos bloques va una curva de nivel, y cada cuántas una más marcada. */
 	private static final int CURVA = 24;
@@ -70,7 +72,7 @@ final class RelieveMapa {
 					}
 					int c = a + b * LADO;
 					h[c] = q.altura(qi, qj);
-					m[c] = (byte) ((q.ducado(qi, qj).oceano() ? OCEANO : 0) | (q.rio(qi, qj) ? RIO : 0));
+					m[c] = (byte) ((q.ducado(qi, qj).oceano() ? OCEANO : 0) | (q.rio(qi, qj) ? RIO : 0) | (q.lago(qi, qj) ? RIO | LAGO_SEGURO : 0));
 				}
 			}
 			marcaLagos(m);
@@ -85,7 +87,7 @@ final class RelieveMapa {
 			boolean[] centro = new boolean[LADO * LADO];
 			for (int b = 0; b < LADO; b++) {
 				for (int a = 0; a < LADO; a++) {
-					if ((m[a + b * LADO] & RIO) != 0 && vecinasDeRio(m, a, b) >= 5) {
+					if ((m[a + b * LADO] & RIO) != 0 && (vecinasDeRio(m, a, b) >= 5 || (m[a + b * LADO] & LAGO_SEGURO) != 0)) {
 						centro[a + b * LADO] = true;
 					}
 				}

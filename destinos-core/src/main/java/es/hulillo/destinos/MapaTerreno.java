@@ -52,26 +52,31 @@ public final class MapaTerreno {
 	 * Lo que se sabe del terreno en el centro de una casilla. familia: tipo de bioma (desierto, selva, bosque…) para
 	 * que las fronteras prefieran los cambios de paisaje.
 	 */
-	public record Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia, int bioma) {
+	public record Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia, int bioma, boolean lago) {
 		/** Sin saber el bioma exacto (bioma: número de Biomas, o -1). */
 		public Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia) {
-			this(altura, oceano, rio, montana, familia, -1);
+			this(altura, oceano, rio, montana, familia, -1, false);
+		}
+
+		/** Sin saber si es lago (el agua ancha de río por todos lados). */
+		public Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia, int bioma) {
+			this(altura, oceano, rio, montana, familia, bioma, false);
 		}
 
 		/**
-		 * altura + 1024 en los bits 0-11, mar 12, río 13, montaña 14, familia + 1 en 15-20, bioma + 1 en 21-29 y el
-		 * bit 30 de "leída".
+		 * altura + 1024 en los bits 0-11, mar 12, río 13, montaña 14, familia + 1 en 15-20, bioma + 1 en 21-29, el
+		 * bit 30 de "leída" y el 31 de lago.
 		 */
 		int empaqueta() {
 			int a = Math.max(0, Math.min(4095, altura + 1024));
 			int f = Math.max(0, Math.min(63, familia + 1));
 			int b = Math.max(0, Math.min(511, bioma + 1));
-			return a | (oceano ? 1 << 12 : 0) | (rio ? 1 << 13 : 0) | (montana ? 1 << 14 : 0) | f << 15 | b << 21 | 1 << 30;
+			return a | (oceano ? 1 << 12 : 0) | (rio ? 1 << 13 : 0) | (montana ? 1 << 14 : 0) | f << 15 | b << 21 | 1 << 30 | (lago ? 1 << 31 : 0);
 		}
 
 		static Casilla desempaqueta(int v) {
 			return new Casilla((v & 4095) - 1024, (v & 1 << 12) != 0, (v & 1 << 13) != 0, (v & 1 << 14) != 0, (v >> 15 & 63) - 1,
-					(v >> 21 & 511) - 1);
+					(v >> 21 & 511) - 1, (v & 1 << 31) != 0);
 		}
 	}
 
@@ -517,9 +522,12 @@ public final class MapaTerreno {
 		return new Resultado(g[0], g[1], g[2], g[3], g[4] == 1, oceano);
 	}
 
-	/** Lo que el mapa político necesita del terreno de una casilla, en un byte: bit 0 río, bit 1 montaña, del 2 al 5 la familia del bioma. */
+	/**
+	 * Lo que el mapa político necesita del terreno de una casilla, en un byte: bit 0 río, bit 1 montaña, del 2 al 5 la
+	 * familia del bioma (15 si no tiene) y bit 6 lago.
+	 */
 	static byte tipo(Casilla c) {
-		return (byte) ((c.rio() ? 1 : 0) | (c.montana() ? 2 : 0) | (Math.min(15, c.familia()) << 2));
+		return (byte) ((c.rio() ? 1 : 0) | (c.montana() ? 2 : 0) | ((Math.min(15, c.familia()) & 15) << 2) | (c.lago() ? 64 : 0));
 	}
 
 	/** Ventana cuyo núcleo contiene la coordenada de bloque (en un eje). */

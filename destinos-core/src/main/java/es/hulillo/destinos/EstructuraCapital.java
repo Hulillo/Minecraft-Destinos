@@ -755,12 +755,13 @@ public class EstructuraCapital extends Structure {
 
 	private static List<MuelleCapital> muelles(TerrenoCapital terreno, int[] contorno, int cx, int cz, int radio, int cuantos, int largo, Set<Long> enCalle,
 			List<StructurePiece> casas, List<StructurePiece> grandes, PlazaMayor plaza, int grandesQuiero, int largoGrande) {
-		List<MuelleCapital> r = new ArrayList<>();
-		int[] grandesPuestos = {0};
+		// todas las orillas posibles (punto de tierra y hacia dónde da el agua), de la más abierta a la menos: así el
+		// puerto grande va al mar antes que a un lago o un río, aunque el pueblo tenga agua a los dos lados
+		List<int[]> orillas = new ArrayList<>();
 		int paso = TerrenoCapital.PASO;
 		int lejos = radio + 10;
-		for (int dx = -lejos; dx <= lejos && r.size() < cuantos; dx += paso) {
-			for (int dz = -lejos; dz <= lejos && r.size() < cuantos; dz += paso) {
+		for (int dx = -lejos; dx <= lejos; dx += paso) {
+			for (int dz = -lejos; dz <= lejos; dz += paso) {
 				int x = cx + dx;
 				int z = cz + dz;
 				double a = Math.floorMod((int) Math.floor(Math.toDegrees(Math.atan2(dz, dx)) * 10), 3600);
@@ -769,32 +770,60 @@ public class EstructuraCapital extends Structure {
 					continue;
 				}
 				for (Direction d : Direction.Plane.HORIZONTAL) {
-					if (!terreno.agua(x + d.getStepX() * 4, z + d.getStepZ() * 4) || !terreno.agua(x + d.getStepX() * 8, z + d.getStepZ() * 8)) {
-						continue;
+					if (terreno.agua(x + d.getStepX() * 4, z + d.getStepZ() * 4) && terreno.agua(x + d.getStepX() * 8, z + d.getStepZ() * 8)) {
+						orillas.add(new int[] {x, z, d.get2DDataValue(), abierta(terreno, x, z, d)});
+						break;
 					}
-					if (grandesPuestos[0] < grandesQuiero) {
-						MuelleCapital g = puertoGrande(terreno, x, z, d, largoGrande, casas, grandes, r);
-						if (g != null) {
-							r.add(g);
-							grandesPuestos[0]++;
-							break;
-						}
-					}
-					boolean hondo = largo > MuelleCapital.LARGO && terreno.agua(x + d.getStepX() * (largo - 4), z + d.getStepZ() * (largo - 4))
-							&& terreno.agua(x + d.getStepX() * largo, z + d.getStepZ() * largo);
-					MuelleCapital m = new MuelleCapital(x, z, terreno.alto(x + d.getStepX() * 6, z + d.getStepZ() * 6), d,
-							hondo ? largo : MuelleCapital.LARGO);
-					BoundingBox b = m.getBoundingBox();
-					boolean libre = casas.stream().noneMatch(c -> solapa(c.getBoundingBox(), b)) && grandes.stream().noneMatch(g -> solapa(g.getBoundingBox(), b))
-							&& r.stream().noneMatch(o -> Math.hypot(o.getBoundingBox().getCenter().getX() - x, o.getBoundingBox().getCenter().getZ() - z) < SEPARA_MUELLES);
-					if (libre) {
-						r.add(m);
-					}
-					break;
 				}
 			}
 		}
+		orillas.sort((p, q) -> Integer.compare(q[3], p[3]));
+		List<MuelleCapital> r = new ArrayList<>();
+		int grandesPuestos = 0;
+		for (int[] o : orillas) {
+			if (r.size() >= cuantos) {
+				break;
+			}
+			int x = o[0];
+			int z = o[1];
+			Direction d = Direction.from2DDataValue(o[2]);
+			if (r.stream().anyMatch(m -> Math.hypot(m.x() - x, m.z() - z) < SEPARA_MUELLES)) {
+				continue;
+			}
+			if (grandesPuestos < grandesQuiero) {
+				MuelleCapital g = puertoGrande(terreno, x, z, d, largoGrande, casas, grandes, r);
+				if (g != null) {
+					r.add(g);
+					grandesPuestos++;
+					continue;
+				}
+			}
+			boolean hondo = largo > MuelleCapital.LARGO && terreno.agua(x + d.getStepX() * (largo - 4), z + d.getStepZ() * (largo - 4))
+					&& terreno.agua(x + d.getStepX() * largo, z + d.getStepZ() * largo);
+			MuelleCapital m = new MuelleCapital(x, z, terreno.alto(x + d.getStepX() * 6, z + d.getStepZ() * 6), d,
+					hondo ? largo : MuelleCapital.LARGO);
+			BoundingBox b = m.getBoundingBox();
+			if (casas.stream().noneMatch(c -> solapa(c.getBoundingBox(), b)) && grandes.stream().noneMatch(g -> solapa(g.getBoundingBox(), b))
+					&& r.stream().noneMatch(q -> solapa(q.getBoundingBox(), b))) {
+				r.add(m);
+			}
+		}
 		return r;
+	}
+
+	/** Lo abierta que es el agua delante de (x, z) hacia d: puntos de agua lejos, de frente y a los lados (el mar, mucho). */
+	private static int abierta(TerrenoCapital terreno, int x, int z, Direction d) {
+		Direction lado = d.getClockWise();
+		int n = 0;
+		for (int i = 12; i <= 60; i += 8) {
+			for (int w = -2; w <= 2; w++) {
+				int ancho = w * i / 3;
+				if (terreno.agua(x + d.getStepX() * i + lado.getStepX() * ancho, z + d.getStepZ() * i + lado.getStepZ() * ancho)) {
+					n++;
+				}
+			}
+		}
+		return n;
 	}
 
 	/**

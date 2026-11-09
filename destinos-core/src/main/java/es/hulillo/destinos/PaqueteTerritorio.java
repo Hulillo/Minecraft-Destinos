@@ -98,6 +98,11 @@ public record PaqueteTerritorio(int sal, int wx, int wz, List<Ducado> paleta, sh
 		return (tipo[i + j * MapaTerreno.NUCLEO] & 1) != 0;
 	}
 
+	/** Si el agua de la casilla es un lago (no un río). */
+	public boolean lago(int i, int j) {
+		return (tipo[i + j * MapaTerreno.NUCLEO] & 64) != 0;
+	}
+
 	/** Si la casilla es de montaña. */
 	public boolean montana(int i, int j) {
 		return (tipo[i + j * MapaTerreno.NUCLEO] & 2) != 0;
