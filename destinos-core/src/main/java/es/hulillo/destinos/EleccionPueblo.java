@@ -51,7 +51,8 @@ final class EleccionPueblo {
 		boolean deCapital = capital != null && capital.dcx() == dcx && capital.dcz() == dcz;
 		if (!deCapital) {
 			boolean ciudad = capital != null && capital.ciudad() == Geo.clave(dcx, dcz);
-			MapaTerreno.Pueblo p = deOficio(dcx, dcz, c, ciudad);
+			boolean puerto = capital != null && capital.puerto() == Geo.clave(dcx, dcz);
+			MapaTerreno.Pueblo p = deOficio(dcx, dcz, c, ciudad, puerto);
 			if (p != null && lejosDeCapitales(p.x(), p.z(), dcx, dcz)) {
 				res.add(p);
 			}
@@ -65,7 +66,7 @@ final class EleccionPueblo {
 	}
 
 	/** El pueblo con oficio del ducado, o null si no hay tierra donde ponerlo. */
-	private MapaTerreno.Pueblo deOficio(int dcx, int dcz, int[] c, boolean ciudad) {
+	private MapaTerreno.Pueblo deOficio(int dcx, int dcz, int[] c, boolean ciudad, boolean puerto) {
 		Punto[] puntos = new Punto[9];
 		MapaTerreno.Casilla[] casillas = new MapaTerreno.Casilla[9];
 		for (int dz = -1; dz <= 1; dz++) {
@@ -100,14 +101,15 @@ final class EleccionPueblo {
 			}
 			puntos[k] = new Punto(c[0] + (i - 1) * PASO, c[1] + (j - 1) * PASO, t, costa);
 		}
-		if (tierra < MIN_TIERRA) {
+		// el puerto seguro del reino va aunque el ducado sea más mar que tierra
+		if (tierra < (puerto ? 1 : MIN_TIERRA)) {
 			return null;
 		}
 		boolean hayCosta = false;
 		for (Punto p : puntos) {
 			hayCosta |= p != null && p.costa();
 		}
-		MapaTerreno.TipoPueblo tipo = tipo(ciudad, mar, hayCosta, comida, mineral, madera);
+		MapaTerreno.TipoPueblo tipo = puerto ? MapaTerreno.TipoPueblo.puerto : tipo(ciudad, mar, hayCosta, comida, mineral, madera);
 		Punto sitio = sitio(tipo, puntos);
 		return sitio == null ? null : new MapaTerreno.Pueblo(dcx, dcz, sitio.x(), sitio.z(), tipo);
 	}
@@ -146,7 +148,8 @@ final class EleccionPueblo {
 			}
 			double v = -desnivel(puntos, k);
 			switch (tipo) {
-				case puerto -> v += p.costa() ? 100 : 0;
+				// en la costa; si el reino solo tiene río grande, junto al río
+				case puerto -> v += p.costa() ? 100 : p.casilla().rio() ? 60 : 0;
 				// la mina, al pie de la montaña: la bocamina se mete en la ladera y el pueblo queda en lo llano
 				case mina -> v += (!p.casilla().montana() && junto(puntos, k, q -> q.casilla().montana()) ? 100 : p.casilla().montana() ? 40 : 0);
 				default -> v += k == 4 ? 2 : 0;

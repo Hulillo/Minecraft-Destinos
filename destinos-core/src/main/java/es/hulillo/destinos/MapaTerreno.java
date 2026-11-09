@@ -110,9 +110,10 @@ public final class MapaTerreno {
 	 * montaña y ha preferido levantarla en las alturas. nivel: lo rica y grande que es (0 pobre, 1 normal, 2 rica),
 	 * por los recursos de su ducado y los ducados del reino; decide su muralla. riqueza: el número del que sale el
 	 * nivel (para calibrarlo). ciudad: el ducado (Geo.clave) de la ciudad del reino, el más rico después del de la
-	 * capital, o NINGUNA.
+	 * capital, o NINGUNA. puerto: el ducado del puerto que todo reino con salida al mar (o a un río grande) tiene
+	 * seguro, o NINGUNA.
 	 */
-	public record Capital(int dcx, int dcz, int x, int z, boolean montana, int nivel, double riqueza, long ciudad) {
+	public record Capital(int dcx, int dcz, int x, int z, boolean montana, int nivel, double riqueza, long ciudad, long puerto) {
 		public static final long NINGUNA = Long.MIN_VALUE;
 	}
 
