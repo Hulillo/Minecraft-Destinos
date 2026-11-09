@@ -5,7 +5,6 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import es.hulillo.destinos.DestinosCore;
 import net.minecraft.client.model.EntityModel;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
-import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -22,8 +21,8 @@ public abstract class MixinPoseSegura {
 	private static boolean destinos$avisado;
 
 	@WrapOperation(method = "submit", at = @At(value = "INVOKE",
-			target = "Lnet/minecraft/client/model/EntityModel;setupAnim(Lnet/minecraft/client/renderer/entity/state/EntityRenderState;)V"))
-	private void destinos$poseSegura(EntityModel<?> modelo, EntityRenderState estado, Operation<Void> original) {
+			target = "Lnet/minecraft/client/model/EntityModel;setupAnim(Ljava/lang/Object;)V"))
+	private void destinos$poseSegura(EntityModel<?> modelo, Object estado, Operation<Void> original) {
 		try {
 			original.call(modelo, estado);
 		} catch (RuntimeException fallo) {

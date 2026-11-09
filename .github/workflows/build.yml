@@ -53,14 +53,6 @@ jobs:
         working-directory: destinos-core
         run: ./gradlew build --no-daemon
 
-      - name: Sondeo de API (temporal)
-        if: always()
-        working-directory: destinos-core
-        run: |
-          J=$(find ~/.gradle/caches .gradle -name '*.jar' 2>/dev/null | grep -iE 'minecraft-(merged|common|clientonly)' | grep -v sources | tr '\n' ':')
-          echo "===== LivingEntityRenderer setupAnim/submit"; javap -c -p -cp "$J" net.minecraft.client.renderer.entity.LivingEntityRenderer | grep -nE 'submit\(|setupAnim' | head -20
-          echo "===== EntityModel"; javap -cp "$J" net.minecraft.client.model.EntityModel | head -20
-
       - name: Arrancar un servidor de Minecraft con el mod y comprobar que el datapack carga sin errores
         run: python herramientas/servidor_prueba.py
         timeout-minutes: 20
