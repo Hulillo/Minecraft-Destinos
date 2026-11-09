@@ -143,10 +143,33 @@ public final class MurallaCapital extends StructurePiece {
 			}
 			r = g;
 		}
+		int[] llenos = new int[ARCOS];
 		int[] radios = new int[ARCOS];
 		for (int i = 0; i < ARCOS; i++) {
-			radios[i] = (int) Math.round(Math.clamp(r[i], minimo, maximo));
-			radios[i] = borde(cx, cz, i, (int) Math.ceil(justo[i]), radios[i], alto);
+			llenos[i] = (int) Math.round(Math.clamp(r[i], minimo, maximo));
+			radios[i] = borde(cx, cz, i, (int) Math.ceil(justo[i]), llenos[i], alto);
+		}
+		// un recorte suelto (un arco solo, con los dos vecinos sin recortar) no es el borde de una meseta sino una
+		// zanja o un barranquillo estrecho: ahí la muralla seguía su radio y se metía en pico hacia dentro, bajando
+		// por la zanja. Se deshace y la muralla pasa por encima como si nada.
+		int[] cortado = radios.clone();
+		for (int i = 0; i < ARCOS; i++) {
+			boolean yo = cortado[i] < llenos[i] - 2;
+			boolean antes = cortado[(i + ARCOS - 1) % ARCOS] < llenos[(i + ARCOS - 1) % ARCOS] - 2;
+			boolean despues = cortado[(i + 1) % ARCOS] < llenos[(i + 1) % ARCOS] - 2;
+			if (yo && !antes && !despues) {
+				radios[i] = llenos[i];
+			}
+		}
+		// y entre arcos vecinos, nunca un salto de más de 6 hacia dentro (si no, la muralla hace dientes de sierra y
+		// se cuela entre las casas); sin pasar nunca de lo que dejó el borde de un cortado de verdad
+		for (int pasada = 0; pasada < 4; pasada++) {
+			for (int i = 0; i < ARCOS; i++) {
+				int vecino = Math.max(radios[(i + ARCOS - 1) % ARCOS], radios[(i + 1) % ARCOS]);
+				if (radios[i] < vecino - 6) {
+					radios[i] = Math.min(llenos[i], Math.max(radios[i], Math.min(vecino - 6, cortado[i] + 6)));
+				}
+			}
 		}
 		return radios;
 	}
@@ -166,11 +189,26 @@ public final class MurallaCapital extends StructurePiece {
 		int h = alto.applyAsInt(cx + (int) Math.round(ux * desde), cz + (int) Math.round(uz * desde));
 		for (int rr = desde + 2; rr <= radio; rr += 2) {
 			int y = alto.applyAsInt(cx + (int) Math.round(ux * rr), cz + (int) Math.round(uz * rr));
-			if (Math.abs(y - h) > CORTADO) {
+			if (Math.abs(y - h) > CORTADO && sigue(cx, cz, ux, uz, rr, h, y, alto)) {
 				return Math.max(justo, rr - 3);
 			}
 		}
 		return radio;
+	}
+
+	/**
+	 * Si el desnivel encontrado en rr sigue más allá (un cortado de verdad: el terreno no vuelve a la altura de la
+	 * ciudad en los siguientes 10 bloques) y no es una zanja o un hoyo que se cruza de un salto.
+	 */
+	private static boolean sigue(int cx, int cz, double ux, double uz, int rr, int h, int y, IntBinaryOperator alto) {
+		boolean baja = y < h;
+		for (int mas = 4; mas <= 10; mas += 3) {
+			int y2 = alto.applyAsInt(cx + (int) Math.round(ux * (rr + mas)), cz + (int) Math.round(uz * (rr + mas)));
+			if (baja ? y2 >= h - 2 : y2 <= h + 2) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/** El radio interior de la muralla en el ángulo a (décimas de grado), entre los de los arcos. */

@@ -207,9 +207,11 @@ public final class ObrasMundo {
 		pon(region, chunk, estructuras, generador, true);
 	}
 
-	/** Si en el repaso la pieza se vuelve a poner: no la gente (plantillas de un bloque con su ser), ni el adorno, ni las marcas. */
+	/** Si en el repaso la pieza se vuelve a poner: no la gente (plantillas de un bloque con su ser), ni el adorno, ni las marcas, ni la muralla. */
 	private static boolean seRepasa(StructurePiece pieza) {
-		if (pieza instanceof AdornoCapital || pieza instanceof MarcaAsentamiento) {
+		// la muralla tampoco: en el repaso su columna encontraba su propio adarve (de piedra, como las calles) y le
+		// ponía encima un dintel de puerta, y quedaban almenas flotando
+		if (pieza instanceof AdornoCapital || pieza instanceof MarcaAsentamiento || pieza instanceof MurallaCapital) {
 			return false;
 		}
 		BoundingBox b = pieza.getBoundingBox();
