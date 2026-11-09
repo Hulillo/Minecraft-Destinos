@@ -37,6 +37,8 @@ public final class CalleCapital extends StructurePiece {
 	public static final StructurePieceType TIPO = (StructurePieceType.ContextlessType) CalleCapital::new;
 	/** Cada cuántos bloques el puente lleva pilares hasta el fondo. */
 	private static final int PILARES = 5;
+	/** Lo hondo que puede ser un hueco para cruzarlo con un puente (más, es un barranco: ahí no hay calle). */
+	private static final int HONDO_PUENTE = 24;
 	/** Lo que se rebaja o se rellena como mucho para que la calle vaya suave; con más, sigue el suelo. */
 	private static final int MAX_CORTE = 3;
 	private static final int MAX_RELLENO = 2;
@@ -170,6 +172,9 @@ public final class CalleCapital extends StructurePiece {
 					if ((puente || madera) && d <= r + 1.3) {
 						puente(level, pos, !calle, Math.floorMod(x + z, madera ? 3 : PILARES) == 0, aLoLargoDeZ, madera);
 					}
+				} else if (y != SIN_ALTURA && pos.getY() < y - corte() - 1 && y - pos.getY() <= HONDO_PUENTE && d <= r + 1.3) {
+					// una zanja o un cauce que se abrió después (un río que excava): la calle lo cruza por un puente
+					puenteSeco(level, pos, x, y, z, !calle, Math.floorMod(x + z, PILARES) == 0, aLoLargoDeZ, madera);
 				} else if (y != SIN_ALTURA && Math.abs(pos.getY() - y) > corte() + 1) {
 					// un acantilado o un barranco que el trazado no vio: ahí no se pinta calle
 					continue;
@@ -252,6 +257,51 @@ public final class CalleCapital extends StructurePiece {
 	 * Una casilla del puente sobre el agua de pos: losa medio bloque por encima (se sube desde la orilla sin saltar),
 	 * pretil unido a lo largo (aLoLargoDeZ) y, a trechos, el pilar hasta el fondo.
 	 */
+	/**
+	 * Un tramo de puente sobre un hueco seco, a la altura y de la calle: tablero de piedra (o de madera), pretil a los
+	 * lados y, cada tanto, pilares hasta el fondo. El pretil no pisa el tablero de otro tramo.
+	 */
+	private static void puenteSeco(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int y, int z, boolean pretil, boolean pilar,
+			Boolean aLoLargoDeZ, boolean madera) {
+		Block tablero = madera ? Blocks.SPRUCE_PLANKS : Blocks.STONE_BRICKS;
+		Block baranda = madera ? Blocks.SPRUCE_FENCE : Blocks.STONE_BRICK_WALL;
+		BlockState actual = level.getBlockState(pos.set(x, y, z));
+		if (!pretil) {
+			level.setBlock(pos, tablero.defaultBlockState(), 2);
+			pos.set(x, y + 1, z);
+			if (level.getBlockState(pos).is(baranda)) {
+				level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
+			}
+		} else {
+			if (!actual.isAir() && !actual.canBeReplaced()) {
+				return;
+			}
+			level.setBlock(pos, tablero.defaultBlockState(), 2);
+			BlockState muro = baranda.defaultBlockState();
+			if (aLoLargoDeZ != null) {
+				if (madera) {
+					muro = aLoLargoDeZ ? muro.setValue(BlockStateProperties.NORTH, true).setValue(BlockStateProperties.SOUTH, true)
+							: muro.setValue(BlockStateProperties.EAST, true).setValue(BlockStateProperties.WEST, true);
+				} else {
+					muro = aLoLargoDeZ ? muro.setValue(BlockStateProperties.NORTH_WALL, WallSide.LOW).setValue(BlockStateProperties.SOUTH_WALL, WallSide.LOW)
+							: muro.setValue(BlockStateProperties.EAST_WALL, WallSide.LOW).setValue(BlockStateProperties.WEST_WALL, WallSide.LOW);
+				}
+			}
+			level.setBlock(pos.set(x, y + 1, z), muro, 2);
+		}
+		if (!pilar) {
+			return;
+		}
+		BlockState relleno = (madera ? Blocks.SPRUCE_LOG : Blocks.STONE_BRICKS).defaultBlockState();
+		for (int k = y - 1; k > y - HONDO_PUENTE - 2 && k > level.getMinY(); k--) {
+			BlockState b = level.getBlockState(pos.set(x, k, z));
+			if (!b.isAir() && !b.canBeReplaced() && !b.is(Blocks.WATER)) {
+				break;
+			}
+			level.setBlock(pos, relleno, 2);
+		}
+	}
+
 	private static void puente(WorldGenLevel level, BlockPos.MutableBlockPos pos, boolean pretil, boolean pilar, Boolean aLoLargoDeZ,
 			boolean madera) {
 		Block suelo = madera ? Blocks.MANGROVE_SLAB : Blocks.STONE_BRICK_SLAB;

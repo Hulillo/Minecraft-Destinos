@@ -37,8 +37,15 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemp
  */
 final class CatalogoCapital {
 	/** Una casa que se puede poner: su elemento y, sin girar, dónde está su entrada y hacia dónde mira. */
-	record Modelo(StructurePoolElement elemento, BlockPos entrada, Direction mira, int ancho, int largo) {
+	/**
+	 * Una casa del catálogo. puerta: a qué altura del puzle de la entrada está el pie de su puerta (0 o 1), o
+	 * SIN_PUERTA si no se encontró: unas casas llevan el puzle a la altura del suelo de la calle y otras a la del
+	 * umbral, y por eso unas salían subidas un escalón y otras hundidas.
+	 */
+	record Modelo(StructurePoolElement elemento, BlockPos entrada, Direction mira, int ancho, int largo, int puerta) {
 	}
+
+	static final int SIN_PUERTA = Integer.MIN_VALUE;
 
 	/** Lo más larga que puede ser una casa del catálogo (las más grandes no caben en las parcelas). */
 	static final int MAX_CASA = 16;
@@ -163,10 +170,56 @@ final class CatalogoCapital {
 		for (StructureTemplate.JigsawBlockInfo j : puzles) {
 			Direction d = JigsawBlock.getFrontFacing(j.info().state());
 			if (d.getAxis().isHorizontal()) {
-				return Optional.of(new Modelo(e, j.info().pos(), d, ancho, largo));
+				return Optional.of(new Modelo(e, j.info().pos(), d, ancho, largo, puerta(plantillas, e, j.info().pos())));
 			}
 		}
 		return Optional.empty();
+	}
+
+	private static final java.util.regex.Pattern PLANTILLA = java.util.regex.Pattern.compile("Left\\[([a-z0-9_.\\-]+:[a-z0-9_./\\-]+)\\]");
+
+	/**
+	 * La altura del pie de la puerta más cercana a la entrada, respecto a la entrada (solo si es 0 o 1; si no, la
+	 * casa tiene porche con escalones o la puerta está lejos, y vale lo de siempre). La plantilla se saca del nombre
+	 * de la pieza (Single[Left[id]]).
+	 */
+	private static int puerta(StructureTemplateManager plantillas, StructurePoolElement e, BlockPos entrada) {
+		try {
+			java.util.regex.Matcher m = PLANTILLA.matcher(e.toString());
+			if (!m.find()) {
+				return SIN_PUERTA;
+			}
+			Optional<StructureTemplate> t = plantillas.get(Identifier.parse(m.group(1)));
+			if (t.isEmpty()) {
+				return SIN_PUERTA;
+			}
+			net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings ajustes =
+					new net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings();
+			int mejor = SIN_PUERTA;
+			int distancia = Integer.MAX_VALUE;
+			for (net.minecraft.world.level.block.Block b : Puertas.TODAS) {
+				for (StructureTemplate.StructureBlockInfo i : t.get().filterBlocks(BlockPos.ZERO, ajustes, b)) {
+					if (i.state().getValue(net.minecraft.world.level.block.DoorBlock.HALF)
+							!= net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER) {
+						continue;
+					}
+					int dh = Math.abs(i.pos().getX() - entrada.getX()) + Math.abs(i.pos().getZ() - entrada.getZ());
+					if (dh < distancia) {
+						distancia = dh;
+						mejor = i.pos().getY() - entrada.getY();
+					}
+				}
+			}
+			return distancia <= 3 && (mejor == 0 || mejor == 1) ? mejor : SIN_PUERTA;
+		} catch (RuntimeException fallo) {
+			return SIN_PUERTA;
+		}
+	}
+
+	/** Todas las puertas que hay (de los mods también), sacadas la primera vez que hacen falta (el registro ya está lleno). */
+	private static final class Puertas {
+		static final List<net.minecraft.world.level.block.Block> TODAS = net.minecraft.core.registries.BuiltInRegistries.BLOCK.stream()
+				.filter(b -> b instanceof net.minecraft.world.level.block.DoorBlock).toList();
 	}
 
 	/** Las listas a las que puede apuntar un puzle de una casa sin que le falte nada: vacía, calles, gente y adornos. */

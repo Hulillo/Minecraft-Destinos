@@ -1376,7 +1376,9 @@ public class EstructuraCapital extends Structure {
 			}
 			// el puzle de la entrada va a la altura del suelo de la calle (como lo pone Minecraft en sus pueblos): un
 			// bloque más arriba, casi todas las casas quedaban subidas en un escalón de tierra
-			int y = yPuerta - entrada.getY();
+			// y si se sabe dónde está la puerta, su pie justo encima del suelo de la calle (las casas de los mods llevan
+			// el puzle a distinta altura: unas salían subidas y otras hundidas)
+			int y = m.puerta() == CatalogoCapital.SIN_PUERTA ? yPuerta - entrada.getY() : yPuerta + 1 - entrada.getY() - m.puerta();
 			BlockPos sitio = new BlockPos(ox, y, oz);
 			BoundingBox b = m.elemento().getBoundingBox(plantillas, sitio, giro);
 			casas.add(new PoolElementStructurePiece(plantillas, m.elemento(), sitio, m.elemento().getGroundLevelDelta(), giro, b,
