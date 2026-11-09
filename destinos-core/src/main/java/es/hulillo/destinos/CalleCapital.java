@@ -168,7 +168,10 @@ public final class CalleCapital extends StructurePiece {
 				}
 				boolean calle = d <= r + 0.3;
 				SueloNatural.tala(level, caja, x, z);
-				int y = y0 == SIN_ALTURA ? SIN_ALTURA : (int) Math.round(y0 + t * (y1 - y0));
+				double yf = y0 == SIN_ALTURA ? 0 : y0 + t * (y1 - y0);
+				int y = y0 == SIN_ALTURA ? SIN_ALTURA : (int) Math.floor(yf);
+				// en cuesta, a medio camino de un bloque al siguiente va un escalón (la calle sube en escalinata)
+				boolean escalon = y0 != SIN_ALTURA && y1 != y0 && yf - y >= 0.5;
 				BlockState s = SueloNatural.superficie(level, pos, x, z);
 				if (s.is(Blocks.WATER)) {
 					if ((puente || madera) && d <= r + 1.3) {
@@ -189,6 +192,9 @@ public final class CalleCapital extends StructurePiece {
 				} else if (calle) {
 					s = allana(level, pos, s, y, 0, corte(), relleno());
 					pon(level, pos, s);
+					if (escalon && pos.getY() == y) {
+						escalon(level, pos, s, dx, dz, y1 > y0);
+					}
 				} else if (y != SIN_ALTURA) {
 					// la cuneta: un escalón entre la calle y el suelo de al lado, para que no quede un tajo
 					allana(level, pos, s, y, 1, corte(), relleno());
@@ -269,6 +275,23 @@ public final class CalleCapital extends StructurePiece {
 	 * Un tramo de puente sobre un hueco seco, a la altura y de la calle: tablero de piedra (o de madera), pretil a los
 	 * lados y, cada tanto, pilares hasta el fondo. El pretil no pisa el tablero de otro tramo.
 	 */
+	/**
+	 * Un escalón sobre la calle en pos (su suelo, de bloque s), con el lado alto hacia donde sube: de piedra, o de
+	 * arenisca en la arena. Así las cuestas son una escalinata y no pegotes de un bloque.
+	 */
+	private static void escalon(WorldGenLevel level, BlockPos.MutableBlockPos pos, BlockState s, double dx, double dz, boolean sube) {
+		pos.move(0, 1, 0);
+		if (!level.getBlockState(pos).canBeReplaced()) {
+			return;
+		}
+		Block b = s.is(Blocks.SMOOTH_SANDSTONE) || s.is(Blocks.SAND) || s.is(Blocks.SANDSTONE) ? Blocks.SMOOTH_SANDSTONE_STAIRS
+				: s.is(Blocks.DIRT_PATH) ? Blocks.MOSSY_COBBLESTONE_STAIRS : Blocks.COBBLESTONE_STAIRS;
+		net.minecraft.core.Direction arriba = Math.abs(dx) >= Math.abs(dz)
+				? (dx > 0 == sube ? net.minecraft.core.Direction.EAST : net.minecraft.core.Direction.WEST)
+				: (dz > 0 == sube ? net.minecraft.core.Direction.SOUTH : net.minecraft.core.Direction.NORTH);
+		level.setBlock(pos, b.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, arriba), 2);
+	}
+
 	/**
 	 * Si por el centro de la calle en (x, z) hay un hueco que cruzar a la altura y (o ya está el tablero del puente):
 	 * solo entonces el borde lleva puente y pretil; si no, era una bajada a un lado y quedaban pretiles por el suelo.
