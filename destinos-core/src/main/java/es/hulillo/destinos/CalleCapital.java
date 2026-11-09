@@ -40,8 +40,8 @@ public final class CalleCapital extends StructurePiece {
 	/** Lo hondo que puede ser un hueco para cruzarlo con un puente (más, es un barranco: ahí no hay calle). */
 	private static final int HONDO_PUENTE = 24;
 	/** Lo que se rebaja o se rellena como mucho para que la calle vaya suave; con más, sigue el suelo. */
-	private static final int MAX_CORTE = 3;
-	private static final int MAX_RELLENO = 2;
+	private static final int MAX_CORTE = 5;
+	private static final int MAX_RELLENO = 4;
 	/** Lo que se rellena como mucho en el borde de una calle que va por tierra junto a una bajada. */
 	private static final int BORDE_HONDO = 5;
 	/** Sin altura guardada (piezas de antes): la calle sigue el suelo. */
