@@ -662,13 +662,21 @@ public class EstructuraCapital extends Structure {
 		}
 	}
 
-	/** La altura de cada punto de la calle: la del terreno, pasada tres veces por una media de cada uno con sus vecinos. */
+	/** Lo largo que puede ser como mucho a cada lado una zanja que la calle cruza a nivel, por un puente seco. */
+	private static final int ZANJA = 16;
+
+	/**
+	 * La altura de cada punto de la calle: la del terreno, con las zanjas tapadas (si a los dos lados, a menos de ZANJA,
+	 * el suelo vuelve a estar más alto, la calle va a la altura de la orilla más baja y cruza por un puente que empieza
+	 * y acaba en las orillas) y pasada tres veces por una media de cada uno con sus vecinos.
+	 */
 	private static int[] perfil(TerrenoCapital terreno, List<int[]> c) {
 		int n = c.size();
 		double[] h = new double[n];
 		for (int k = 0; k < n; k++) {
 			h[k] = terreno.alto(c.get(k)[0], c.get(k)[1]);
 		}
+		h = sinZanjas(c, h);
 		for (int pasada = 0; pasada < 3; pasada++) {
 			double[] g = h.clone();
 			for (int k = 1; k + 1 < n; k++) {
@@ -681,6 +689,31 @@ public class EstructuraCapital extends Structure {
 			y[k] = (int) Math.round(h[k]);
 		}
 		return y;
+	}
+
+	/** Cada punto de la calle, subido hasta la orilla más baja de la zanja en que está (si está en una). */
+	private static double[] sinZanjas(List<int[]> c, double[] h) {
+		int n = h.length;
+		double[] largo = new double[n];
+		for (int k = 1; k < n; k++) {
+			largo[k] = largo[k - 1] + Math.hypot(c.get(k)[0] - c.get(k - 1)[0], c.get(k)[1] - c.get(k - 1)[1]);
+		}
+		double[] r = h.clone();
+		for (int k = 0; k < n; k++) {
+			double antes = Double.NEGATIVE_INFINITY;
+			for (int i = k - 1; i >= 0 && largo[k] - largo[i] <= ZANJA; i--) {
+				antes = Math.max(antes, h[i]);
+			}
+			double despues = Double.NEGATIVE_INFINITY;
+			for (int i = k + 1; i < n && largo[i] - largo[k] <= ZANJA; i++) {
+				despues = Math.max(despues, h[i]);
+			}
+			double orilla = Math.min(antes, despues);
+			if (orilla > h[k] + 2) {
+				r[k] = orilla;
+			}
+		}
+		return r;
 	}
 
 	/**

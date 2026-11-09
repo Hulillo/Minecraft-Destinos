@@ -42,6 +42,8 @@ public final class CalleCapital extends StructurePiece {
 	/** Lo que se rebaja o se rellena como mucho para que la calle vaya suave; con más, sigue el suelo. */
 	private static final int MAX_CORTE = 3;
 	private static final int MAX_RELLENO = 2;
+	/** Lo que se rellena como mucho en el borde de una calle que va por tierra junto a una bajada. */
+	private static final int BORDE_HONDO = 5;
 	/** Sin altura guardada (piezas de antes): la calle sigue el suelo. */
 	private static final int SIN_ALTURA = Integer.MIN_VALUE;
 
@@ -172,9 +174,15 @@ public final class CalleCapital extends StructurePiece {
 					if ((puente || madera) && d <= r + 1.3) {
 						puente(level, pos, !calle, Math.floorMod(x + z, madera ? 3 : PILARES) == 0, aLoLargoDeZ, madera);
 					}
-				} else if (y != SIN_ALTURA && pos.getY() < y - corte() - 1 && y - pos.getY() <= HONDO_PUENTE && d <= r + 1.3) {
-					// una zanja o un cauce que se abrió después (un río que excava): la calle lo cruza por un puente
+				} else if (y != SIN_ALTURA && pos.getY() < y - relleno() && y - pos.getY() <= HONDO_PUENTE && d <= r + 1.3
+						&& hueco(level, (int) Math.round(x0 + t * dx), (int) Math.round(z0 + t * dz), y)) {
+					// una zanja o un cauce (tapado en el perfil, o que se abrió después): la calle lo cruza por un puente, ya
+					// desde donde no se puede rellenar (antes, entre relleno y corte quedaba un hoyo sin calle)
 					puenteSeco(level, pos, x, y, z, !calle, Math.floorMod(x + z, PILARES) == 0, aLoLargoDeZ, madera);
+				} else if (y != SIN_ALTURA && calle && pos.getY() < y && y - pos.getY() <= BORDE_HONDO) {
+					// el borde de la calle sobre una bajada (el centro va por tierra): se rellena, sin puente ni pretil
+					s = allana(level, pos, s, y, 0, corte(), BORDE_HONDO);
+					pon(level, pos, s);
 				} else if (y != SIN_ALTURA && Math.abs(pos.getY() - y) > corte() + 1) {
 					// un acantilado o un barranco que el trazado no vio: ahí no se pinta calle
 					continue;
@@ -261,6 +269,19 @@ public final class CalleCapital extends StructurePiece {
 	 * Un tramo de puente sobre un hueco seco, a la altura y de la calle: tablero de piedra (o de madera), pretil a los
 	 * lados y, cada tanto, pilares hasta el fondo. El pretil no pisa el tablero de otro tramo.
 	 */
+	/**
+	 * Si por el centro de la calle en (x, z) hay un hueco que cruzar a la altura y (o ya está el tablero del puente):
+	 * solo entonces el borde lleva puente y pretil; si no, era una bajada a un lado y quedaban pretiles por el suelo.
+	 */
+	private boolean hueco(WorldGenLevel level, int x, int z, int y) {
+		int g = SueloNatural.cima(level, x, z);
+		if (g >= y - relleno()) {
+			BlockState b = level.getBlockState(new BlockPos(x, g, z));
+			return g == y && (b.is(Blocks.STONE_BRICKS) || b.is(Blocks.SPRUCE_PLANKS));
+		}
+		return y - g <= HONDO_PUENTE;
+	}
+
 	private static void puenteSeco(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int y, int z, boolean pretil, boolean pilar,
 			Boolean aLoLargoDeZ, boolean madera) {
 		Block tablero = madera ? Blocks.SPRUCE_PLANKS : Blocks.STONE_BRICKS;
