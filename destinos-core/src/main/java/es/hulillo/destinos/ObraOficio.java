@@ -147,10 +147,10 @@ public final class ObraOficio extends PiezaObra {
 		o.toneles(-t + 1, 1, -t + 1, -t + 1, 1, -t + 2);
 		o.pon(t - 1, 1, -t + 1, Obra.mira(Blocks.CHEST, Direction.WEST));
 		o.pon(0, PISO_TORRE - 1, 0, Obra.farolColgado());
-		// el primer piso: dos catres
+		// el primer piso: dos catres con la cabecera en la pared del oeste y la mesilla en medio
 		int y1 = PISO_TORRE + 1;
-		o.cama(-t + 1, y1, -t + 2, Direction.NORTH, Blocks.BROWN_BED);
-		o.cama(-t + 1, y1, t - 2, Direction.SOUTH, Blocks.BROWN_BED);
+		o.cama(-t + 1, y1, -1, Direction.WEST, Blocks.BROWN_BED);
+		o.cama(-t + 1, y1, 1, Direction.WEST, Blocks.BROWN_BED);
 		o.tonel(-t + 1, y1, 0);
 		o.pon(-t + 1, y1 + 1, 0, Obra.velas(2));
 		// el segundo: los arqueros, con su diana y el cofre de flechas

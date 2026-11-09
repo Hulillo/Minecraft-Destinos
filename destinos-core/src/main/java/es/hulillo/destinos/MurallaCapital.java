@@ -105,12 +105,18 @@ public final class MurallaCapital extends StructurePiece {
 		Registry.register(BuiltInRegistries.STRUCTURE_PIECE, Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "muralla"), TIPO);
 	}
 
+	/** Lo que puede bajar o subir el terreno hacia fuera antes de que la muralla se pare en el borde (un cortado). */
+	private static final int CORTADO = 5;
+
 	/**
 	 * El radio interior de la muralla en cada uno de los ARCOS: lo justo para dejar dentro las cajas dadas (con un
-	 * margen), nunca menos de minimo ni más de maximo, y suavizado para que no haga picos.
+	 * margen), nunca menos de minimo ni más de maximo, y suavizado para que no haga picos. Si hacia fuera hay un
+	 * cortado (el pueblo en una meseta, o al pie de un monte), la muralla se queda en el borde y no baja (o sube) por
+	 * él: alto da la altura del terreno.
 	 */
-	static int[] contorno(int cx, int cz, List<BoundingBox> cajas, int margen, int minimo, int maximo) {
+	static int[] contorno(int cx, int cz, List<BoundingBox> cajas, int margen, int minimo, int maximo, IntBinaryOperator alto) {
 		double[] r = new double[ARCOS];
+		double[] justo = new double[ARCOS];
 		java.util.Arrays.fill(r, minimo);
 		for (BoundingBox b : cajas) {
 			for (int x = b.minX(); x <= b.maxX() + 3; x += 4) {
@@ -120,6 +126,7 @@ public final class MurallaCapital extends StructurePiece {
 					double d = Math.hypot(px - cx, pz - cz) + margen;
 					int i = Math.floorMod((int) Math.floor(Math.toDegrees(Math.atan2(pz - cz, px - cx)) / 360 * ARCOS), ARCOS);
 					r[i] = Math.max(r[i], d);
+					justo[i] = Math.max(justo[i], d);
 				}
 			}
 		}
@@ -139,8 +146,31 @@ public final class MurallaCapital extends StructurePiece {
 		int[] radios = new int[ARCOS];
 		for (int i = 0; i < ARCOS; i++) {
 			radios[i] = (int) Math.round(Math.clamp(r[i], minimo, maximo));
+			radios[i] = borde(cx, cz, i, (int) Math.ceil(justo[i]), radios[i], alto);
 		}
 		return radios;
+	}
+
+	/**
+	 * El radio del arco i recortado al borde de un cortado: desde lo justo para las casas (o el centro, si por ahí no
+	 * hay ninguna) hacia fuera, el primer punto en que el terreno ha bajado o subido más de CORTADO, un poco antes.
+	 */
+	private static int borde(int cx, int cz, int i, int justo, int radio, IntBinaryOperator alto) {
+		double a = (i + 0.5) / ARCOS * 2 * Math.PI;
+		double ux = Math.cos(a);
+		double uz = Math.sin(a);
+		int desde = Math.max(justo, 8);
+		if (desde >= radio) {
+			return radio;
+		}
+		int h = alto.applyAsInt(cx + (int) Math.round(ux * desde), cz + (int) Math.round(uz * desde));
+		for (int rr = desde + 2; rr <= radio; rr += 2) {
+			int y = alto.applyAsInt(cx + (int) Math.round(ux * rr), cz + (int) Math.round(uz * rr));
+			if (Math.abs(y - h) > CORTADO) {
+				return Math.max(justo, rr - 3);
+			}
+		}
+		return radio;
 	}
 
 	/** El radio interior de la muralla en el ángulo a (décimas de grado), entre los de los arcos. */
@@ -362,14 +392,15 @@ public final class MurallaCapital extends StructurePiece {
 
 	/**
 	 * Una columna de muralla sobre el suelo natural; nada si hay agua o casa. Sobre una calle, la puerta: se deja
-	 * paso de cuatro de alto y encima va el dintel, así la muralla no se corta donde la cruza una calle.
+	 * paso de cuatro de alto y encima va el dintel, así la muralla no se corta donde la cruza una calle; en la
+	 * empalizada, que no da para tanto, la calle se cierra.
 	 */
 	private void columna(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int alto) {
 		BlockState s = SueloNatural.superficie(level, pos, x, z);
-		if (calle(s)) {
-			if (alto <= PASO) {
-				return;
-			}
+		// en la empalizada (baja, sin sitio para un paso por debajo) la calle se cierra: las puertas de verdad están
+		// en las calles principales y aquí quedaban huecos sueltos
+		boolean cierra = calle(s) && alto <= PASO;
+		if (calle(s) && !cierra) {
 			boolean arena = s.is(Blocks.SMOOTH_SANDSTONE);
 			BlockState dintel = switch (nivel) {
 				case 0 -> arena ? Blocks.STRIPPED_ACACIA_LOG.defaultBlockState() : Blocks.SPRUCE_LOG.defaultBlockState();
@@ -392,10 +423,10 @@ public final class MurallaCapital extends StructurePiece {
 			reja(level, pos, alto);
 			return;
 		}
-		if (!SueloNatural.natural(s)) {
+		if (!cierra && !SueloNatural.natural(s)) {
 			return;
 		}
-		boolean arena = SueloNatural.arena(s);
+		boolean arena = SueloNatural.arena(s) || s.is(Blocks.SMOOTH_SANDSTONE);
 		BlockState bloque = switch (nivel) {
 			case 0 -> arena ? Blocks.STRIPPED_ACACIA_LOG.defaultBlockState() : Blocks.SPRUCE_LOG.defaultBlockState();
 			case 1 -> arena ? Blocks.SANDSTONE.defaultBlockState() : Blocks.COBBLESTONE.defaultBlockState();

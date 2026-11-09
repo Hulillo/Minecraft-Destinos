@@ -1095,8 +1095,9 @@ assert len(LEMAS) == N_LEMAS and len(RASGOS) == N_RASGOS and len(FAMAS) == N_FAM
 # con modelo de jugador, nombre y skin. Dos arreglos, sin tocar su mod:
 #  - que no saque maniquíes con el nombre y la skin de los jugadores del mundo ($human_pool 2 = solo aleatorios): si
 #    no, a veces un aldeano se llama como tú y en sus charlas parece que hablas tú;
-#  - el oficio del aldeano en la línea de debajo del nombre (su "description", que trae "NPC"), y nombre y oficio solo
-#    al mirarlo (sin CustomNameVisible). Se mira cada 2 s, solo cerca de los jugadores, y solo se escribe si cambia.
+#  - el oficio del aldeano en la línea de debajo del nombre (su "description", que trae "NPC"), y nombre y oficio a la
+#    vista cuando estás a menos de 6 bloques (apuntarle era muy difícil). El oficio se mira cada 2 s, solo cerca de los
+#    jugadores, y solo se escribe si cambia; lo de verlo de cerca, cada medio segundo.
 # Si Humanoid Villagers no está, no hay maniquíes con su etiqueta y nada de esto hace nada.
 OFICIOS = {
     "minecraft:armorer": (("Armero", "Armera"), "Armorer"),
@@ -1154,6 +1155,21 @@ fn("humvil/ajusta", [
     "scoreboard players set $npc_tag humvil.settings 0",
     "scoreboard players set $custom_npc_tag humvil.settings 0",
     "schedule function destinos:humvil/oficios 40t replace",
+    "schedule function destinos:humvil/cerca 10t replace",
+])
+fn("humvil/cerca", [
+    "schedule function destinos:humvil/cerca 10t replace",
+    "# nombre y oficio a la vista de cerca (a 6 bloques; se ocultan pasados 8, para que no parpadeen en el borde)",
+    "execute as @e[type=minecraft:mannequin,tag=destinos.hv.ve] at @s unless entity @a[distance=..8] run function destinos:humvil/oculta",
+    "execute as @a at @s as @e[type=minecraft:mannequin,tag=humvil.human,distance=..6] unless data entity @s {CustomNameVisible:1b} run function destinos:humvil/muestra",
+])
+fn("humvil/muestra", [
+    "tag @s add destinos.hv.ve",
+    "data modify entity @s CustomNameVisible set value 1b",
+])
+fn("humvil/oculta", [
+    "tag @s remove destinos.hv.ve",
+    "data modify entity @s CustomNameVisible set value 0b",
 ])
 fn("humvil/oficios", [
     "schedule function destinos:humvil/oficios 40t replace",
@@ -1186,7 +1202,6 @@ fn("humvil/etiqueta", [
     "# primero a la vista: el maniquí oculto no guarda su descripción y la perdería al escribir lo siguiente",
     "data modify entity @s hide_description set value 0b",
     'data modify entity @s description set value {translate:"destinos.oficio.$(p).$(g)",fallback:""}',
-    "data modify entity @s CustomNameVisible set value 0b",
 ])
 
 # ---------------------------------------------------------------- escribir

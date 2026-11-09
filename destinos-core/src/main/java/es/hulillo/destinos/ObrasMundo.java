@@ -193,6 +193,59 @@ public final class ObrasMundo {
 
 	/** Pone en el chunk su trozo de las piezas de los asentamientos que lo tocan (al empezar su decoración). */
 	public static void construye(WorldGenLevel region, ChunkAccess chunk, StructureManager estructuras, ChunkGenerator generador) {
+		pon(region, chunk, estructuras, generador, false);
+	}
+
+	/**
+	 * Al acabar la decoración del chunk, otra pasada por lo construido: lo que se ha hecho después (los ríos de los
+	 * mods de ríos, que se excavan como decoración y partían casas y plazas por la mitad; los medios bloques de terreno)
+	 * lo ha podido romper. Las casas, obras, plazas, calles y muralla se vuelven a poner igual (las calles hacen
+	 * puente donde ahora hay agua y la muralla su reja); la gente y el adorno no, que saldrían dos veces. Y los medios
+	 * bloques de terreno que han quedado pegados a lo construido se quitan.
+	 */
+	public static void repasa(WorldGenLevel region, ChunkAccess chunk, StructureManager estructuras, ChunkGenerator generador) {
+		pon(region, chunk, estructuras, generador, true);
+	}
+
+	/** Si en el repaso la pieza se vuelve a poner: no la gente (plantillas de un bloque con su ser), ni el adorno, ni las marcas. */
+	private static boolean seRepasa(StructurePiece pieza) {
+		if (pieza instanceof AdornoCapital || pieza instanceof MarcaAsentamiento) {
+			return false;
+		}
+		BoundingBox b = pieza.getBoundingBox();
+		return !(pieza instanceof net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece) || b.getXSpan() > 2 || b.getZSpan() > 2;
+	}
+
+	/** Quita los medios bloques de terreno de los mods (Terrain Slabs…) de las columnas de la caja b (y uno alrededor) dentro de caja. */
+	private static void sinLosas(WorldGenLevel region, BoundingBox b, BoundingBox caja) {
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+		for (int x = Math.max(b.minX() - 1, caja.minX()); x <= Math.min(b.maxX() + 1, caja.maxX()); x++) {
+			for (int z = Math.max(b.minZ() - 1, caja.minZ()); z <= Math.min(b.maxZ() + 1, caja.maxZ()); z++) {
+				int y = SueloNatural.cima(region, x, z);
+				if (y >= b.minY() - 2 && y <= b.maxY() + 1 && SueloNatural.deTerreno(region.getBlockState(pos.set(x, y, z)))) {
+					region.setBlock(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 2);
+				}
+			}
+		}
+	}
+
+	/** Si este hilo está en el repaso: las obras no vuelven a poner sus seres (guardias, caballos…). */
+	private static final ThreadLocal<Boolean> REPASO = ThreadLocal.withInitial(() -> false);
+
+	static boolean enRepaso() {
+		return REPASO.get();
+	}
+
+	private static void pon(WorldGenLevel region, ChunkAccess chunk, StructureManager estructuras, ChunkGenerator generador, boolean repaso) {
+		REPASO.set(repaso);
+		try {
+			ponTrozo(region, chunk, estructuras, generador, repaso);
+		} finally {
+			REPASO.set(false);
+		}
+	}
+
+	private static void ponTrozo(WorldGenLevel region, ChunkAccess chunk, StructureManager estructuras, ChunkGenerator generador, boolean repaso) {
 		ServerLevel level = normal(region);
 		if (level == null) {
 			return;
@@ -205,23 +258,96 @@ public final class ObrasMundo {
 		BoundingBox caja = new BoundingBox(cp.getMinBlockX(), region.getMinY(), cp.getMinBlockZ(), cp.getMaxBlockX(),
 				region.getMinY() + region.getHeight() - 1, cp.getMaxBlockZ());
 		WorldgenRandom azar = new WorldgenRandom(new LegacyRandomSource(0L));
-		azar.setDecorationSeed(level.getSeed(), cp.getMinBlockX(), cp.getMinBlockZ());
+		long semilla = azar.setDecorationSeed(level.getSeed(), cp.getMinBlockX(), cp.getMinBlockZ());
+		int n = 0;
 		for (Plan plan : planes) {
 			if (!plan.caja().intersects(caja)) {
 				continue;
 			}
-			if (plan.empezado().compareAndSet(false, true)) {
+			if (!repaso && plan.empezado().compareAndSet(false, true)) {
 				BlockPos c = plan.caja().getCenter();
 				DestinosCore.LOG.info("Destinos Core: se empieza a construir {} de {}, {} ({} piezas) por el chunk {}, {}", plan.que(), c.getX(), c.getZ(),
 						plan.piezas().size(), cp.x, cp.z);
 			}
 			for (StructurePiece pieza : plan.piezas()) {
-				if (pieza.getBoundingBox().intersects(caja)) {
+				// cada pieza con su azar (el mismo en la construcción y en el repaso: sale igual)
+				n++;
+				if (pieza.getBoundingBox().intersects(caja) && (!repaso || seRepasa(pieza))) {
+					azar.setFeatureSeed(semilla, n, 0);
+					if (repaso) {
+						sinLosas(region, pieza.getBoundingBox(), caja);
+					}
 					long t = System.nanoTime();
 					pieza.postProcess(region, estructuras, generador, azar, caja, cp, plan.pivote());
 					TiemposPiezas.suma(pieza, System.nanoTime() - t);
 				}
 			}
 		}
+		if (repaso && chunk instanceof net.minecraft.world.level.chunk.ProtoChunk proto) {
+			desatasca(region, proto);
+		}
+	}
+
+	/** Lo que se busca alrededor de un ser atascado: hasta tantos bloques a los lados, y de uno abajo a tres arriba. */
+	private static final int HUECO = 4;
+
+	/**
+	 * Los seres que han quedado dentro de un bloque o en el agua (los aldeanos a la puerta de su casa, los gólems de
+	 * la plaza, cuando lo de después ha puesto un puesto o un río encima) se pasan al sitio libre más cercano, en el
+	 * suelo: si no, se ahogaban nada más cargar. El chunk aún no tiene entidades vivas, solo sus datos.
+	 */
+	private static void desatasca(WorldGenLevel region, net.minecraft.world.level.chunk.ProtoChunk chunk) {
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+		for (net.minecraft.nbt.CompoundTag ser : chunk.getEntities()) {
+			net.minecraft.nbt.ListTag p = ser.getListOrEmpty("Pos");
+			if (p.size() != 3) {
+				continue;
+			}
+			double x = p.getDoubleOr(0, 0);
+			double y = p.getDoubleOr(1, 0);
+			double z = p.getDoubleOr(2, 0);
+			int alto = ser.getStringOr("id", "").endsWith("iron_golem") ? 3 : 2;
+			int bx = net.minecraft.util.Mth.floor(x);
+			int by = net.minecraft.util.Mth.floor(y);
+			int bz = net.minecraft.util.Mth.floor(z);
+			if (libre(region, pos, bx, by, bz, alto)) {
+				continue;
+			}
+			ChunkPos cp = chunk.getPos();
+			buscar:
+			for (int r = 0; r <= HUECO; r++) {
+				for (int dx = -r; dx <= r; dx++) {
+					for (int dz = -r; dz <= r; dz++) {
+						if (Math.max(Math.abs(dx), Math.abs(dz)) != r || (bx + dx) >> 4 != cp.x || (bz + dz) >> 4 != cp.z) {
+							continue;
+						}
+						for (int dy : new int[] {0, 1, -1, 2, 3}) {
+							if (libre(region, pos, bx + dx, by + dy, bz + dz, alto)) {
+								net.minecraft.nbt.ListTag nueva = new net.minecraft.nbt.ListTag();
+								nueva.add(net.minecraft.nbt.DoubleTag.valueOf(bx + dx + 0.5));
+								nueva.add(net.minecraft.nbt.DoubleTag.valueOf(by + dy));
+								nueva.add(net.minecraft.nbt.DoubleTag.valueOf(bz + dz + 0.5));
+								ser.put("Pos", nueva);
+								break buscar;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	/** Si en (x, y, z) cabe de pie un ser de alto bloques: suelo firme debajo y nada sólido ni agua donde va. */
+	private static boolean libre(WorldGenLevel region, BlockPos.MutableBlockPos pos, int x, int y, int z, int alto) {
+		if (!region.getBlockState(pos.set(x, y - 1, z)).blocksMotion()) {
+			return false;
+		}
+		for (int k = 0; k < alto; k++) {
+			var s = region.getBlockState(pos.set(x, y + k, z));
+			if (s.blocksMotion() || !s.getFluidState().isEmpty()) {
+				return false;
+			}
+		}
+		return true;
 	}
 }

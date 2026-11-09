@@ -87,6 +87,16 @@ public class EstructuraCapital extends Structure {
 	private static final int MAX_DESNIVEL_PLAZUELA = 8;
 	/** A qué distancia del eje de la calle va la puerta de las casas: pegada, y si no cabe, más atrás. */
 	private static final int[] ACERA = {3, 5, 8};
+	/** Medio ancho del caminito de la puerta de cada casa a su calle. */
+	private static final double ANCHO_ACCESO = 0.8;
+
+	/** Los caminitos de las puertas de las casas a su calle (van con las calles) y lo que pisan (ahí no va otra casa). */
+	private record Accesos(List<CalleCapital> calles, Set<Long> pasos) {
+		void pon(int x, int z, int y, int sx, int sz, int yCalle) {
+			calles.add(new CalleCapital(x, z, y, sx, sz, yCalle, ANCHO_ACCESO, false));
+			pasos.addAll(TrazadoCapital.ocupa(List.of(List.of(new int[] {x, z}, new int[] {sx, sz})), 1));
+		}
+	}
 	/** Cada cuántos bloques de calle sale un callejón, y lo largo que es. */
 	private static final int CALLEJON = 18;
 	private static final int LARGO_CALLEJON = 26;
@@ -386,6 +396,8 @@ public class EstructuraCapital extends Structure {
 		int[] sinPlazuela = new int[4];
 		// en los puertos, los muelles van antes que las casas: si no, las casas se quedan toda la orilla y no cabe ninguno
 		List<MuelleCapital> primeros = new ArrayList<>();
+		// los caminitos de las puertas de las casas a su calle (otra casa no los pisa)
+		Accesos accesos = new Accesos(calles, new java.util.HashSet<>());
 		java.util.function.BiPredicate<BoundingBox, Integer> cabeCon = (b, maxDesnivel) -> {
 			for (int[] e : new int[][] {{b.minX(), b.minZ()}, {b.maxX(), b.minZ()}, {b.minX(), b.maxZ()}, {b.maxX(), b.maxZ()}}) {
 				long dx = e[0] - cx;
@@ -419,7 +431,7 @@ public class EstructuraCapital extends Structure {
 			}
 			for (int x = b.minX(); x <= b.maxX(); x++) {
 				for (int z = b.minZ(); z <= b.maxZ(); z++) {
-					if (enCalle.contains(Geo.clave(x, z))) {
+					if (enCalle.contains(Geo.clave(x, z)) || accesos.pasos().contains(Geo.clave(x, z))) {
 						motivos[4]++;
 						return false;
 					}
@@ -487,10 +499,10 @@ public class EstructuraCapital extends Structure {
 		fase(fases, reloj, "callejones");
 		// primero las casas que dan a la plaza mayor, alrededor de su borde con la puerta hacia ella: la forma de la
 		// plaza la marcan sus fachadas
-		alrededor(plantillas, terreno, catalogo, mayor, cabe, casas, puertasCasas);
+		alrededor(plantillas, terreno, catalogo, mayor, cabe, casas, puertasCasas, accesos);
 		for (List<int[]> c : todas) {
 			for (int lado = -1; lado <= 1; lado += 2) {
-				aLoLargo(plantillas, terreno, catalogo, c, lado, cx, cz, radio - RONDA_MURO, cabe, casas, puertasCasas);
+				aLoLargo(plantillas, terreno, catalogo, c, lado, cx, cz, radio - RONDA_MURO, cabe, casas, puertasCasas, accesos);
 			}
 		}
 
@@ -510,7 +522,8 @@ public class EstructuraCapital extends Structure {
 		casas.forEach(c -> construido.add(c.getBoundingBox()));
 		mercado.ifPresent(m -> construido.add(m.getBoundingBox()));
 		nobles.forEach(n -> construido.add(n.getBoundingBox()));
-		int[] contorno = MurallaCapital.contorno(cx, cz, construido, MARGEN_MURO, (rPlaza + radio) / 2, Math.min(radio + 6, MAX_ALCANCE - 6));
+		int[] contorno = MurallaCapital.contorno(cx, cz, construido, MARGEN_MURO, (rPlaza + radio) / 2, Math.min(radio + 6, MAX_ALCANCE - 6),
+				terreno::alto);
 		int[] muroCastillo = castillo.map(c -> new int[] {c.cx, c.cz, CastilloCapital.MURO + 1}).orElse(null);
 		// donde la cruza una calle principal, una puerta de verdad: torres, arco y rastrillo; la muralla llega a los lados
 		// de sus torres y deja libre lo de delante y lo de detrás (el paso y las puertas de las torres)
@@ -866,7 +879,7 @@ public class EstructuraCapital extends Structure {
 
 	/** Casas a lo largo del borde de la plaza, cada una con la puerta hacia el centro, a la altura de la plaza. */
 	private static void alrededor(StructureTemplateManager plantillas, TerrenoCapital terreno, CatalogoCapital catalogo, PlazaMayor plaza,
-			Predicate<BoundingBox> cabe, List<StructurePiece> casas, List<int[]> puertas) {
+			Predicate<BoundingBox> cabe, List<StructurePiece> casas, List<int[]> puertas, Accesos accesos) {
 		double a = Math.floorMod(plaza.semilla(), 360) * Math.PI / 180;
 		double fin = a + 2 * Math.PI;
 		while (a < fin) {
@@ -879,7 +892,10 @@ public class EstructuraCapital extends Structure {
 			Direction mira = Math.abs(ux) >= Math.abs(uz) ? (ux > 0 ? Direction.EAST : Direction.WEST) : (uz > 0 ? Direction.SOUTH : Direction.NORTH);
 			int lx = mira.getAxis() == Direction.Axis.X ? 0 : 1;
 			int lz = 1 - lx;
-			int hueco = ponCasa(plantillas, terreno, catalogo, x, z, plaza.y0, lx, lz, mira, cabe, casas, puertas);
+			// el caminito de la puerta llega hasta dentro de la plaza
+			int sx = plaza.cx + (int) Math.round(Math.cos(a) * (r - 4));
+			int sz = plaza.cz + (int) Math.round(Math.sin(a) * (r - 4));
+			int hueco = ponCasa(plantillas, terreno, catalogo, x, z, plaza.y0, sx, sz, lx, lz, mira, cabe, casas, puertas, accesos);
 			// lo que ocupa a lo largo, pasado a ángulo en este radio
 			a += (hueco > 0 ? hueco + 2 : 3) / Math.max(8, r);
 		}
@@ -1190,7 +1206,7 @@ public class EstructuraCapital extends Structure {
 	 * prueba una casa; si cabe, se salta lo que ocupa y si no, un poco.
 	 */
 	private static void aLoLargo(StructureTemplateManager plantillas, TerrenoCapital terreno, CatalogoCapital catalogo, List<int[]> calle, int lado,
-			int cx, int cz, int limite, Predicate<BoundingBox> cabe, List<StructurePiece> casas, List<int[]> puertas) {
+			int cx, int cz, int limite, Predicate<BoundingBox> cabe, List<StructurePiece> casas, List<int[]> puertas, Accesos accesos) {
 		// la calle por bloques, para medir y tener la dirección en cada punto
 		List<double[]> p = new ArrayList<>();
 		List<Double> acum = new ArrayList<>();
@@ -1234,7 +1250,8 @@ public class EstructuraCapital extends Structure {
 			for (int acera : ACERA) {
 				int fx = (int) Math.round(x + nx * acera);
 				int fz = (int) Math.round(z + nz * acera);
-				hueco = ponCasa(plantillas, terreno, catalogo, fx, fz, yCalle, lx, lz, mira, cabe, casas, puertas);
+				hueco = ponCasa(plantillas, terreno, catalogo, fx, fz, yCalle, (int) Math.round(x), (int) Math.round(z), lx, lz, mira, cabe, casas,
+						puertas, accesos);
 				if (hueco > 0) {
 					break;
 				}
@@ -1245,10 +1262,20 @@ public class EstructuraCapital extends Structure {
 
 	/**
 	 * Intenta poner una casa con la entrada mirando a (mira) y el bloque de delante de la puerta en (x, z), empezando
-	 * a lo largo de la calle en (lx, lz). Devuelve lo que ocupa a lo largo de la calle, o 0 si no cabe ninguna.
+	 * a lo largo de la calle en (lx, lz). Devuelve lo que ocupa a lo largo de la calle, o 0 si no cabe ninguna. De la
+	 * puerta a la calle (sx, sz) va un caminito que rebaja o rellena lo que haya en medio: la casa siempre se puede
+	 * entrar desde la calle. Si el suelo queda tan alto o tan bajo que ni con escalones se llega, no hay casa.
 	 */
-	private static int ponCasa(StructureTemplateManager plantillas, TerrenoCapital terreno, CatalogoCapital catalogo, int x, int z, int yCalle, int lx, int lz,
-			Direction mira, Predicate<BoundingBox> cabe, List<StructurePiece> casas, List<int[]> puertas) {
+	private static int ponCasa(StructureTemplateManager plantillas, TerrenoCapital terreno, CatalogoCapital catalogo, int x, int z, int yCalle, int sx, int sz,
+			int lx, int lz, Direction mira, Predicate<BoundingBox> cabe, List<StructurePiece> casas, List<int[]> puertas, Accesos accesos) {
+		// la puerta a la altura de la calle (que va suavizada), si el suelo no queda muy lejos; si no, en el suelo, con
+		// el caminito de escalones de un bloque hasta la calle (si no da, nada)
+		int suelo = terreno.alto(x, z);
+		int lejos = (int) Math.round(Math.hypot(sx - x, sz - z));
+		if (Math.abs(suelo - yCalle) > 3 && Math.abs(suelo - yCalle) > lejos) {
+			return 0;
+		}
+		int yPuerta = Math.abs(suelo - yCalle) <= 3 ? yCalle : suelo;
 		List<CatalogoCapital.Modelo> modelos = catalogo.casas;
 		int primero = Math.floorMod(Geo.hash(x, z, K_CASA), modelos.size());
 		for (int k = 0; k < Math.min(4, modelos.size()); k++) {
@@ -1270,15 +1297,16 @@ public class EstructuraCapital extends Structure {
 			if (!cabe.test(enPlanta)) {
 				continue;
 			}
-			// la puerta a la altura de la calle (que va suavizada), si el suelo no queda muy lejos
-			int suelo = terreno.alto(x, z);
-			int y = (Math.abs(suelo - yCalle) <= 3 ? yCalle : suelo) + 1 - entrada.getY();
+			// el puzle de la entrada va a la altura del suelo de la calle (como lo pone Minecraft en sus pueblos): un
+			// bloque más arriba, casi todas las casas quedaban subidas en un escalón de tierra
+			int y = yPuerta - entrada.getY();
 			BlockPos sitio = new BlockPos(ox, y, oz);
 			BoundingBox b = m.elemento().getBoundingBox(plantillas, sitio, giro);
 			casas.add(new PoolElementStructurePiece(plantillas, m.elemento(), sitio, m.elemento().getGroundLevelDelta(), giro, b,
 					LiquidSettings.APPLY_WATERLOGGING));
-			// delante de la puerta, donde espera su aldeano
+			// delante de la puerta, donde espera su aldeano, y de ahí el caminito a la calle
 			puertas.add(new int[] {x, z});
+			accesos.pon(x, z, yPuerta, sx, sz, yCalle);
 			return lx != 0 ? b.getXSpan() : b.getZSpan();
 		}
 		return 0;

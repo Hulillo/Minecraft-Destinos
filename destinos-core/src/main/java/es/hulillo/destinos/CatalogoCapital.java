@@ -152,13 +152,33 @@ final class CatalogoCapital {
 		if (ancho < 5 || largo > MAX_CASA || b.getYSpan() < 4) {
 			return Optional.empty();
 		}
-		for (StructureTemplate.JigsawBlockInfo j : e.getShuffledJigsawBlocks(plantillas, BlockPos.ZERO, Rotation.NONE, RandomSource.create(0))) {
+		List<StructureTemplate.JigsawBlockInfo> puzles = e.getShuffledJigsawBlocks(plantillas, BlockPos.ZERO, Rotation.NONE, RandomSource.create(0));
+		// solo las casas de una pieza: si cuelga de ella otra parte (el piso de arriba, un ala, los animales del
+		// corral…), sola salía a medio hacer o vacía
+		for (StructureTemplate.JigsawBlockInfo j : puzles) {
+			if (!suelta(j.pool().identifier().toString())) {
+				return Optional.empty();
+			}
+		}
+		for (StructureTemplate.JigsawBlockInfo j : puzles) {
 			Direction d = JigsawBlock.getFrontFacing(j.info().state());
 			if (d.getAxis().isHorizontal()) {
 				return Optional.of(new Modelo(e, j.info().pos(), d, ancho, largo));
 			}
 		}
 		return Optional.empty();
+	}
+
+	/** Las listas a las que puede apuntar un puzle de una casa sin que le falte nada: vacía, calles, gente y adornos. */
+	private static final String[] SUELTAS = {"empty", "street", "terminator", "villagers", "cats", "golem", "decor", "road", "path"};
+
+	private static boolean suelta(String lista) {
+		for (String s : SUELTAS) {
+			if (lista.contains(s)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** La lista de inicio del pueblo, leída con el codec (los campos de JigsawStructure cambian entre versiones). */
