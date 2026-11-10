@@ -58,6 +58,8 @@ public final class MurallaCapital extends StructurePiece {
 	private static final int PILAR = 2;
 	/** Lo hondo que puede ser un hueco bajo los arcos (más, la muralla se corta). */
 	private static final int HONDO_ARCOS = 28;
+	/** Hasta dónde se mira alrededor de cada vértice el suelo más alto (el de arriba de un cortado o una ladera). */
+	private static final int ENTERRADA = 2;
 
 	static int radio(int nivel) {
 		return RADIOS[Math.clamp(nivel, 0, RADIOS.length - 1)];
@@ -288,15 +290,22 @@ public final class MurallaCapital extends StructurePiece {
 	}
 
 	/**
-	 * La altura del pie de la muralla en cada vértice: la del suelo en medio de su grueso, suavizada a lo largo del
-	 * anillo y sin cuestas de más de una por cada dos bloques (lo que sobra se sube: más cimiento o arcos, nunca la
-	 * muralla metida en el suelo).
+	 * La altura del pie de la muralla en cada vértice: la del suelo más alto en su sitio y a ENTERRADA bloques
+	 * alrededor (en el borde de un cortado, la de arriba), suavizada a lo largo del anillo pero nunca más de un
+	 * bloque por debajo de ese suelo (el suavizado no la mete en las lomas), y sin cuestas de más de una por cada dos
+	 * bloques (lo que sobra se sube: más cimiento o arcos, nunca la muralla metida en el suelo).
 	 */
 	private static int[] adarve(int[][] v, int nivel, IntBinaryOperator alturaEn) {
 		int n = v.length;
 		double[] h = new double[n];
+		int[] alto = new int[n];
 		for (int k = 0; k < n; k++) {
-			h[k] = alturaEn.applyAsInt(v[k][0], v[k][1]);
+			int x = v[k][0];
+			int z = v[k][1];
+			alto[k] = Math.max(Math.max(alturaEn.applyAsInt(x, z), alturaEn.applyAsInt(x + ENTERRADA, z)),
+					Math.max(alturaEn.applyAsInt(x - ENTERRADA, z),
+							Math.max(alturaEn.applyAsInt(x, z + ENTERRADA), alturaEn.applyAsInt(x, z - ENTERRADA))));
+			h[k] = alto[k];
 		}
 		for (int pasada = 0; pasada < 3; pasada++) {
 			double[] g = h.clone();
@@ -307,7 +316,7 @@ public final class MurallaCapital extends StructurePiece {
 		}
 		int[] y = new int[n];
 		for (int k = 0; k < n; k++) {
-			y[k] = (int) Math.round(h[k]);
+			y[k] = Math.max((int) Math.round(h[k]), alto[k] - 1);
 		}
 		for (boolean cambia = true; cambia;) {
 			cambia = false;
@@ -507,8 +516,11 @@ public final class MurallaCapital extends StructurePiece {
 		if (!calle(s) && !SueloNatural.natural(s) && suelo > pie + 2) {
 			return;
 		}
-		// un bulto del terreno por encima del pie: la muralla lo corta (el adarve sigue a su altura) y el terreno
-		// de encima se quita
+		// suelo natural por encima del pie (una loma, la ladera de arriba): la muralla sube con él, como mucho un
+		// bloque enterrada, para que nunca quede a ras de suelo con las almenas asomando
+		int sube = Math.max(0, suelo - 1 - pie);
+		pie += sube;
+		arriba += sube;
 		for (int y = arriba + 1; y <= suelo; y++) {
 			libre(level, pos.set(x, y, z));
 		}
