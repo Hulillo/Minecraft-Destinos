@@ -578,11 +578,11 @@ public class EstructuraCapital extends Structure {
 		int techo = ctx.heightAccessor().getMinY() + ctx.heightAccessor().getHeight() - 1;
 		TerrazaCapital terrazas = terreno.enTerrazas() ? TerrazaCapital.de(terreno, cx, cz, estilo == AdornoCapital.DESIERTO || enBadlands) : null;
 		if (terrazas != null) {
-			List<StructurePiece> obras = new ArrayList<>(grandes);
-			obras.add(mayor);
-			obras.addAll(casas);
-			faro.ifPresent(obras::add);
-			terrazas.encaja(calles, obras);
+			List<StructurePiece> pisan = new ArrayList<>(grandes);
+			pisan.add(mayor);
+			pisan.addAll(casas);
+			faro.ifPresent(pisan::add);
+			terrazas.encaja(calles, pisan);
 		}
 		long ms = (System.nanoTime() - antes) / 1_000_000;
 		BlockPos centro = new BlockPos(px, alturaPlaza, pz);
