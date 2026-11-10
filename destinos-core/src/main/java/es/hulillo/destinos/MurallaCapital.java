@@ -543,6 +543,23 @@ public final class MurallaCapital extends StructurePiece {
 			pos.move(0, -1, 0);
 			s = level.getBlockState(pos);
 		}
+		// el tablero o el pretil de un puente de calle no es suelo (la muralla se quedaba apoyada en él, con aire
+		// debajo): si a menos de tres bloques por debajo hay aire, el suelo es lo que haya bajo ese aire
+		for (int vez = 0; vez < 4; vez++) {
+			int y = pos.getY();
+			int aire = 0;
+			for (int k = 1; k <= 3 && aire == 0; k++) {
+				aire = level.getBlockState(pos.set(x, y - k, z)).isAir() ? k : 0;
+			}
+			pos.set(x, y - aire, z);
+			if (aire == 0) {
+				break;
+			}
+			while (pos.getY() > level.getMinY() && level.getBlockState(pos).isAir()) {
+				pos.move(0, -1, 0);
+			}
+			s = level.getBlockState(pos);
+		}
 		int suelo = pos.getY();
 		if (s.is(Blocks.WATER)) {
 			reja(level, pos, Math.max(arriba - suelo, PlanMuralla.alto(nivel)));

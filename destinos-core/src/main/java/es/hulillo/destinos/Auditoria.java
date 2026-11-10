@@ -77,11 +77,20 @@ final class Auditoria {
 	}
 
 	private void fallo(String que, int x, int y, int z) {
+		fallo(que, x, y, z, "");
+	}
+
+	/** Apunta un fallo, con un detalle para el sitio de ejemplo (qué se esperaba y qué hay). */
+	private void fallo(String que, int x, int y, int z, String detalle) {
 		suma(que);
 		List<String> l = sitios.computeIfAbsent(que, k -> new ArrayList<>());
 		if (l.size() < EJEMPLOS) {
-			l.add(x + " " + y + " " + z);
+			l.add(x + " " + y + " " + z + detalle);
 		}
+	}
+
+	private String nombre(int x, int y, int z) {
+		return net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(en(x, y, z).getBlock()).getPath();
 	}
 
 	private boolean cargado(int x, int z) {
@@ -127,7 +136,8 @@ final class Auditoria {
 					pasa = !libre(x, f, z) && libre(x, f + 1, z) && libre(x, f + 2, z);
 				}
 				if (!pasa) {
-					fallo("muralla.portillo_tapado", x, portillo + 1, z);
+					fallo("muralla.portillo_tapado", x, portillo + 1, z,
+							" (" + nombre(x, portillo, z) + ", " + nombre(x, portillo + 1, z) + ", " + nombre(x, portillo + 2, z) + ")");
 				}
 				return;
 			}
@@ -154,7 +164,7 @@ final class Auditoria {
 				int fx = x + (int) Math.round(nx * 2);
 				int fz = z + (int) Math.round(nz * 2);
 				if (level.hasChunk(fx >> 4, fz >> 4) && cima - suelo(fx, fz) < ASOMA) {
-					fallo("muralla.enterrada", x, cima, z);
+					fallo("muralla.enterrada", x, cima, z, " (pie " + pie + ", fuera " + suelo(fx, fz) + " de " + nombre(fx, suelo(fx, fz), fz) + ")");
 				}
 			}
 			// aire justo debajo: un arco si el suelo queda hondo bajo el pie (para eso son); si queda cerca, cuelga
@@ -164,7 +174,7 @@ final class Auditoria {
 					y--;
 				}
 				if (pie - y <= 6) {
-					fallo("muralla.colgando", x, abajo, z);
+					fallo("muralla.colgando", x, abajo, z, " (pie " + pie + ", suelo " + y + " de " + nombre(x, y, z) + ")");
 				} else {
 					suma("muralla.arcos");
 				}
@@ -294,7 +304,7 @@ final class Auditoria {
 					h--;
 				}
 				if (Math.abs(h - y) > LEJOS) {
-					fallo("calles.lejos_del_plano", x, h, z);
+					fallo("calles.lejos_del_plano", x, h, z, " (plano " + y + ", " + nombre(x, h, z) + ")");
 					antes = Integer.MIN_VALUE;
 					continue;
 				}
