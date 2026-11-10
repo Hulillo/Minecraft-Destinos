@@ -52,7 +52,7 @@ final class Auditoria {
 		for (String k : new String[] {"muralla.columnas", "muralla.arcos", "muralla.portillos", "muralla.hueco", "muralla.enterrada", "muralla.colgando",
 			"muralla.portillo_tapado",
 			"casas", "casas.tierra_dentro", "casas.colgando", "casas.enterrada", "casas.puerta_tapada", "calles.bloques", "calles.escalon",
-			"calles.lejos_del_plano", "calles.sin_suelo", "terrazas.columnas", "terrazas.sin_hacer", "sin_cargar"}) {
+			"calles.lejos_del_plano", "calles.sin_suelo", "terrazas.columnas", "terrazas.cortados", "terrazas.alta", "terrazas.baja", "sin_cargar"}) {
 			cuenta.put(k, 0);
 		}
 	}
@@ -132,8 +132,11 @@ final class Auditoria {
 					continue;
 				}
 				suma("terrazas.columnas");
-				if (Math.abs(h - alto) > 1) {
-					fallo("terrazas.sin_hacer", x, h, z, " (bancal " + alto + ")");
+				if (Math.abs(h - alto) > 12) {
+					// un cortado o un pico: se deja como está a propósito
+					suma("terrazas.cortados");
+				} else if (Math.abs(h - alto) > 1) {
+					fallo(h > alto ? "terrazas.alta" : "terrazas.baja", x, h, z, " (bancal " + alto + ", " + nombre(x, h, z) + ", encima " + nombre(x, h + 1, z) + ")");
 				}
 			}
 		}

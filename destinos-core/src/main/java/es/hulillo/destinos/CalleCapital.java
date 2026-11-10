@@ -171,6 +171,28 @@ public final class CalleCapital extends StructurePiece {
 		}
 	}
 
+	/** Deja en las terrazas el suelo de esta calle, columna a columna; sobre un puente, sin tocar. */
+	void encaja(TerrazaCapital terrazas) {
+		BoundingBox mia = getBoundingBox();
+		double r = radio / 10.0;
+		double dx = x1 - x0;
+		double dz = z1 - z0;
+		double l2 = dx * dx + dz * dz;
+		for (int x = mia.minX(); x <= mia.maxX(); x++) {
+			for (int z = mia.minZ(); z <= mia.maxZ(); z++) {
+				double t = l2 == 0 ? 0 : Math.clamp(((x - x0) * dx + (z - z0) * dz) / l2, 0, 1);
+				if (Math.hypot(x0 + t * dx - x, z0 + t * dz - z) > r + 0.3) {
+					continue;
+				}
+				if (!molde || y0 == SIN_ALTURA) {
+					terrazas.suelta(x, z);
+				} else {
+					terrazas.fija(x, z, (int) Math.floor(y0 + t * (y1 - y0)));
+				}
+			}
+		}
+	}
+
 	/** Una caja sin bloques, solo para que el terreno se amolde a ella. No se guarda ni se pone. */
 	private static final class Molde extends StructurePiece {
 		Molde(BoundingBox caja) {

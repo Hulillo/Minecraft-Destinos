@@ -88,6 +88,57 @@ public final class TerrazaCapital extends StructurePiece {
 		Registry.register(BuiltInRegistries.STRUCTURE_PIECE, Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "terraza"), TIPO);
 	}
 
+	/** Lo que una obra puede apartarse de su bancal; con más, su sitio se deja como esté (ya lo amolda el relleno de Minecraft). */
+	private static final int MAX_OBRA = TerrenoCapital.ESCALON + 3;
+
+	/**
+	 * El suelo de (x, z) queda a la altura y: lo pide una calle o una obra que pasa por ahí (su suelo manda sobre el
+	 * del bancal). Si se aparta demasiado del bancal, la columna se deja sin tocar.
+	 */
+	void fija(int x, int z, int y) {
+		int i = x - x0;
+		int j = z - z0;
+		if (i < 0 || j < 0 || i >= lado || j >= lado || alto[i * lado + j] == SIN) {
+			return;
+		}
+		alto[i * lado + j] = Math.abs(y - alto[i * lado + j]) > MAX_OBRA ? (short) SIN : (short) y;
+	}
+
+	/** La columna (x, z) no se toca (un puente, un muelle). */
+	void suelta(int x, int z) {
+		int i = x - x0;
+		int j = z - z0;
+		if (i >= 0 && j >= 0 && i < lado && j < lado) {
+			alto[i * lado + j] = (short) SIN;
+		}
+	}
+
+	/**
+	 * Encaja los bancales con lo trazado: bajo cada calle, el suelo de la calle (una rampa entre bancales queda entre
+	 * muros de contención); bajo cada obra y un bloque alrededor, el suelo de la obra. Así lo que el relleno de
+	 * Minecraft amoldó para ellas no se deshace, y el salto con el bancal de al lado lo sujeta un muro.
+	 */
+	void encaja(java.util.List<CalleCapital> calles, java.util.List<? extends StructurePiece> obras) {
+		for (CalleCapital c : calles) {
+			c.encaja(this);
+		}
+		for (StructurePiece o : obras) {
+			BoundingBox b = o.getBoundingBox();
+			if (b.getXSpan() <= 2 && b.getZSpan() <= 2) {
+				continue;
+			}
+			// las obras propias pisan en y0 y su caja ya trae el borde; las casas de plantilla, en su suelo, con un bloque alrededor
+			boolean obra = o instanceof PiezaObra;
+			int y = obra ? b.minY() : b.minY() - 1 + (o instanceof net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece p ? p.getGroundLevelDelta() : 0);
+			int m = obra ? 0 : 1;
+			for (int x = b.minX() - m; x <= b.maxX() + m; x++) {
+				for (int z = b.minZ() - m; z <= b.maxZ() + m; z++) {
+					fija(x, z, y);
+				}
+			}
+		}
+	}
+
 	/** La altura del bancal en (x, z), o SIN. */
 	int bancal(int x, int z) {
 		int i = x - x0;

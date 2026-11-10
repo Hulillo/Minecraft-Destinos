@@ -196,7 +196,8 @@ final class TerrenoCapital {
 			return false;
 		}
 		java.util.Collections.sort(h);
-		if (h.get(h.size() * 9 / 10) - h.get(h.size() / 10) < DESNIVEL_TERRAZAS) {
+		desnivelSitio = h.get(h.size() * 9 / 10) - h.get(h.size() / 10);
+		if (desnivelSitio < DESNIVEL_TERRAZAS) {
 			return false;
 		}
 		terrazas = true;
@@ -204,6 +205,13 @@ final class TerrenoCapital {
 		tcz = cz;
 		tradio = radio + BORDE_TERRAZAS;
 		return true;
+	}
+
+	private int desnivelSitio;
+
+	/** El desnivel del sitio que midió aterraza (entre el décimo más bajo y el décimo más alto). */
+	int desnivelSitio() {
+		return desnivelSitio;
 	}
 
 	boolean enTerrazas() {

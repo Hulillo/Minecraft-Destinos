@@ -171,7 +171,7 @@ print("Cotilleo:", cotilleo.group(0))
 print("Maniquí:", "\n".join(l.rstrip() for l in lineas if "Roberto" in l or "destinos:tmp" in l or "hvprueba" in l))
 if not re.search(r"has the following entity data: \{.*translate: \"destinos\.oficio\.minecraft:farmer", salida):
     sys.exit("el maniquí de prueba no tiene el oficio bajo el nombre")
-auditoria = list(dict.fromkeys(re.sub(r"^.*?(AUDITORIA)", r"\1", l.rstrip()) for l in lineas if "AUDITORIA" in l))
+auditoria = list(dict.fromkeys(re.sub(r"^.*?(AUDITORIA)", r"\1", l.rstrip()) for l in lineas if "AUDITORIA" in l or "Destinos Core: relieve de" in l))
 print("\n=== AUDITORÍA DE LO GENERADO (de momento solo informa) ===")
 print("\n".join(auditoria) if auditoria else "sin respuesta de /destinoscore audita")
 if not auditoria:

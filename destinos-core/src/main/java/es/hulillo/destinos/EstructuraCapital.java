@@ -273,9 +273,9 @@ public class EstructuraCapital extends Structure {
 		int radio = plano.radio();
 		TerrenoCapital terreno = new TerrenoCapital(ctx, cx, cz, radio + TERRENO_FUERA, radio + TERRENO_NUCLEO);
 		// en una ladera, la capital se hace en terrazas: desde aquí todo el trazado ve bancales llanos
-		if (terreno.aterraza(cx, cz, radio + 8)) {
-			DestinosCore.LOG.info("Destinos Core: {} de {}, {} en terrazas (el sitio es una ladera)", plano.nombre(), cx, cz);
-		}
+		boolean ladera = terreno.aterraza(cx, cz, radio + 8);
+		DestinosCore.LOG.info("Destinos Core: relieve de {} de {}, {}: desnivel {} en radio {}, {}", plano.nombre(), cx, cz, terreno.desnivelSitio(), radio,
+				ladera ? "en terrazas" : "sin terrazas");
 		// el estilo del pueblo, la madera del bioma y el color del reino
 		int estilo = AdornoCapital.estilo(pueblo.estructura().getRegisteredName(), bioma.value().getBaseTemperature());
 		MapaTerreno mapa = DestinosCore.mapaActual();
@@ -577,6 +577,13 @@ public class EstructuraCapital extends Structure {
 		fase(fases, reloj, "muelles, faro y huertos");
 		int techo = ctx.heightAccessor().getMinY() + ctx.heightAccessor().getHeight() - 1;
 		TerrazaCapital terrazas = terreno.enTerrazas() ? TerrazaCapital.de(terreno, cx, cz, estilo == AdornoCapital.DESIERTO || enBadlands) : null;
+		if (terrazas != null) {
+			List<StructurePiece> obras = new ArrayList<>(grandes);
+			obras.add(mayor);
+			obras.addAll(casas);
+			faro.ifPresent(obras::add);
+			terrazas.encaja(calles, obras);
+		}
 		long ms = (System.nanoTime() - antes) / 1_000_000;
 		BlockPos centro = new BlockPos(px, alturaPlaza, pz);
 		return Optional.of(new Structure.GenerationStub(centro, piezas -> {
