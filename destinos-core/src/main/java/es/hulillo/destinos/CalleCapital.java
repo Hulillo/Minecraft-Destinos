@@ -91,6 +91,11 @@ public final class CalleCapital extends StructurePiece {
 		return new int[] {x0, z0, y0, x1, z1, y1, radio};
 	}
 
+	/** Si es una calle menor (ronda, callejón o acceso): más estrecha que las principales. */
+	boolean menor() {
+		return radio < 20;
+	}
+
 	int z0() {
 		return z0;
 	}

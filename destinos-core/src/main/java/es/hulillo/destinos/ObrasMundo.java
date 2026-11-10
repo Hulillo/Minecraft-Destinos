@@ -207,12 +207,16 @@ public final class ObrasMundo {
 		pon(region, chunk, estructuras, generador, true);
 	}
 
-	/** Si en el repaso la pieza se vuelve a poner: no la gente (plantillas de un bloque con su ser), ni el adorno, ni las marcas, ni la muralla. */
+	/** Si en el repaso la pieza se vuelve a poner: no la gente (plantillas de un bloque con su ser), ni el adorno, ni las marcas, ni las torres. */
 	private static boolean seRepasa(StructurePiece pieza) {
-		// la muralla tampoco: en el repaso su columna encontraba su propio adarve (de piedra, como las calles) y le
-		// ponía encima un dintel de puerta, y quedaban almenas flotando
-		if (pieza instanceof AdornoCapital || pieza instanceof MarcaAsentamiento || pieza instanceof MurallaCapital) {
+		if (pieza instanceof AdornoCapital || pieza instanceof MarcaAsentamiento) {
 			return false;
+		}
+		// los lienzos de la muralla sí, y van después de calles y casas: reponen lo que les hayan quitado (las calles
+		// talaban la empalizada como si fueran árboles). Salen igual las veces que se pongan. Las torres no: son de
+		// piedra, nadie las toca, y el repaso se llevaría los adornos de dentro.
+		if (pieza instanceof MurallaCapital muro) {
+			return !muro.esTorre();
 		}
 		BoundingBox b = pieza.getBoundingBox();
 		return !(pieza instanceof net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece) || b.getXSpan() > 2 || b.getZSpan() > 2;

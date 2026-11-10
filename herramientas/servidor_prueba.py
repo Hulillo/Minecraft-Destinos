@@ -27,6 +27,7 @@ COMANDOS = [
     # la capital de prueba necesita cargados los chunks que puede ocupar (hasta 128 bloques del centro)
     "forceload add -160 440 0 760",
     "forceload add 16 440 160 760",
+    "forceload add 176 592 304 776",
     "destinoscore estado",
     "scoreboard players get #tdx dr.calc",
     "scoreboard players get #tkx dr.calc",
@@ -44,6 +45,8 @@ COMANDOS = [
     # v0.6.3: un pueblo propio (con /place sale una aldea) y los pueblos de los ducados de alrededor
     "forceload add 400 -1400 560 -1240",
     "place structure destinos_core:pueblo 480 80 -1320",
+    # y uno de los que salen solos (la aldea más cercana de la lista), para auditarlo luego
+    "forceload add 298 -736 458 -576",
     "destinoscore pueblos",
     # la capital que ha salido sola al cargar los chunks: que su chunk la tenga y los de alrededor la conozcan
     "execute positioned 196 100 667 run destinoscore capital",
@@ -121,7 +124,7 @@ if rica:
 # los ojos de la generación: lo generado contra su plano (muralla, casas, calles), en la capital que salió sola, en el
 # pueblo y en la rica; con tiempo para que acaben de generarse los chunks cargados
 time.sleep(30)
-for c in ["execute positioned 196 100 667 run destinoscore audita", "execute positioned 480 100 -1320 run destinoscore audita"] + (
+for c in ["execute positioned 196 100 667 run destinoscore audita", "execute positioned 378 100 -656 run destinoscore audita"] + (
         [f"execute positioned {rx} 100 {rz} run destinoscore audita"] if rica else []):
     p.stdin.write(c + "\n"); p.stdin.flush(); time.sleep(8)
 p.stdin.write("stop\n"); p.stdin.flush()

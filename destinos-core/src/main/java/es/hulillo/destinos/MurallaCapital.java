@@ -11,6 +11,7 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.WorldGenLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkGenerator;
@@ -83,8 +84,11 @@ public final class MurallaCapital extends StructurePiece {
 	private final int[] portillos;
 	/** Las torres de cerca (x, z seguidos): el tramo no entra en ellas. */
 	private final int[] torres;
+	/** De arenisca (capitales del desierto y de las tierras baldías): lo dice el plano, no el bloque que haya debajo. */
+	private final boolean arena;
 
-	private MurallaCapital(PlanMuralla p, boolean torre, int[] tramo, int andado, boolean agua, int[] portillos, int[] torres, BoundingBox caja) {
+	private MurallaCapital(PlanMuralla p, boolean arena, boolean torre, int[] tramo, int andado, boolean agua, int[] portillos, int[] torres,
+			BoundingBox caja) {
 		super(TIPO, 0, caja);
 		this.cx = p.cx;
 		this.cz = p.cz;
@@ -104,6 +108,7 @@ public final class MurallaCapital extends StructurePiece {
 		this.huecos = p.huecos;
 		this.portillos = portillos;
 		this.torres = torres;
+		this.arena = arena;
 	}
 
 	private MurallaCapital(CompoundTag t) {
@@ -128,6 +133,7 @@ public final class MurallaCapital extends StructurePiece {
 		huecos = t.getIntArray("huecos").orElse(new int[0]);
 		portillos = t.getIntArray("portillos").orElse(new int[0]);
 		torres = t.getIntArray("torres").orElse(new int[0]);
+		arena = t.getBooleanOr("arena", false);
 	}
 
 	static void registra() {
@@ -256,11 +262,11 @@ public final class MurallaCapital extends StructurePiece {
 	 * Las piezas del plano: una torre por cada torre y un tramo por cada tramo de muro (los de cuesta y los que caen
 	 * dentro del castillo, no).
 	 */
-	static void piezas(PlanMuralla p, List<StructurePiece> piezas) {
+	static void piezas(PlanMuralla p, boolean arena, List<StructurePiece> piezas) {
 		int r = PlanMuralla.RADIO_TORRE + 1;
 		for (PlanMuralla.Torre t : p.torres) {
 			BoundingBox caja = new BoundingBox(t.x() - r, t.y(), t.z() - r, t.x() + r, t.y() + 1, t.z() + r);
-			piezas.add(new MurallaCapital(p, true, new int[6], 0, false, new int[0], new int[0], caja));
+			piezas.add(new MurallaCapital(p, arena, true, new int[6], 0, false, new int[0], new int[0], caja));
 		}
 		int borde = PlanMuralla.grueso(p.nivel) + 2;
 		double andado = 0;
@@ -271,7 +277,7 @@ public final class MurallaCapital extends StructurePiece {
 			if (p.hayMuro(k)) {
 				BoundingBox caja = new BoundingBox(Math.min(a[0], b[0]) - borde, Math.min(p.pie[k], p.pie[s]), Math.min(a[1], b[1]) - borde,
 						Math.max(a[0], b[0]) + borde, Math.max(p.pie[k], p.pie[s]) + 1, Math.max(a[1], b[1]) + borde);
-				piezas.add(new MurallaCapital(p, false, new int[] {a[0], a[1], p.pie[k], b[0], b[1], p.pie[s]}, (int) Math.round(andado),
+				piezas.add(new MurallaCapital(p, arena, false, new int[] {a[0], a[1], p.pie[k], b[0], b[1], p.pie[s]}, (int) Math.round(andado),
 						p.agua[k], cercanos(p, caja), torresCerca(p, caja), caja));
 			}
 			andado += p.largo(k);
@@ -365,6 +371,7 @@ public final class MurallaCapital extends StructurePiece {
 		t.putIntArray("huecos", huecos);
 		t.putIntArray("portillos", portillos);
 		t.putIntArray("torres", torres);
+		t.putBoolean("arena", arena);
 	}
 
 	@Override
@@ -451,8 +458,7 @@ public final class MurallaCapital extends StructurePiece {
 
 	/** Si el bloque es de esta muralla (su material, o la reja sobre el agua). */
 	boolean deMuralla(BlockState b) {
-		return esMuralla(b) || b.is(cimiento(false).getBlock()) || b.is(cimiento(true).getBlock()) || b.is(Blocks.IRON_BARS)
-				|| b.is(Blocks.SPRUCE_FENCE);
+		return esMuralla(b) || b.is(zapata().getBlock()) || b.is(Blocks.IRON_BARS) || b.is(Blocks.SPRUCE_FENCE);
 	}
 
 	boolean esTorre() {
@@ -487,13 +493,12 @@ public final class MurallaCapital extends StructurePiece {
 	 * PASO_PORTILLO encima y el dintel con la muralla hasta arriba (al menos dos por encima del paso).
 	 */
 	private void portillo(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int suelo, int arriba) {
-		BlockState s = SueloNatural.superficie(level, pos, x, z);
+		SueloNatural.superficie(level, pos, x, z);
 		int h = pos.getY();
-		boolean arena = SueloNatural.arena(s) || s.is(Blocks.SMOOTH_SANDSTONE);
-		BlockState bloque = bloque(arena);
+		BlockState bloque = bloque();
 		for (int y = Math.min(h, suelo - 1); y < suelo; y++) {
 			if (!level.getBlockState(pos.set(x, y, z)).isFaceSturdy(level, pos, net.minecraft.core.Direction.UP)) {
-				level.setBlock(pos, cimiento(arena), 2);
+				level.setBlock(pos, zapata(), 2);
 			}
 		}
 		BlockState pisa = level.getBlockState(pos.set(x, suelo, z));
@@ -514,23 +519,41 @@ public final class MurallaCapital extends StructurePiece {
 	/**
 	 * Una columna de la muralla con el pie en pie y lo alto en arriba (a lo largo del anillo en andado, para los
 	 * pilares). Sobre el agua, reja. Si el suelo queda por debajo del pie, cimiento hasta él; si queda muy por debajo,
-	 * arco entre pilares. Si el amoldado no llegó a quitar una loma (suelo natural por encima del pie), la columna sube
-	 * con ella, como mucho un bloque enterrada: nunca a ras de suelo.
+	 * arco entre pilares. Si el amoldado no llegó a quitar una loma (suelo por encima del pie), la columna sube con
+	 * ella, como mucho un bloque enterrada: nunca a ras de suelo.
+	 *
+	 * Sale igual las veces que se ponga: en el repaso (al final del chunk, cuando calles y casas ya han hecho lo suyo)
+	 * repone lo que le hayan quitado. Para eso su suelo es lo de debajo de la propia muralla, y la zapata (el bloque
+	 * que la muralla hunde en el suelo, que no es de terreno ni de la muralla) marca dónde se apoyó la primera vez.
 	 */
 	private void columna(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int pie, int arriba, double andado) {
 		BlockState s = SueloNatural.superficie(level, pos, x, z);
+		Block barrote = barrote().getBlock();
+		boolean puesta = false;
+		while (pos.getY() > level.getMinY()) {
+			// (la arenisca del desierto es terreno y es muralla: del pie para abajo cuenta como suelo)
+			if (esMuralla(s) && (pos.getY() > pie || !SueloNatural.natural(s))) {
+				puesta = true;
+			} else if (puesta && s.is(barrote)) {
+				// la reja sobre el agua ya está
+				return;
+			} else if (!s.isAir()) {
+				break;
+			}
+			pos.move(0, -1, 0);
+			s = level.getBlockState(pos);
+		}
 		int suelo = pos.getY();
 		if (s.is(Blocks.WATER)) {
 			reja(level, pos, Math.max(arriba - suelo, PlanMuralla.alto(nivel)));
 			return;
 		}
-		boolean arena = SueloNatural.arena(s) || s.is(Blocks.SMOOTH_SANDSTONE);
-		BlockState bloque = bloque(arena);
-		if (SueloNatural.natural(s)) {
-			int sube = Math.max(0, suelo - 1 - pie);
-			pie += sube;
-			arriba += sube;
-		}
+		BlockState bloque = bloque();
+		// sobre una loma sin amoldar, sube con ella: sobre suelo natural queda un bloque enterrada; sobre su zapata (ya
+		// subió la primera vez), justo encima
+		int sube = s.is(zapata().getBlock()) ? Math.max(0, suelo - pie) : SueloNatural.natural(s) ? Math.max(0, suelo - 1 - pie) : 0;
+		pie += sube;
+		arriba += sube;
 		for (int y = arriba + 1; y <= suelo; y++) {
 			libre(level, pos.set(x, y, z));
 		}
@@ -548,7 +571,7 @@ public final class MurallaCapital extends StructurePiece {
 		arriba = Math.max(arriba, pie + 1);
 		BlockState abajo = level.getBlockState(pos.set(x, desde, z));
 		if (abajo.isAir() || abajo.canBeReplaced() || SueloNatural.natural(abajo)) {
-			level.setBlock(pos, desde == suelo ? cimiento(arena) : bloque, 2);
+			level.setBlock(pos, desde <= suelo ? zapata() : bloque, 2);
 		}
 		for (int y = desde + 1; y <= arriba; y++) {
 			level.setBlock(pos.set(x, y, z), bloque, 2);
@@ -566,6 +589,10 @@ public final class MurallaCapital extends StructurePiece {
 		return b.is(bloque(false).getBlock()) || b.is(bloque(true).getBlock());
 	}
 
+	private BlockState bloque() {
+		return bloque(arena);
+	}
+
 	/** El material de la muralla según el nivel (y de arenisca en la arena). */
 	private BlockState bloque(boolean arena) {
 		return switch (nivel) {
@@ -575,9 +602,22 @@ public final class MurallaCapital extends StructurePiece {
 		};
 	}
 
-	/** El bloque hundido en el suelo bajo la muralla (en la empalizada, el mismo tronco). */
-	private BlockState cimiento(boolean arena) {
-		return nivel == 0 ? bloque(arena) : (arena ? Blocks.SANDSTONE : Blocks.COBBLESTONE).defaultBlockState();
+	/**
+	 * La zapata: el bloque que la muralla hunde en el suelo. Ni de terreno ni del material del muro, a propósito: así
+	 * la tala de las calles no toma la empalizada por un árbol (un tronco de verdad sale de la tierra) y en el repaso
+	 * se sabe dónde se apoyó la columna.
+	 */
+	private BlockState zapata() {
+		return switch (nivel) {
+			case 0 -> Blocks.PACKED_MUD.defaultBlockState();
+			case 1 -> (arena ? Blocks.CHISELED_SANDSTONE : Blocks.MOSSY_COBBLESTONE).defaultBlockState();
+			default -> (arena ? Blocks.SANDSTONE : Blocks.COBBLESTONE).defaultBlockState();
+		};
+	}
+
+	/** El barrote de la reja sobre el agua: de hierro, o de valla en las pobres. */
+	private BlockState barrote() {
+		return nivel == 0 ? Blocks.SPRUCE_FENCE.defaultBlockState() : Blocks.IRON_BARS.defaultBlockState();
 	}
 
 	/**
@@ -606,10 +646,10 @@ public final class MurallaCapital extends StructurePiece {
 				if (d > r + 0.5) {
 					continue;
 				}
-				BlockState s = SueloNatural.superficie(level, pos, x, z);
+				SueloNatural.superficie(level, pos, x, z);
 				int h = pos.getY();
-				BlockState bloque = bloque(SueloNatural.arena(s));
-				BlockState base = nivel == 0 ? bloque : (SueloNatural.arena(s) ? Blocks.SANDSTONE : Blocks.COBBLESTONE).defaultBlockState();
+				BlockState bloque = bloque();
+				BlockState base = nivel == 0 ? bloque : (arena ? Blocks.SANDSTONE : Blocks.COBBLESTONE).defaultBlockState();
 				// cimiento hasta el suelo de la torre
 				for (int y = Math.min(h, y0); y <= y0; y++) {
 					level.setBlock(pos.set(x, y, z), base, 2);
@@ -658,12 +698,12 @@ public final class MurallaCapital extends StructurePiece {
 		int agua = pos.getY();
 		int x = pos.getX();
 		int z = pos.getZ();
-		BlockState bloque = bloque(false);
+		BlockState bloque = bloque();
 		int fondo = agua;
 		while (fondo > level.getMinY() && level.getBlockState(pos.set(x, fondo - 1, z)).is(Blocks.WATER) && agua - fondo < 24) {
 			fondo--;
 		}
-		BlockState barrote = nivel == 0 ? Blocks.SPRUCE_FENCE.defaultBlockState() : Blocks.IRON_BARS.defaultBlockState();
+		BlockState barrote = barrote();
 		// bajo el agua, pilotes de madera maciza hasta la línea del agua; la reja, solo por encima
 		for (int y = fondo; y <= agua; y++) {
 			level.setBlock(pos.set(x, y, z), Blocks.SPRUCE_LOG.defaultBlockState(), 2);

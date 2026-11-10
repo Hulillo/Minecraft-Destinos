@@ -9,6 +9,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -22,9 +24,11 @@ import net.minecraft.world.level.levelgen.structure.StructurePiece;
  * los fallos de muralla, casas y calles sin que nadie tenga que encontrarlos paseando.
  * <ul>
  * <li>Muralla: columnas del plano sin muralla (huecos), enterradas (por fuera asoma menos de dos bloques), colgando
- * (aire justo debajo sin ser un arco) y portillos tapados.</li>
- * <li>Casas: con tierra dentro, colgando, enterradas y con puertas tapadas.</li>
- * <li>Calles: escalones de más de un bloque por su eje, trozos lejos de la altura del plano y trozos sin suelo.</li>
+ * (aire justo debajo con el suelo cerca del pie: no es un arco; los arcos se cuentan aparte, solo para saberlo) y
+ * portillos por los que no se pasa.</li>
+ * <li>Casas: con tierra dentro, colgando, enterradas y con puertas tapadas (un escalón o una losa delante no tapan).</li>
+ * <li>Calles: por su eje, donde se pisa (no el tejado ni el dintel de encima): escalones de más de un bloque, trozos
+ * lejos de la altura del plano y trozos sobre el agua sin puente.</li>
  * </ul>
  * Solo mira chunks cargados; lo que no lo está se cuenta aparte.
  */
@@ -35,6 +39,8 @@ final class Auditoria {
 	private static final int ASOMA = 2;
 	/** Bloques de terreno dentro de una casa para contarla con tierra dentro. */
 	private static final int TIERRA_CASA = 6;
+	/** Lo que la calle puede separarse de la altura de su plano. */
+	private static final int LEJOS = 3;
 
 	private final ServerLevel level;
 	private final Map<String, Integer> cuenta = new LinkedHashMap<>();
@@ -43,7 +49,8 @@ final class Auditoria {
 
 	private Auditoria(ServerLevel level) {
 		this.level = level;
-		for (String k : new String[] {"muralla.columnas", "muralla.hueco", "muralla.enterrada", "muralla.colgando", "muralla.portillo_tapado",
+		for (String k : new String[] {"muralla.columnas", "muralla.arcos", "muralla.portillos", "muralla.hueco", "muralla.enterrada", "muralla.colgando",
+			"muralla.portillo_tapado",
 			"casas", "casas.tierra_dentro", "casas.colgando", "casas.enterrada", "casas.puerta_tapada", "calles.bloques", "calles.escalon",
 			"calles.lejos_del_plano", "calles.sin_suelo", "sin_cargar"}) {
 			cuenta.put(k, 0);
@@ -113,7 +120,13 @@ final class Auditoria {
 			}
 			suma("muralla.columnas");
 			if (portillo != MurallaCapital.SIN_PORTILLO) {
-				if (!en(x, portillo + 1, z).getCollisionShape(level, pos).isEmpty() || !en(x, portillo + 2, z).getCollisionShape(level, pos).isEmpty()) {
+				// se pasa si hay dos bloques libres seguidos sobre un suelo a la altura del portillo, uno arriba o uno abajo
+				suma("muralla.portillos");
+				boolean pasa = false;
+				for (int f = portillo - 1; f <= portillo + 1 && !pasa; f++) {
+					pasa = !libre(x, f, z) && libre(x, f + 1, z) && libre(x, f + 2, z);
+				}
+				if (!pasa) {
 					fallo("muralla.portillo_tapado", x, portillo + 1, z);
 				}
 				return;
@@ -144,14 +157,16 @@ final class Auditoria {
 					fallo("muralla.enterrada", x, cima, z);
 				}
 			}
-			// aire justo debajo, con el suelo cerca: no es un arco (los arcos salvan más de seis de hondo)
+			// aire justo debajo: un arco si el suelo queda hondo bajo el pie (para eso son); si queda cerca, cuelga
 			if (en(x, abajo - 1, z).isAir()) {
 				int y = abajo - 1;
-				while (y > abajo - 8 && en(x, y, z).isAir()) {
+				while (y > pie - 40 && en(x, y, z).isAir()) {
 					y--;
 				}
-				if (abajo - y <= 6) {
+				if (pie - y <= 6) {
 					fallo("muralla.colgando", x, abajo, z);
+				} else {
+					suma("muralla.arcos");
 				}
 			}
 		});
@@ -231,15 +246,27 @@ final class Auditoria {
 		}
 	}
 
-	/** Si en (x, y, z) cabe una persona de pie, con suelo en y - 1 o y - 2 (un escalón). */
+	/** Si el bloque de (x, y, z) deja pasar (no tiene con qué chocar). */
+	private boolean libre(int x, int y, int z) {
+		return en(x, y, z).getCollisionShape(level, pos).isEmpty();
+	}
+
+	/**
+	 * Si en (x, y, z) cabe una persona de pie, con suelo en y - 1 o y - 2 (un escalón); o si lo que hay es un escalón
+	 * o una losa (la escalera de la entrada) con sitio encima.
+	 */
 	private boolean paso(int x, int y, int z) {
 		if (!level.hasChunk(x >> 4, z >> 4)) {
 			return true;
 		}
-		if (!en(x, y, z).getCollisionShape(level, pos).isEmpty() || !en(x, y + 1, z).getCollisionShape(level, pos).isEmpty()) {
+		BlockState s = en(x, y, z);
+		if (s.getBlock() instanceof StairBlock || s.getBlock() instanceof SlabBlock) {
+			return libre(x, y + 1, z) && libre(x, y + 2, z);
+		}
+		if (!libre(x, y, z) || !libre(x, y + 1, z)) {
 			return false;
 		}
-		return !en(x, y - 1, z).getCollisionShape(level, pos).isEmpty() || !en(x, y - 2, z).getCollisionShape(level, pos).isEmpty();
+		return !libre(x, y - 1, z) || !libre(x, y - 2, z);
 	}
 
 	// ------------------------------------------------------------------ calles
@@ -257,24 +284,39 @@ final class Auditoria {
 				continue;
 			}
 			suma("calles.bloques");
-			int h = suelo(x, z);
-			BlockState s = en(x, h, z);
-			if (!s.getFluidState().isEmpty()) {
+			int h;
+			if (t[2] != Integer.MIN_VALUE) {
+				// donde se pisa: lo primero firme bajando desde un poco por encima de la altura del plano (así no
+				// cuentan el tejado de una casa, el dintel de un portillo ni el arco de un portón que pasan por encima)
+				int y = (int) Math.floor(t[2] + (t[5] - t[2]) * f);
+				h = y + LEJOS + 1;
+				while (h > y - LEJOS - 1 && pisable(x, h, z)) {
+					h--;
+				}
+				if (Math.abs(h - y) > LEJOS) {
+					fallo("calles.lejos_del_plano", x, h, z);
+					antes = Integer.MIN_VALUE;
+					continue;
+				}
+			} else {
+				h = suelo(x, z);
+			}
+			if (!en(x, h, z).getFluidState().isEmpty()) {
 				fallo("calles.sin_suelo", x, h, z);
 				antes = Integer.MIN_VALUE;
 				continue;
-			}
-			if (t[2] != Integer.MIN_VALUE) {
-				int y = (int) Math.floor(t[2] + (t[5] - t[2]) * f);
-				if (Math.abs(h - y) > 3) {
-					fallo("calles.lejos_del_plano", x, h, z);
-				}
 			}
 			if (antes != Integer.MIN_VALUE && Math.abs(h - antes) > 1) {
 				fallo("calles.escalon", x, h, z);
 			}
 			antes = h;
 		}
+	}
+
+	/** Si por (x, y, z) se pasa andando: sin nada con qué chocar (ni agua), o plantas, hojas y troncos de árbol. */
+	private boolean pisable(int x, int y, int z) {
+		BlockState s = en(x, y, z);
+		return s.getFluidState().isEmpty() && (s.getCollisionShape(level, pos).isEmpty() || s.is(BlockTags.LEAVES) || s.is(BlockTags.LOGS));
 	}
 
 	// ------------------------------------------------------------------ informe

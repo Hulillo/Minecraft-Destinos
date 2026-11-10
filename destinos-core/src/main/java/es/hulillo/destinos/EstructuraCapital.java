@@ -539,6 +539,11 @@ public class EstructuraCapital extends Structure {
 		}
 		// las calles que van a las puertas salen un poco por fuera de la muralla y ahí se acaban
 		calles.removeIf(c -> fueraDe(contorno, cx, cz, c.x0(), c.z0()) && fueraDe(contorno, cx, cz, c.x1(), c.z1()));
+		// y las menores (rondas, callejones, accesos) no la cruzan: se acaban antes de llegar. Solo las principales salen,
+		// por su portón o por un portillo (con las menores, una empalizada llegó a tener 23 portillos)
+		if (plano.muralla()) {
+			calles.removeIf(c -> c.menor() && !(dentroDe(contorno, cx, cz, c.x0(), c.z0()) && dentroDe(contorno, cx, cz, c.x1(), c.z1())));
+		}
 		// el plano de la muralla, entero antes de poner nada: tramos, laderas sin muro, portillos de las demás calles y
 		// torres; y su franja, solo suya (lo que la pisa se quita, con su gente)
 		List<StructurePiece> muralla = new ArrayList<>();
@@ -547,7 +552,7 @@ public class EstructuraCapital extends Structure {
 			PlanMuralla planMuro = PlanMuralla.traza(cx, cz, nivel, contorno, terreno::exacto, terreno::aguaExacta, muroCastillo, huecos,
 					calles.stream().map(CalleCapital::trozo).toList());
 			despejaFranja(planMuro, casas, gente);
-			MurallaCapital.piezas(planMuro, muralla);
+			MurallaCapital.piezas(planMuro, estilo == AdornoCapital.DESIERTO || enBadlands, muralla);
 			DestinosCore.LOG.info("Destinos Core: muralla de {}, {}: {}", cx, cz, planMuro.resumen());
 		}
 		// sin los trozos que caen enteros en el agua (la orilla del mar); donde cruza un río, reja
@@ -1144,6 +1149,12 @@ public class EstructuraCapital extends Structure {
 			}
 		}
 		return r;
+	}
+
+	/** Si (x, z) queda por dentro de la muralla del contorno dado, sin tocarla. */
+	private static boolean dentroDe(int[] contorno, int cx, int cz, int x, int z) {
+		double a = Math.floorMod((int) Math.floor(Math.toDegrees(Math.atan2(z - cz, x - cx)) * 10), 3600);
+		return Math.hypot(x - cx, z - cz) < MurallaCapital.radioEn(contorno, a) - 2;
 	}
 
 	/** Si (x, z) queda bastante por fuera de la muralla del contorno dado. */
