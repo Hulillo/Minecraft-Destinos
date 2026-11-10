@@ -62,6 +62,7 @@ final class Auditoria {
 		Auditoria a = new Auditoria(level);
 		for (StructurePiece p : piezas) {
 			if (p instanceof TerrazaCapital t) {
+				a.terraza = t;
 				a.terrazas(t);
 			} else if (p instanceof MurallaCapital m) {
 				a.muralla(m);
@@ -72,6 +73,17 @@ final class Auditoria {
 			}
 		}
 		return a.informe(que);
+	}
+
+	/** Las terrazas del asentamiento, si las tiene (para decir en los fallos a qué altura debía quedar el suelo). */
+	private TerrazaCapital terraza;
+
+	private String bancal(int x, int z) {
+		if (terraza == null) {
+			return "";
+		}
+		int b = terraza.bancal(x, z);
+		return ", bancal " + (TerrazaCapital.sin(b) ? "sin tocar" : String.valueOf(b)) + ", cima " + suelo(x, z);
 	}
 
 	private void suma(String que) {
@@ -344,7 +356,7 @@ final class Auditoria {
 					}
 				}
 				if (Math.abs(h - y) > LEJOS) {
-					fallo("calles.lejos_del_plano", x, h, z, " (plano " + y + ", " + nombre(x, h, z) + ")");
+					fallo("calles.lejos_del_plano", x, h, z, " (plano " + y + ", " + nombre(x, h, z) + bancal(x, z) + ")");
 					antes = Integer.MIN_VALUE;
 					continue;
 				}
