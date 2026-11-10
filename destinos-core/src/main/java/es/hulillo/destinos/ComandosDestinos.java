@@ -38,6 +38,7 @@ final class ComandosDestinos {
 				.then(Commands.literal("pueblos").executes(ctx -> pueblos(ctx.getSource())))
 				.then(Commands.literal("cotilleo").executes(ctx -> cotilleo(ctx.getSource())))
 				.then(Commands.literal("muralla").executes(ctx -> muralla(ctx.getSource())))
+				.then(Commands.literal("audita").executes(ctx -> audita(ctx.getSource())))
 				.then(Commands.literal("revisa").executes(ctx -> revisa(ctx.getSource(), 2))
 						.then(Commands.argument("reinos", IntegerArgumentType.integer(0, 6))
 								.executes(ctx -> revisa(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "reinos")))))
@@ -213,6 +214,28 @@ final class ComandosDestinos {
 		}
 		if (n == 0) {
 			fuente.sendFailure(Component.literal("Destinos Core: por aquí no hay ningún asentamiento con muralla trazado"));
+		}
+		return n;
+	}
+
+	/**
+	 * /destinoscore audita: compara con su plano los asentamientos de alrededor ya generados (muralla, casas y calles)
+	 * y dice cuántos fallos hay de cada clase, con sitios de ejemplo (Auditoria). También sale en el log.
+	 */
+	private static int audita(CommandSourceStack fuente) {
+		ServerLevel level = fuente.getLevel();
+		BlockPos aqui = BlockPos.containing(fuente.getPosition());
+		int n = 0;
+		for (ObrasMundo.Plan plan : ObrasMundo.cerca(level, aqui.getX() >> 4, aqui.getZ() >> 4)) {
+			n++;
+			BlockPos c = plan.caja().getCenter();
+			for (String linea : Auditoria.de(level, plan.que() + " de " + c.getX() + ", " + c.getZ(), plan.piezas())) {
+				DestinosCore.LOG.info("Destinos Core: {}", linea);
+				fuente.sendSuccess(() -> Component.literal(linea), false);
+			}
+		}
+		if (n == 0) {
+			fuente.sendFailure(Component.literal("Destinos Core: por aquí no hay ningún asentamiento trazado"));
 		}
 		return n;
 	}

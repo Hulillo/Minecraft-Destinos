@@ -148,15 +148,20 @@ final class PlanMuralla {
 		return Math.hypot(b[0] - a[0], b[1] - a[1]);
 	}
 
+	/** El suelo que cuenta en (x, z): el más alto entre el sitio y ENTERRADA bloques hacia dentro y hacia fuera. */
+	int sueloEn(IntBinaryOperator alto, int x, int z) {
+		double[] f = fuera(x, z);
+		int dx = (int) Math.round(f[0] * ENTERRADA);
+		int dz = (int) Math.round(f[1] * ENTERRADA);
+		return Math.max(alto.applyAsInt(x, z), Math.max(alto.applyAsInt(x + dx, z + dz), alto.applyAsInt(x - dx, z - dz)));
+	}
+
 	/** El suelo más alto en el vértice y a ENTERRADA bloques; el pie, suavizado a lo largo pero a un bloque de él. */
 	private void pies(IntBinaryOperator alto) {
 		int n = n();
 		int[] suelo = new int[n];
 		for (int k = 0; k < n; k++) {
-			int x = v[k][0];
-			int z = v[k][1];
-			suelo[k] = Math.max(Math.max(alto.applyAsInt(x, z), alto.applyAsInt(x + ENTERRADA, z)),
-					Math.max(alto.applyAsInt(x - ENTERRADA, z), Math.max(alto.applyAsInt(x, z + ENTERRADA), alto.applyAsInt(x, z - ENTERRADA))));
+			suelo[k] = sueloEn(alto, v[k][0], v[k][1]);
 		}
 		for (int k = 0; k < n; k++) {
 			double liso = (suelo[(k + n - 1) % n] + 2.0 * suelo[k] + suelo[(k + 1) % n]) / 4;
@@ -164,7 +169,13 @@ final class PlanMuralla {
 		}
 	}
 
-	/** MURO o CUESTA por la pendiente, sin lienzos sueltos de un solo tramo; agua y castillo. */
+	/** Cuántos tramos empinados seguidos hacen una ladera sin muro; menos, la muralla los salva escalonada (sin hueco). */
+	static final int LADERA = 3;
+
+	/**
+	 * MURO o CUESTA: cuesta, solo las laderas de verdad (LADERA tramos empinados seguidos o más); un escalón suelto del
+	 * terreno no abre un hueco en la muralla. Sin lienzos sueltos de un solo tramo entre dos laderas. Agua y castillo.
+	 */
 	private void tipos(BiPredicate<Integer, Integer> aguaEn) {
 		int n = n();
 		for (int k = 0; k < n; k++) {
@@ -174,6 +185,23 @@ final class PlanMuralla {
 			int mz = (v[k][1] + v[s][1]) / 2;
 			agua[k] = aguaEn.test(v[k][0], v[k][1]) || aguaEn.test(v[s][0], v[s][1]) || aguaEn.test(mx, mz);
 			tapado[k] = enCastillo(v[k][0], v[k][1], -2) && enCastillo(v[s][0], v[s][1], -2);
+		}
+		// las cuestas cortas (menos de LADERA tramos seguidos) vuelven a ser muro
+		Tipo[] crudo = tipo.clone();
+		for (int k = 0; k < n; k++) {
+			if (crudo[k] != Tipo.CUESTA) {
+				continue;
+			}
+			int seguidos = 1;
+			for (int j = 1; j < n && crudo[(k + j) % n] == Tipo.CUESTA; j++) {
+				seguidos++;
+			}
+			for (int j = 1; j < n && crudo[(k + n - j) % n] == Tipo.CUESTA; j++) {
+				seguidos++;
+			}
+			if (seguidos < LADERA) {
+				tipo[k] = Tipo.MURO;
+			}
 		}
 		Tipo[] antes = tipo.clone();
 		for (int k = 0; k < n; k++) {
@@ -301,10 +329,16 @@ final class PlanMuralla {
 
 	/**
 	 * Si la caja (en planta: x0, z0, x1, z1) toca la franja de algún tramo de muro: de un bloque por dentro de la línea
-	 * a uno por fuera del grueso. Lo que la toca no cabe en la capital (la muralla no esquiva nada).
+	 * a uno por fuera del grueso, o alguna de sus torres. Lo que la toca no cabe en la capital (la muralla no esquiva nada).
 	 */
 	boolean pisa(int x0, int z0, int x1, int z1) {
 		int grueso = grueso(nivel);
+		for (Torre t : torres) {
+			int r = RADIO_TORRE + 1;
+			if (t.x() + r >= x0 && t.x() - r <= x1 && t.z() + r >= z0 && t.z() - r <= z1) {
+				return true;
+			}
+		}
 		for (int k = 0; k < n(); k++) {
 			if (!hayMuro(k)) {
 				continue;

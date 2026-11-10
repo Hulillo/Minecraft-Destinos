@@ -543,7 +543,8 @@ public class EstructuraCapital extends Structure {
 		// torres; y su franja, solo suya (lo que la pisa se quita, con su gente)
 		List<StructurePiece> muralla = new ArrayList<>();
 		if (plano.muralla()) {
-			PlanMuralla planMuro = PlanMuralla.traza(cx, cz, nivel, contorno, terreno::alto, terreno::agua, muroCastillo, huecos,
+			// con el suelo de verdad de cada columna (no el interpolado de la rejilla, que no ve cortados ni zanjas)
+			PlanMuralla planMuro = PlanMuralla.traza(cx, cz, nivel, contorno, terreno::exacto, terreno::aguaExacta, muroCastillo, huecos,
 					calles.stream().map(CalleCapital::trozo).toList());
 			despejaFranja(planMuro, casas, gente);
 			MurallaCapital.piezas(planMuro, muralla);

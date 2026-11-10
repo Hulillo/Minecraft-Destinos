@@ -118,6 +118,12 @@ if rica:
     for c in [f"forceload add {rx - 160} {rz - 160} {rx} {rz + 160}", f"forceload add {rx + 16} {rz - 160} {rx + 160} {rz + 160}",
               f"execute positioned {rx} 100 {rz} run destinoscore capital", "destinoscore tablones"]:
         p.stdin.write(c + "\n"); p.stdin.flush(); time.sleep(10)
+# los ojos de la generación: lo generado contra su plano (muralla, casas, calles), en la capital que salió sola, en el
+# pueblo y en la rica; con tiempo para que acaben de generarse los chunks cargados
+time.sleep(30)
+for c in ["execute positioned 196 100 667 run destinoscore audita", "execute positioned 480 100 -1320 run destinoscore audita"] + (
+        [f"execute positioned {rx} 100 {rz} run destinoscore audita"] if rica else []):
+    p.stdin.write(c + "\n"); p.stdin.flush(); time.sleep(8)
 p.stdin.write("stop\n"); p.stdin.flush()
 try:
     p.wait(300)
@@ -162,6 +168,11 @@ print("Cotilleo:", cotilleo.group(0))
 print("Maniquí:", "\n".join(l.rstrip() for l in lineas if "Roberto" in l or "destinos:tmp" in l or "hvprueba" in l))
 if not re.search(r"has the following entity data: \{.*translate: \"destinos\.oficio\.minecraft:farmer", salida):
     sys.exit("el maniquí de prueba no tiene el oficio bajo el nombre")
+auditoria = list(dict.fromkeys(re.sub(r"^.*?(AUDITORIA)", r"\1", l.rstrip()) for l in lineas if "AUDITORIA" in l))
+print("\n=== AUDITORÍA DE LO GENERADO (de momento solo informa) ===")
+print("\n".join(auditoria) if auditoria else "sin respuesta de /destinoscore audita")
+if not auditoria:
+    sys.exit("/destinoscore audita no ha contestado")
 revision = re.search(r"reinos revisados en .*", salida)
 if not revision:
     sys.exit("/destinoscore revisa no ha contestado")

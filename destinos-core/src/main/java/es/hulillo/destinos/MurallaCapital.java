@@ -378,12 +378,23 @@ public final class MurallaCapital extends StructurePiece {
 		}
 	}
 
+	/** Una columna del tramo según el plano: dónde, su pie, lo alto, el suelo del portillo (o SIN_PORTILLO), lo andado y hacia dónde es fuera. */
+	interface Columna {
+		void en(int x, int z, int pie, int arriba, int portillo, double andado, double nx, double nz, boolean caraDeFuera);
+	}
+
+	static final int SIN_PORTILLO = Integer.MIN_VALUE;
+
 	/**
-	 * El tramo de (xa, za) a (xb, zb): cada columna a menos del grueso de la línea, hacia fuera, con el adarve a la
-	 * altura que toca en ese punto. En las puntas, redondeado: así los tramos se empalman sin huecos en los quiebros.
-	 * Fuera quedan solo los portones, el castillo y las torres (que ya están puestas); en los portillos, el paso.
+	 * Las columnas del tramo de (xa, za) a (xb, zb) dentro de caja: las que quedan a menos del grueso de la línea, hacia
+	 * fuera, con el adarve a la altura que toca en ese punto. En las puntas, redondeado: así los tramos se empalman sin
+	 * huecos en los quiebros. Fuera quedan solo los portones, el castillo y las torres. Lo usan la colocación y la
+	 * auditoría: las dos ven las mismas columnas.
 	 */
-	private void tramo(WorldGenLevel level, BoundingBox caja, BlockPos.MutableBlockPos pos) {
+	void recorre(BoundingBox caja, Columna c) {
+		if (torre || ya == Integer.MIN_VALUE) {
+			return;
+		}
 		BoundingBox mia = getBoundingBox();
 		int grueso = PlanMuralla.grueso(nivel);
 		double dx = xb - xa;
@@ -415,19 +426,41 @@ public final class MurallaCapital extends StructurePiece {
 				// empalizada en punta (un tronco sí y otro no, más alto); almenas en el borde de fuera (por dentro queda
 				// el adarve, el paso de ronda por lo alto de la muralla)
 				boolean almena = (x + z) % 2 == 0 && (nivel == 0 || hondo >= grueso - 1.5);
-				// los árboles fuera; pero no la propia empalizada de un tramo vecino (troncos sobre tierra: la tala se
-				// la llevaría entera)
-				if (!esMuralla(level.getBlockState(pos.set(x, SueloNatural.cima(level, x, z), z)))) {
-					SueloNatural.tala(level, caja, x, z);
-				}
 				int[] portillo = portillo(qx, qz);
-				if (portillo != null) {
-					portillo(level, pos, x, z, portillo[2], pie + PlanMuralla.alto(nivel) + (almena ? 1 : 0));
-				} else {
-					columna(level, pos, x, z, pie, pie + PlanMuralla.alto(nivel) + (almena ? 1 : 0), andado + t * largo);
-				}
+				c.en(x, z, pie, pie + PlanMuralla.alto(nivel) + (almena ? 1 : 0), portillo == null ? SIN_PORTILLO : portillo[2], andado + t * largo,
+						nx, nz, hondo >= grueso - 1.5);
 			}
 		}
+	}
+
+	/** Pone el trozo del tramo que cae en caja. */
+	private void tramo(WorldGenLevel level, BoundingBox caja, BlockPos.MutableBlockPos pos) {
+		recorre(caja, (x, z, pie, arriba, portillo, andado, nx, nz, fuera) -> {
+			// los árboles fuera; pero no la propia empalizada de un tramo vecino (troncos sobre tierra: la tala se la
+			// llevaría entera)
+			if (!esMuralla(level.getBlockState(pos.set(x, SueloNatural.cima(level, x, z), z)))) {
+				SueloNatural.tala(level, caja, x, z);
+			}
+			if (portillo != SIN_PORTILLO) {
+				portillo(level, pos, x, z, portillo, arriba);
+			} else {
+				columna(level, pos, x, z, pie, arriba, andado);
+			}
+		});
+	}
+
+	/** Si el bloque es de esta muralla (su material, o la reja sobre el agua). */
+	boolean deMuralla(BlockState b) {
+		return esMuralla(b) || b.is(cimiento(false).getBlock()) || b.is(cimiento(true).getBlock()) || b.is(Blocks.IRON_BARS)
+				|| b.is(Blocks.SPRUCE_FENCE);
+	}
+
+	boolean esTorre() {
+		return torre;
+	}
+
+	int nivel() {
+		return nivel;
 	}
 
 	private boolean enTorre(int x, int z) {

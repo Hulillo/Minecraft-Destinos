@@ -166,6 +166,27 @@ final class TerrenoCapital {
 		return (int) Math.round(a * (1 - tz) + b * tz);
 	}
 
+	/** Columnas leídas una a una del generador (alto, agua), para lo que no puede fiarse de la rejilla interpolada. */
+	private final java.util.Map<Long, int[]> exactas = new java.util.HashMap<>();
+
+	private int[] exacta(int x, int z) {
+		return exactas.computeIfAbsent(Geo.clave(x, z), k -> columna(ctx, x, z));
+	}
+
+	/**
+	 * La altura de arriba en (x, z) leída del generador en esa misma columna, sin interpolar. La rejilla (un punto cada
+	 * PASO bloques) no ve un cortado, una zanja o un río estrecho entre dos puntos: lo que tiene que casar con el suelo
+	 * bloque a bloque (la muralla) pregunta aquí. Cada consulta nueva cuesta lo que un punto de la rejilla.
+	 */
+	int exacto(int x, int z) {
+		return exacta(x, z)[0];
+	}
+
+	/** Si en la columna (x, z) hay agua de al menos dos de hondo, leída del generador en esa misma columna. */
+	boolean aguaExacta(int x, int z) {
+		return exacta(x, z)[1] >= 2;
+	}
+
 	/** Si en (x, z) hay agua (el punto de la rejilla más cercano). */
 	boolean agua(int x, int z) {
 		return agua[punto(Math.round((x - x0) / (float) PASO), Math.round((z - z0) / (float) PASO))];

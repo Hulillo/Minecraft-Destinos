@@ -141,21 +141,27 @@ public final class PruebaMuralla {
 		int muros = 0;
 		for (int k = 0; k < n; k++) {
 			int[] v = p.v[k];
-			int suelo = Integer.MIN_VALUE;
-			for (int[] d : new int[][] {{0, 0}, {2, 0}, {-2, 0}, {0, 2}, {0, -2}}) {
-				suelo = Math.max(suelo, alto.applyAsInt(v[0] + d[0], v[1] + d[1]));
-			}
+			int suelo = p.sueloEn(alto, v[0], v[1]);
 			if (Math.abs(p.pie[k] - suelo) > 1) {
 				falla(caso, "vértice " + k + " con el pie a " + p.pie[k] + " y el suelo a " + suelo);
 			}
 			int s = p.siguiente(k);
 			if (p.tipo[k] == PlanMuralla.Tipo.MURO) {
 				muros++;
-				if (Math.abs(p.pie[s] - p.pie[k]) > Math.max(1, p.largo(k) * PlanMuralla.PENDIENTE)) {
-					falla(caso, "lienzo " + k + " demasiado empinado");
-				}
 				if (p.tipo[(k + n - 1) % n] == PlanMuralla.Tipo.CUESTA && p.tipo[s] == PlanMuralla.Tipo.CUESTA) {
 					falla(caso, "lienzo suelto " + k + " entre dos laderas");
+				}
+			}
+		}
+		// ninguna ladera sin muro más corta que LADERA: un escalón suelto del terreno no abre un hueco
+		for (int k = 0; k < n; k++) {
+			if (p.tipo[k] == PlanMuralla.Tipo.CUESTA && p.tipo[(k + n - 1) % n] == PlanMuralla.Tipo.MURO) {
+				int seguidos = 0;
+				while (seguidos < n && p.tipo[(k + seguidos) % n] == PlanMuralla.Tipo.CUESTA) {
+					seguidos++;
+				}
+				if (seguidos < PlanMuralla.LADERA) {
+					falla(caso, "hueco de ladera de solo " + seguidos + " tramos en " + k);
 				}
 			}
 		}
