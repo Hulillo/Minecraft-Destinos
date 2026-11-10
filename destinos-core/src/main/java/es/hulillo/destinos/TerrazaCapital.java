@@ -140,9 +140,6 @@ public final class TerrazaCapital extends StructurePiece {
 	 * Minecraft amoldó para ellas no se deshace, y el salto con el bancal de al lado lo sujeta un muro.
 	 */
 	void encaja(java.util.List<CalleCapital> calles, java.util.List<? extends StructurePiece> obras) {
-		for (CalleCapital c : calles) {
-			c.encaja(this);
-		}
 		for (StructurePiece o : obras) {
 			BoundingBox b = o.getBoundingBox();
 			if (b.getXSpan() <= 2 && b.getZSpan() <= 2) {
@@ -157,6 +154,11 @@ public final class TerrazaCapital extends StructurePiece {
 					fija(x, z, y);
 				}
 			}
+		}
+		// las calles, lo último: donde pasan pegadas a una casa o entran en el borde de una plaza, manda su suelo (y el
+		// caminito de cada puerta llega hasta la calle)
+		for (CalleCapital c : calles) {
+			c.encaja(this);
 		}
 	}
 

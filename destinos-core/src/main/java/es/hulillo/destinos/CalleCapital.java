@@ -184,7 +184,8 @@ public final class CalleCapital extends StructurePiece {
 				if (Math.hypot(x0 + t * dx - x, z0 + t * dz - z) > r + 0.3) {
 					continue;
 				}
-				if (!molde || y0 == SIN_ALTURA) {
+				// sin tocar donde puede haber puente (una calle que no va por tierra); los caminitos de las puertas sí
+				if (y0 == SIN_ALTURA || !molde && puente) {
 					terrazas.suelta(x, z);
 				} else {
 					terrazas.fija(x, z, (int) Math.floor(y0 + t * (y1 - y0)));
