@@ -236,6 +236,44 @@ public final class ObrasMundo {
 		}
 	}
 
+	/** Lo que baja como mucho el cimiento de una casa buscando suelo. */
+	private static final int CIMIENTO_CASA = 12;
+
+	/**
+	 * Cimiento bajo una casa ya puesta: bajo cada columna de su suelo (lo más bajo de la casa en los dos primeros
+	 * bloques de su caja), hasta tocar suelo firme, a través de aire o agua. Un río que excava después, o una orilla,
+	 * la dejaban colgando. De tierra bajo el césped del jardín; de piedra bajo lo demás.
+	 */
+	private static void cimienta(WorldGenLevel region, BoundingBox b, BoundingBox caja) {
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+		for (int x = Math.max(b.minX(), caja.minX()); x <= Math.min(b.maxX(), caja.maxX()); x++) {
+			for (int z = Math.max(b.minZ(), caja.minZ()); z <= Math.min(b.maxZ(), caja.maxZ()); z++) {
+				int pie = Integer.MIN_VALUE;
+				net.minecraft.world.level.block.state.BlockState base = null;
+				for (int y = b.minY(); y <= b.minY() + 2 && pie == Integer.MIN_VALUE; y++) {
+					net.minecraft.world.level.block.state.BlockState s = region.getBlockState(pos.set(x, y, z));
+					if (!s.isAir() && !s.canBeReplaced() && s.getFluidState().isEmpty()) {
+						pie = y;
+						base = s;
+					}
+				}
+				if (pie == Integer.MIN_VALUE) {
+					continue;
+				}
+				net.minecraft.world.level.block.state.BlockState relleno = base.is(net.minecraft.tags.BlockTags.DIRT)
+						? net.minecraft.world.level.block.Blocks.DIRT.defaultBlockState()
+						: net.minecraft.world.level.block.Blocks.COBBLESTONE.defaultBlockState();
+				for (int y = pie - 1; y >= pie - CIMIENTO_CASA && y > region.getMinY(); y--) {
+					net.minecraft.world.level.block.state.BlockState s = region.getBlockState(pos.set(x, y, z));
+					if (!s.isAir() && !s.canBeReplaced()) {
+						break;
+					}
+					region.setBlock(pos, relleno, 2);
+				}
+			}
+		}
+	}
+
 	/** Quita los medios bloques de terreno de los mods (Terrain Slabs…) de las columnas de la caja b (y uno alrededor) dentro de caja. */
 	private static void sinLosas(WorldGenLevel region, BoundingBox b, BoundingBox caja) {
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -301,6 +339,9 @@ public final class ObrasMundo {
 					}
 					long t = System.nanoTime();
 					pieza.postProcess(region, estructuras, generador, azar, caja, cp, plan.pivote());
+					if (pieza instanceof net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece && seRepasa(pieza)) {
+						cimienta(region, pieza.getBoundingBox(), caja);
+					}
 					TiemposPiezas.suma(pieza, System.nanoTime() - t);
 				}
 			}
