@@ -157,6 +157,8 @@ public final class CalleCapital extends StructurePiece {
 		double dz = z1 - z0;
 		double l2 = dx * dx + dz * dz;
 		// el pretil, unido a lo largo si el tramo va casi recto por un eje; en diagonal, postes sueltos
+		// lo que sube la calle por cada bloque que avanza
+		double pendiente = l2 == 0 || y0 == SIN_ALTURA ? 0 : Math.abs(y1 - y0) / Math.sqrt(l2);
 		Boolean aLoLargoDeZ = Math.abs(dz) >= 2 * Math.abs(dx) ? Boolean.TRUE : Math.abs(dx) >= 2 * Math.abs(dz) ? Boolean.FALSE : null;
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 		for (int x = ax; x <= bx; x++) {
@@ -170,8 +172,9 @@ public final class CalleCapital extends StructurePiece {
 				SueloNatural.tala(level, caja, x, z);
 				double yf = y0 == SIN_ALTURA ? 0 : y0 + t * (y1 - y0);
 				int y = y0 == SIN_ALTURA ? SIN_ALTURA : (int) Math.floor(yf);
-				// en cuesta, a medio camino de un bloque al siguiente va un escalón (la calle sube en escalinata)
-				boolean escalon = y0 != SIN_ALTURA && y1 != y0 && yf - y >= 0.5;
+				// en cuesta, justo antes de cada subida de un bloque va una fila de escalones (solo una: la de la
+				// columna cuya vecina cuesta arriba ya está un bloque más alta)
+				boolean escalon = y0 != SIN_ALTURA && y1 != y0 && Math.floor(yf + pendiente) > y;
 				BlockState s = SueloNatural.superficie(level, pos, x, z);
 				if (s.is(Blocks.WATER)) {
 					if ((puente || madera) && d <= r + 1.3) {

@@ -285,6 +285,9 @@ public final class ObrasMundo {
 				}
 			}
 		}
+		if (repaso && n > 0) {
+			TroncosSueltos.quita(region, caja);
+		}
 		if (repaso && chunk instanceof net.minecraft.world.level.chunk.ProtoChunk proto) {
 			desatasca(region, proto);
 		}
