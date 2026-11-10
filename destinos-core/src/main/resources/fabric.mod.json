@@ -15,6 +15,7 @@
 	"mixins": [
 		"destinos_core.mixins.json",
 		{"config": "destinos_core.diorama.mixins.json", "environment": "client"},
+		{"config": "destinos_core.cliente.mixins.json", "environment": "client"},
 		"destinos_core.tornados.mixins.json"
 	],
 	"depends": {

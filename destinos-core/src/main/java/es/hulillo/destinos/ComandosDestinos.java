@@ -9,7 +9,6 @@ import java.util.function.BiConsumer;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
@@ -17,8 +16,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.Heightmap;
-import net.minecraft.world.level.levelgen.structure.Structure;
-import net.minecraft.world.level.levelgen.structure.StructureStart;
 
 /** /destinoscore: lo que usa el datapack (territorio), diagnósticos y la política viva. */
 final class ComandosDestinos {
@@ -38,6 +35,8 @@ final class ComandosDestinos {
 				.then(Commands.literal("territorio").executes(ctx -> territorio(ctx.getSource())))
 				.then(Commands.literal("estado").executes(ctx -> estado(ctx.getSource())))
 				.then(Commands.literal("capital").executes(ctx -> capital(ctx.getSource())))
+				.then(Commands.literal("pueblos").executes(ctx -> pueblos(ctx.getSource())))
+				.then(Commands.literal("cotilleo").executes(ctx -> cotilleo(ctx.getSource())))
 				.then(Commands.literal("revisa").executes(ctx -> revisa(ctx.getSource(), 2))
 						.then(Commands.argument("reinos", IntegerArgumentType.integer(0, 6))
 								.executes(ctx -> revisa(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "reinos")))))
@@ -172,6 +171,29 @@ final class ComandosDestinos {
 		return 1;
 	}
 
+	/**
+	 * v0.6.3 Para los cotilleos de Humanoid Villagers (destinos:humvil/cotilleos): deja en el storage
+	 * destinos:cotilleo lo que se sabe del sitio donde se ejecuta (PoliticaMundo.cotilleo). 1 si hay algo que contar,
+	 * 0 si no (sin datapack, sin la zona calculada o fuera del mundo normal). Sin mensajes: lo llama una función.
+	 */
+	private static int cotilleo(CommandSourceStack fuente) {
+		MinecraftServer server = fuente.getServer();
+		MapaTerreno m = DestinosCore.mapa(server);
+		PoliticaMundo pol = DestinosCore.politica();
+		if (m == null || pol == null || fuente.getLevel().dimension() != Level.OVERWORLD) {
+			return 0;
+		}
+		BlockPos pos = BlockPos.containing(fuente.getPosition());
+		MapaTerreno.Resultado r = m.consultaSiLista(pos.getX(), pos.getZ());
+		if (r == null) {
+			return 0;
+		}
+		r = pol.aplica(r);
+		server.getCommandStorage().set(Identifier.fromNamespaceAndPath("destinos", "cotilleo"),
+				pol.cotilleo(server, r.dcx(), r.dcz(), r.kx(), r.kz(), r.salvaje()));
+		return 1;
+	}
+
 	private static int estado(CommandSourceStack fuente) {
 		MapaTerreno m = DestinosCore.mapa(fuente.getServer());
 		String texto = m == null
@@ -218,24 +240,56 @@ final class ComandosDestinos {
 			fuente.sendFailure(Component.literal("Destinos Core: por aquí no hay ningún reino con capital"));
 			return 0;
 		}
-		Structure estructura = level.registryAccess().lookupOrThrow(Registries.STRUCTURE)
-				.getValue(Identifier.fromNamespaceAndPath(DestinosCore.MOD_ID, "capital"));
-		if (estructura == null) {
-			fuente.sendFailure(Component.literal("Destinos Core: no está registrada la estructura destinos_core:capital"));
-			return 0;
-		}
-		StructureStart start = level.getChunk(cap.x() >> 4, cap.z() >> 4).getStartForStructure(estructura);
-		String delInicio = start == null || !start.isValid()
-				? "su chunk NO tiene la capital"
-				: "su chunk tiene la capital: " + start.getPieces().size() + " piezas, de " + start.getBoundingBox().minX() + ", "
-						+ start.getBoundingBox().minZ() + " a " + start.getBoundingBox().maxX() + ", " + start.getBoundingBox().maxZ();
-		boolean conoce = !level.getChunk(aqui).getReferencesForStructure(estructura).isEmpty();
-		boolean dentro = level.structureManager().getStructureWithPieceAt(aqui, estructura).isValid();
+		// el plano de la capital (ObrasMundo): lo que se construye en cada chunk nuevo que toca
+		ObrasMundo.Plan plan = ObrasMundo.plan(level, ObrasMundo.CAPITAL, cap.x(), cap.z());
+		String delPlano = plan.caja() == null
+				? "su plano está VACÍO"
+				: "su plano tiene " + plan.piezas().size() + " piezas, de " + plan.caja().minX() + ", " + plan.caja().minZ() + " a "
+						+ plan.caja().maxX() + ", " + plan.caja().maxZ();
+		boolean dentro = plan.caja() != null && plan.piezas().stream()
+				.anyMatch(pz -> !(pz instanceof AdornoCapital) && pz.getBoundingBox().isInside(aqui));
 		String texto = "Destinos Core: capital del reino en " + cap.x() + ", " + cap.z() + " (chunk " + (cap.x() >> 4) + ", "
-				+ (cap.z() >> 4) + ", nivel " + cap.nivel() + ") · " + delInicio + " · este chunk "
-				+ (conoce ? "la conoce" : "NO la conoce") + (dentro ? " · estás dentro de una pieza" : "");
+				+ (cap.z() >> 4) + ", nivel " + cap.nivel() + ") · " + delPlano + (dentro ? " · estás dentro de una pieza" : "");
 		DestinosCore.LOG.info(texto);
 		fuente.sendSuccess(() -> Component.literal(texto), false);
+		return 1;
+	}
+
+	/**
+	 * /destinoscore pueblos: los pueblos propios (v0.6.3) de los 5×5 ducados alrededor, del más cercano al más lejano,
+	 * con su oficio y su sitio. Se eligen fuera del hilo del servidor (miran el terreno) y contesta al acabar.
+	 */
+	private static int pueblos(CommandSourceStack fuente) {
+		MinecraftServer server = fuente.getServer();
+		MapaTerreno m = DestinosCore.mapa(server);
+		if (m == null) {
+			fuente.sendFailure(Component.literal("Destinos Core: esperando al datapack (no hay sal todavía)"));
+			return 0;
+		}
+		BlockPos aqui = BlockPos.containing(fuente.getPosition());
+		int dcx = Geo.celdaDucado(aqui.getX());
+		int dcz = Geo.celdaDucado(aqui.getZ());
+		CompletableFuture.supplyAsync(() -> {
+			long inicio = System.currentTimeMillis();
+			List<MapaTerreno.Pueblo> todos = new ArrayList<>();
+			for (int x = dcx - 2; x <= dcx + 2; x++) {
+				for (int z = dcz - 2; z <= dcz + 2; z++) {
+					todos.addAll(m.pueblos(x, z));
+				}
+			}
+			todos.sort(java.util.Comparator.comparingDouble(p -> aqui.distToCenterSqr(p.x(), aqui.getY(), p.z())));
+			StringBuilder sb = new StringBuilder("Destinos Core: " + todos.size() + " pueblos propios en 5×5 ducados (" + (System.currentTimeMillis() - inicio) + " ms)");
+			for (int k = 0; k < Math.min(10, todos.size()); k++) {
+				MapaTerreno.Pueblo p = todos.get(k);
+				sb.append("\n · ").append(p.tipo()).append(" en ").append(p.x()).append(" ").append(p.z()).append(" (a ")
+						.append((int) Math.sqrt(aqui.distToCenterSqr(p.x(), aqui.getY(), p.z()))).append(" bloques)");
+			}
+			return sb.toString();
+		}).whenComplete((texto, error) -> server.execute(() -> {
+			String linea = error != null ? "Destinos Core: la búsqueda de pueblos ha fallado: " + error : texto;
+			DestinosCore.LOG.info(linea);
+			fuente.sendSuccess(() -> Component.literal(linea), false);
+		}));
 		return 1;
 	}
 

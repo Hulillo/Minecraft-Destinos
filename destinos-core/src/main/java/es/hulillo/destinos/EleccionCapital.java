@@ -33,7 +33,7 @@ final class EleccionCapital {
 	}
 
 	/** Un ducado del reino que puede tener la capital: su puntuación y los 3×3 sitios de tierra donde iría. */
-	private record Candidata(int cx, int cz, double puntos, List<Sitio> sitios, int recursos) {
+	private record Candidata(int cx, int cz, double puntos, List<Sitio> sitios, int recursos, int agua) {
 	}
 
 	private record Sitio(int x, int z, boolean montana) {
@@ -45,7 +45,6 @@ final class EleccionCapital {
 		boolean montana = muestreador.culturaDeMontana(k[0], k[1])
 				&& Math.floorMod(Geo.hash(kx, kz, sal + K_CAPITAL), 100) < PROB_CAPITAL_MONTANA;
 		List<Candidata> candidatas = candidatas(kx, kz, k, montana);
-		int ducadosReino = candidatas.size();
 		// las mejores, mirando de cerca el agua alrededor de cada sitio posible: una capital entre islas o junto a
 		// un lago se queda en la plaza, porque las calles sobre el agua no se ponen
 		candidatas.sort((a, b) -> Double.compare(b.puntos(), a.puntos()));
@@ -80,18 +79,54 @@ final class EleccionCapital {
 			for (Candidata cand : candidatas) {
 				for (Sitio s : cand.sitios()) {
 					if (muestreador.capitalCabe(s.x(), s.z())) {
-						return capital(cand, s, montana, ducadosReino);
+						return capital(cand, s, montana, candidatas);
 					}
 				}
 			}
 			return null;
 		}
-		return capital(ganadora, sitio, montana, ducadosReino);
+		return capital(ganadora, sitio, montana, candidatas);
 	}
 
-	private static MapaTerreno.Capital capital(Candidata cand, Sitio s, boolean montana, int ducadosReino) {
-		double riqueza = riqueza(cand.recursos(), ducadosReino);
-		return new MapaTerreno.Capital(cand.cx(), cand.cz(), s.x(), s.z(), montana && s.montana(), nivel(riqueza), riqueza);
+	private static MapaTerreno.Capital capital(Candidata cand, Sitio s, boolean montana, List<Candidata> candidatas) {
+		double riqueza = riqueza(cand.recursos(), candidatas.size());
+		long ciudad = ciudad(cand, candidatas);
+		return new MapaTerreno.Capital(cand.cx(), cand.cz(), s.x(), s.z(), montana && s.montana(), nivel(riqueza), riqueza, ciudad,
+				puerto(cand, ciudad, candidatas));
+	}
+
+	/**
+	 * El puerto seguro del reino: el ducado (sin contar el de la capital ni el de la ciudad) con más salida al agua,
+	 * mejor mar que río. NINGUNA si el reino no toca el mar ni un río grande.
+	 */
+	private static long puerto(Candidata capital, long ciudad, List<Candidata> candidatas) {
+		Candidata mejor = null;
+		for (Candidata c : candidatas) {
+			if (c == capital || Geo.clave(c.cx(), c.cz()) == ciudad || c.agua() <= 0) {
+				continue;
+			}
+			if (mejor == null || c.agua() > mejor.agua() || c.agua() == mejor.agua() && c.puntos() > mejor.puntos()) {
+				mejor = c;
+			}
+		}
+		return mejor == null ? MapaTerreno.Capital.NINGUNA : Geo.clave(mejor.cx(), mejor.cz());
+	}
+
+	/**
+	 * v0.6.3: la ciudad del reino, en el ducado más rico después del de la capital (a igual riqueza, el de más
+	 * puntos). NINGUNA si el reino no tiene otro ducado donde quepa.
+	 */
+	private static long ciudad(Candidata capital, List<Candidata> candidatas) {
+		Candidata mejor = null;
+		for (Candidata c : candidatas) {
+			if (c == capital) {
+				continue;
+			}
+			if (mejor == null || c.recursos() > mejor.recursos() || c.recursos() == mejor.recursos() && c.puntos() > mejor.puntos()) {
+				mejor = c;
+			}
+		}
+		return mejor == null ? MapaTerreno.Capital.NINGUNA : Geo.clave(mejor.cx(), mejor.cz());
 	}
 
 	/** Los ducados con señor del reino cerca de su centro (k), con sus puntos sin contar el agua. */
@@ -122,6 +157,8 @@ final class EleccionCapital {
 		int tierra = 0;
 		int alta = Integer.MIN_VALUE;
 		int baja = Integer.MAX_VALUE;
+		int mar = 0;
+		int rios = 0;
 		List<Sitio> sitios = new ArrayList<>();
 		for (int dz = -1; dz <= 1; dz++) {
 			for (int dx = -1; dx <= 1; dx++) {
@@ -129,6 +166,7 @@ final class EleccionCapital {
 				int z = c[1] + dz * PASO_CAPITAL;
 				MapaTerreno.Casilla t = muestreador.muestra(x, z);
 				if (t.oceano()) {
+					mar++;
 					continue;
 				}
 				tierra++;
@@ -139,6 +177,7 @@ final class EleccionCapital {
 				puntos += Recursos.comida(rec) * 0.5;
 				if (t.rio()) {
 					puntos += 1;
+					rios++;
 				}
 				if (t.montana()) {
 					puntos += montana ? 2 : -1;
@@ -155,7 +194,8 @@ final class EleccionCapital {
 		double dx = c[0] - k[0];
 		double dz = c[1] - k[1];
 		puntos += tierra * 0.5 - Math.sqrt(dx * dx + dz * dz) / 600.0;
-		return new Candidata(cx, cz, puntos, sitios, recursos);
+				// salida al agua para el puerto: el mar pesa más que el río
+		return new Candidata(cx, cz, puntos, sitios, recursos, mar * 3 + rios);
 	}
 
 	/**

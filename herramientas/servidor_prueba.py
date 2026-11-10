@@ -11,6 +11,14 @@ open(os.path.join(RUN, "server.properties"), "w").write(
     "online-mode=false\nlevel-seed=184467221\nspawn-protection=0\nsync-chunk-writes=false\n"
     # sin jugadores el servidor se pausa a los 60 s y deja de hacer ticks (los tablones se ponen en un tick)
     "pause-when-empty-seconds=-1\n")
+# Humanoid Villagers no está en el servidor de prueba: su predicado de ids, de mentira, para probar el oficio del maniquí
+HV = os.path.join(RUN, "world", "datapacks", "humvil_de_prueba")
+os.makedirs(os.path.join(HV, "data", "humvil", "predicate", "lib"), exist_ok=True)
+open(os.path.join(HV, "pack.mcmeta"), "w").write('{"pack":{"description":"prueba","min_format":88,"max_format":99}}')
+open(os.path.join(HV, "data", "humvil", "predicate", "lib", "check_id.json"), "w").write(
+    '{"condition":"minecraft:value_check","value":{"type":"minecraft:score","target":{"type":"minecraft:fixed","name":"$id"},'
+    '"score":"humvil.id"},"range":{"min":{"type":"minecraft:score","target":{"type":"minecraft:context","target":"this"},'
+    '"score":"humvil.id"},"max":{"type":"minecraft:score","target":{"type":"minecraft:context","target":"this"},"score":"humvil.id"}}}')
 
 # La zona se calcula en segundo plano: se repite geo/territorio hasta que #tlisto sea 1
 ESPERA = ["scoreboard players set #vx dr.calc 1234", "scoreboard players set #vz dr.calc -5678",
@@ -33,8 +41,28 @@ COMANDOS = [
     "data get storage destinos:politica turno",
     # la capital (el pueblo del bioma, agrandado): que se pueda generar
     "place structure destinos_core:capital 0 80 600",
+    # v0.6.3: un pueblo propio (con /place sale una aldea) y los pueblos de los ducados de alrededor
+    "forceload add 400 -1400 560 -1240",
+    "place structure destinos_core:pueblo 480 80 -1320",
+    "destinoscore pueblos",
     # la capital que ha salido sola al cargar los chunks: que su chunk la tenga y los de alrededor la conozcan
     "execute positioned 196 100 667 run destinoscore capital",
+    # los cotilleos de Humanoid Villagers: lo que se sabe de la zona ya calculada al principio (#vx #vz, reino)
+    "execute positioned 1234 100 -5678 run destinoscore cotilleo",
+    "data get storage destinos:cotilleo hay",
+    # el oficio bajo el nombre del maniquí de Humanoid Villagers (aldeano invisible + maniquí con el mismo humvil.id)
+    "scoreboard objectives add humvil.id dummy",
+    "scoreboard objectives add humvil.transform.gender dummy",
+    'summon minecraft:villager -80 200 600 {NoAI:1b,NoGravity:1b,Tags:["humvil.human.transformed","hvprueba"],'
+    'VillagerData:{profession:"minecraft:farmer",level:1,type:"minecraft:plains"}}',
+    'summon minecraft:mannequin -80 200 600 {NoGravity:1b,CustomNameVisible:1b,CustomName:"Roberto",hide_description:1b,'
+    'Tags:["humvil.human","hvprueba"]}',
+    "scoreboard players set @e[tag=hvprueba] humvil.id 7",
+    "execute as @e[type=minecraft:mannequin,tag=hvprueba] at @s run function destinos:humvil/oficio",
+    "data get entity @e[type=minecraft:mannequin,tag=hvprueba,limit=1] description",
+    "data get entity @e[type=minecraft:mannequin,tag=hvprueba,limit=1] hide_description",
+    "data get entity @e[type=minecraft:mannequin,tag=hvprueba,limit=1] CustomNameVisible",
+    "data get storage destinos:tmp hv",
     # encargos: lo que ofrecería hoy un tablón en la zona ya calculada
     "destinoscore encargos 1234 -5678",
     "destinoscore tablones",
@@ -114,8 +142,25 @@ if capitales < 1:
     print("\n".join(l.rstrip() for l in lineas if "capital" in l or "structure" in l.lower())[-3000:])
     sys.exit("la capital de prueba no se ha generado")
 diag = re.search(r"capital del reino en .*", salida)
-if not diag or "su chunk tiene la capital" not in diag.group(0) or "NO la conoce" in diag.group(0):
+if not diag or "su plano tiene" not in diag.group(0):
     sys.exit("la capital del mapa no está entera en el mundo: " + (diag.group(0) if diag else "sin /destinoscore capital"))
+if not re.search(r"Destinos Core: aldea en ", salida):
+    print("\n".join(l.rstrip() for l in lineas if "aldea" in l or "pueblo" in l.lower())[-3000:])
+    sys.exit("el pueblo de prueba (destinos_core:pueblo) no se ha generado")
+pueblos = re.search(r"pueblos propios en 5×5 ducados.*", salida)
+if not pueblos:
+    sys.exit("/destinoscore pueblos no ha contestado")
+print("Pueblos:", pueblos.group(0))
+# la generación nueva (ObrasMundo): la capital la construyen sus chunks al decorarse, sin depender de la estructura
+if not re.search(r"se empieza a construir capital de ", salida):
+    sys.exit("ningún chunk ha empezado a construir la capital (ObrasMundo)")
+cotilleo = re.search(r"destinos:cotilleo has the following contents: .*", salida)
+if not cotilleo or "reino" not in cotilleo.group(0):
+    sys.exit("destinoscore cotilleo no ha dejado nada que contar: " + (cotilleo.group(0) if cotilleo else "sin respuesta"))
+print("Cotilleo:", cotilleo.group(0))
+print("Maniquí:", "\n".join(l.rstrip() for l in lineas if "Roberto" in l or "destinos:tmp" in l or "hvprueba" in l))
+if not re.search(r"has the following entity data: \{.*translate: \"destinos\.oficio\.minecraft:farmer", salida):
+    sys.exit("el maniquí de prueba no tiene el oficio bajo el nombre")
 revision = re.search(r"reinos revisados en .*", salida)
 if not revision:
     sys.exit("/destinoscore revisa no ha contestado")
@@ -124,11 +169,11 @@ if "capitales en el agua: 0" not in revision.group(0):
 if not rica:
     print("AVISO: no hay ninguna capital rica en los reinos revisados; el castillo no se ha probado")
 else:
-    if not re.search(r"capital en .*muralla de nivel 2, con castillo", salida):
+    if not re.search(r"capital en .*\(nivel 2, con castillo", salida):
         print("\n".join(l.rstrip() for l in lineas if "Destinos Core" in l)[-4000:])
         sys.exit("la capital rica no se ha generado con su castillo")
-    if not re.search(rf"capital del reino en {rx}, {rz} .*su chunk tiene la capital", salida):
-        sys.exit("la capital rica no está en su chunk")
+    if not re.search(rf"capital del reino en {rx}, {rz} .*su plano tiene", salida):
+        sys.exit("la capital rica no tiene plano")
 if "Tried to load a DUMMY block entity" in salida:
     sys.exit("hay bloques con datos (estandartes, barriles…) puestos fuera de su sitio: " + re.search(r"Tried to load a DUMMY.*", salida).group(0))
 if "plaza mayor de la capital" not in salida:

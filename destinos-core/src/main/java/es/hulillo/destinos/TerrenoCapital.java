@@ -15,8 +15,8 @@ import net.minecraft.world.level.levelgen.structure.Structure;
 
 /**
  * El terreno de una capital antes de generarlo: una rejilla de PASO bloques con la altura de arriba (el agua cuenta
- * como superficie) y si hay agua de al menos dos de hondo, según el generador. Cada punto es una sola consulta (la
- * columna entera, que da suelo y agua a la vez): cada consulta monta el ruido del generador entero (es casi todo lo
+ * como superficie) y si hay agua de al menos dos de hondo, según el generador. Cada punto es una sola consulta (de
+ * arriba hasta el suelo, que da suelo y agua a la vez): cada consulta monta el ruido del generador entero (es casi todo lo
  * que tarda en trazarse una capital), así que todo el trazado mira esta rejilla y no vuelve a preguntar. Entre
  * puntos, la altura se interpola.
  */
@@ -83,9 +83,37 @@ final class TerrenoCapital {
 
 	/** Lee la columna del generador en el punto (i, j) de la rejilla. */
 	private void calcula(int i, int j) {
-		int arriba = ctx.heightAccessor().getMinY() + ctx.heightAccessor().getHeight() - 1;
+		int[] c = columna(ctx, x0 + i * PASO, z0 + j * PASO);
+		agua[i * lado + j] = c[1] >= 2;
+		alto[i * lado + j] = c[0];
+	}
+
+	/**
+	 * {altura de arriba (el agua cuenta), bloques de agua o lava encima del fondo} en (x, z) según el generador, sin
+	 * generar el chunk. Con el generador de ruido de siempre la columna se recorre de arriba abajo y se para en el primer
+	 * bloque sólido: lo de debajo no hace falta (era un tercio de lo que se tardaba) y basta un recorrido para el suelo
+	 * y el agua (antes, dos). Con otro generador, la columna entera.
+	 */
+	static int[] columna(Structure.GenerationContext ctx, int x, int z) {
 		int abajo = ctx.heightAccessor().getMinY();
-		NoiseColumn col = ctx.chunkGenerator().getBaseColumn(x0 + i * PASO, z0 + j * PASO, ctx.heightAccessor(), ctx.randomState());
+		if (ctx.chunkGenerator() instanceof es.hulillo.destinos.mixin.AccesoNoiseBasedChunkGenerator ruido) {
+			int[] fluidos = {0};
+			java.util.OptionalInt encima = ruido.destinos$recorre(ctx.heightAccessor(), ctx.randomState(), x, z, null, s -> {
+				if (s.isAir()) {
+					return false;
+				}
+				if (esFluido(s)) {
+					fluidos[0]++;
+					return false;
+				}
+				return true;
+			});
+			// da la altura de encima del bloque en que se para
+			int fondo = encima.isPresent() ? encima.getAsInt() - 1 : abajo;
+			return new int[] {fondo + fluidos[0], fluidos[0]};
+		}
+		int arriba = abajo + ctx.heightAccessor().getHeight() - 1;
+		NoiseColumn col = ctx.chunkGenerator().getBaseColumn(x, z, ctx.heightAccessor(), ctx.randomState());
 		int y = arriba;
 		while (y > abajo && col.getBlock(y).isAir()) {
 			y--;
@@ -94,8 +122,7 @@ final class TerrenoCapital {
 		while (y > abajo && esFluido(col.getBlock(y))) {
 			y--;
 		}
-		agua[i * lado + j] = superficie - y >= 2;
-		alto[i * lado + j] = superficie;
+		return new int[] {superficie, superficie - y};
 	}
 
 	/** El índice del punto (i, j), calculándolo si aún no lo está. */

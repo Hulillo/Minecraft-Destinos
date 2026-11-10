@@ -37,8 +37,16 @@ import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemp
  */
 final class CatalogoCapital {
 	/** Una casa que se puede poner: su elemento y, sin girar, dónde está su entrada y hacia dónde mira. */
-	record Modelo(StructurePoolElement elemento, BlockPos entrada, Direction mira, int ancho, int largo) {
+	/**
+	 * Una casa del catálogo. puerta: a qué altura del puzle de la entrada está el pie de su puerta (0 o 1; uno menos si
+	 * delante lleva un peldaño, para que el peldaño quede encima del suelo), o
+	 * SIN_PUERTA si no se encontró: unas casas llevan el puzle a la altura del suelo de la calle y otras a la del
+	 * umbral, y por eso unas salían subidas un escalón y otras hundidas.
+	 */
+	record Modelo(StructurePoolElement elemento, BlockPos entrada, Direction mira, int ancho, int largo, int puerta) {
 	}
+
+	static final int SIN_PUERTA = Integer.MIN_VALUE;
 
 	/** Lo más larga que puede ser una casa del catálogo (las más grandes no caben en las parcelas). */
 	static final int MAX_CASA = 16;
@@ -152,13 +160,106 @@ final class CatalogoCapital {
 		if (ancho < 5 || largo > MAX_CASA || b.getYSpan() < 4) {
 			return Optional.empty();
 		}
-		for (StructureTemplate.JigsawBlockInfo j : e.getShuffledJigsawBlocks(plantillas, BlockPos.ZERO, Rotation.NONE, RandomSource.create(0))) {
+		List<StructureTemplate.JigsawBlockInfo> puzles = e.getShuffledJigsawBlocks(plantillas, BlockPos.ZERO, Rotation.NONE, RandomSource.create(0));
+		// solo las casas de una pieza: si cuelga de ella otra parte (el piso de arriba, un ala, los animales del
+		// corral…), sola salía a medio hacer o vacía
+		for (StructureTemplate.JigsawBlockInfo j : puzles) {
+			if (!suelta(j.pool().identifier().toString())) {
+				return Optional.empty();
+			}
+		}
+		for (StructureTemplate.JigsawBlockInfo j : puzles) {
 			Direction d = JigsawBlock.getFrontFacing(j.info().state());
 			if (d.getAxis().isHorizontal()) {
-				return Optional.of(new Modelo(e, j.info().pos(), d, ancho, largo));
+				return Optional.of(new Modelo(e, j.info().pos(), d, ancho, largo, puerta(plantillas, e, j.info().pos())));
 			}
 		}
 		return Optional.empty();
+	}
+
+	private static final java.util.regex.Pattern PLANTILLA = java.util.regex.Pattern.compile("Left\\[([a-z0-9_.\\-]+:[a-z0-9_./\\-]+)\\]");
+
+	/**
+	 * La altura del pie de la puerta más cercana a la entrada, respecto a la entrada (solo si es 0 o 1; si no, la
+	 * casa tiene porche con escalones o la puerta está lejos, y vale lo de siempre). La plantilla se saca del nombre
+	 * de la pieza (Single[Left[id]]).
+	 */
+	private static int puerta(StructureTemplateManager plantillas, StructurePoolElement e, BlockPos entrada) {
+		try {
+			java.util.regex.Matcher m = PLANTILLA.matcher(e.toString());
+			if (!m.find()) {
+				return SIN_PUERTA;
+			}
+			Optional<StructureTemplate> t = plantillas.get(Identifier.parse(m.group(1)));
+			if (t.isEmpty()) {
+				return SIN_PUERTA;
+			}
+			net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings ajustes =
+					new net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings();
+			int mejor = SIN_PUERTA;
+			int distancia = Integer.MAX_VALUE;
+			BlockPos pie = null;
+			for (net.minecraft.world.level.block.Block b : Puertas.TODAS) {
+				for (StructureTemplate.StructureBlockInfo i : t.get().filterBlocks(BlockPos.ZERO, ajustes, b)) {
+					if (i.state().getValue(net.minecraft.world.level.block.DoorBlock.HALF)
+							!= net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER) {
+						continue;
+					}
+					int dh = Math.abs(i.pos().getX() - entrada.getX()) + Math.abs(i.pos().getZ() - entrada.getZ());
+					if (dh < distancia) {
+						distancia = dh;
+						mejor = i.pos().getY() - entrada.getY();
+						pie = i.pos();
+					}
+				}
+			}
+			if (distancia > 3 || mejor != 0 && mejor != 1) {
+				return SIN_PUERTA;
+			}
+			// con un peldaño (escalón o losa) pegado a la puerta y un bloque más abajo, la casa sube uno: el peldaño se
+			// apoya encima del suelo en vez de quedar hundido en un hoyo
+			return peldano(t.get(), ajustes, pie) ? mejor - 1 : mejor;
+		} catch (RuntimeException fallo) {
+			return SIN_PUERTA;
+		}
+	}
+
+	/** Todas las puertas que hay (de los mods también), sacadas la primera vez que hacen falta (el registro ya está lleno). */
+	/** Si al lado del pie de la puerta, un bloque más abajo, hay un escalón o una losa (el peldaño de la entrada). */
+	private static boolean peldano(StructureTemplate t,
+			net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings ajustes, BlockPos pie) {
+		java.util.Set<BlockPos> cerca = new java.util.HashSet<>();
+		for (Direction d : Direction.Plane.HORIZONTAL) {
+			cerca.add(pie.below().relative(d));
+		}
+		for (net.minecraft.world.level.block.Block b : Puertas.PELDANOS) {
+			for (StructureTemplate.StructureBlockInfo i : t.filterBlocks(BlockPos.ZERO, ajustes, b)) {
+				if (cerca.contains(i.pos())) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private static final class Puertas {
+		static final List<net.minecraft.world.level.block.Block> TODAS = net.minecraft.core.registries.BuiltInRegistries.BLOCK.stream()
+				.filter(b -> b instanceof net.minecraft.world.level.block.DoorBlock).toList();
+		static final List<net.minecraft.world.level.block.Block> PELDANOS = net.minecraft.core.registries.BuiltInRegistries.BLOCK.stream()
+				.filter(b -> b instanceof net.minecraft.world.level.block.StairBlock || b instanceof net.minecraft.world.level.block.SlabBlock)
+				.toList();
+	}
+
+	/** Las listas a las que puede apuntar un puzle de una casa sin que le falte nada: vacía, calles, gente y adornos. */
+	private static final String[] SUELTAS = {"empty", "street", "terminator", "villagers", "cats", "golem", "decor", "road", "path"};
+
+	private static boolean suelta(String lista) {
+		for (String s : SUELTAS) {
+			if (lista.contains(s)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** La lista de inicio del pueblo, leída con el codec (los campos de JigsawStructure cambian entre versiones). */

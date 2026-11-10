@@ -57,6 +57,7 @@ public final class TerritoriosCliente {
 	private static final Set<Long> EN_GUERRA = new HashSet<>();
 	/** Capitales de los reinos conocidos, para poner su corona en los mapas. */
 	private static List<PaquetePolitica.Capital> capitales = List.of();
+	private static List<PaquetePolitica.Pueblo> pueblos = List.of();
 	/** Si se pintan los reinos en los mapas (la tecla del mapa político lo cambia). */
 	private static boolean visible = Ajustes.leeVisible();
 
@@ -88,6 +89,7 @@ public final class TerritoriosCliente {
 	static void politica(PaquetePolitica p) {
 		turno = p.turno();
 		capitales = List.copyOf(p.capitales());
+		pueblos = List.copyOf(p.pueblos());
 		GUERRAS.clear();
 		EN_GUERRA.clear();
 		for (PaquetePolitica.Guerra g : p.guerras()) {
@@ -114,6 +116,25 @@ public final class TerritoriosCliente {
 
 	public static List<PaquetePolitica.Capital> capitales() {
 		return capitales;
+	}
+
+	/**
+	 * Iconos de los pueblos propios para las capas de JourneyMap y Diorama, en cuadritos de 5×5 (por TipoPueblo:
+	 * puesto, aldea, mina, aserradero, puerto, ciudad): banderita, casa, pico, abeto, ancla y torre.
+	 */
+	public static final String[][] FORMAS_PUEBLO = {
+			{"xxx..", "xxxx.", "x....", "x....", "x...."},
+			{"..x..", ".xxx.", "xxxxx", ".x.x.", ".xxx."},
+			{"xxxxx", "x.x.x", "..x..", "..x..", "..x.."},
+			{"..x..", ".xxx.", "..x..", ".xxx.", "xxxxx"},
+			{"..x..", "xxxxx", "..x..", "x.x.x", ".xxx."},
+			{"x.x.x", "xxxxx", ".xxx.", ".x.x.", ".xxx."}};
+	/** Color de los iconos de los pueblos (pergamino claro). */
+	public static final int COLOR_PUEBLO = 0xEDE3C8;
+
+	/** v0.6.3: los pueblos propios de los ducados conocidos, para su icono en el mapa. */
+	public static List<PaquetePolitica.Pueblo> pueblos() {
+		return pueblos;
 	}
 
 	/** Si hay alguna guerra abierta: sin guerras no hace falta buscar frentes. */

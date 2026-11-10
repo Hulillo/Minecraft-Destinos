@@ -74,6 +74,7 @@ fn("init/load", [
     "scoreboard players operation #salWZ dr.const += #K_JZ dr.const",
     "function destinos:init/tablas",
     "schedule function destinos:bucle 20t replace",
+    "schedule function destinos:humvil/ajusta 40t replace",
 ])
 fn("init/sal", [
     "# Primera carga en este mundo: la sal sale de una secuencia sembrada con la semilla del mundo",
@@ -956,6 +957,8 @@ MAPA = {
     "anio": ("Año %s · turno %s · %s reinos conocidos", "Year %s · turn %s · %s known kingdoms"),
     "vacio": ("Aún no hay mapa: el servidor está calculando los territorios de alrededor…", "No map yet: the server is working out the lands around you…"),
     "leyenda.capital": ("♛ Capital", "♛ Capital"),
+    "leyenda.pueblos": ("⌂ Aldea ⛏ Mina ♠ Aserradero", "⌂ Village ⛏ Mine ♠ Sawmill"),
+    "leyenda.pueblos2": ("⚓ Puerto ♜ Ciudad ⚑ Puesto", "⚓ Port ♜ City ⚑ Outpost"),
     "leyenda.frente": ("Frente de guerra", "War front"),
     "leyenda.salvaje": ("Tierras salvajes", "Wildlands"),
     "leyenda.reciente": ("Cambió de dueño", "Changed hands"),
@@ -1193,6 +1196,121 @@ for i, (a, b) in enumerate(GEO): L(f"destinos.salvaje.{i}", a, b)
 for k, c in CULTURAS.items(): L(f"destinos.cultura.{k}", c["es"], c["en"])
 assert len(LEMAS) == N_LEMAS and len(RASGOS) == N_RASGOS and len(FAMAS) == N_FAMAS and len(GEO) == N_GEO
 
+
+# ---------------------------------------------------------------- Humanoid Villagers (v0.6.3)
+# Con Humanoid Villagers (datapack dentro de un mod: humvil), cada aldeano se vuelve invisible y encima va un maniquí
+# con modelo de jugador, nombre y skin. Dos arreglos, sin tocar su mod:
+#  - que no saque maniquíes con el nombre y la skin de los jugadores del mundo ($human_pool 2 = solo aleatorios): si
+#    no, a veces un aldeano se llama como tú y en sus charlas parece que hablas tú;
+#  - el oficio del aldeano en la línea de debajo del nombre (su "description", que trae "NPC"), y nombre y oficio a la
+#    vista cuando estás a menos de 6 bloques (apuntarle era muy difícil). El oficio se mira cada 2 s, solo cerca de los
+#    jugadores, y solo se escribe si cambia; lo de verlo de cerca, cada medio segundo.
+# Si Humanoid Villagers no está, no hay maniquíes con su etiqueta y nada de esto hace nada.
+OFICIOS = {
+    "minecraft:armorer": (("Armero", "Armera"), "Armorer"),
+    "minecraft:butcher": (("Carnicero", "Carnicera"), "Butcher"),
+    "minecraft:cartographer": (("Cartógrafo", "Cartógrafa"), "Cartographer"),
+    "minecraft:cleric": (("Clérigo", "Clériga"), "Cleric"),
+    "minecraft:farmer": (("Granjero", "Granjera"), "Farmer"),
+    "minecraft:fisherman": (("Pescador", "Pescadora"), "Fisherman"),
+    "minecraft:fletcher": (("Flechero", "Flechera"), "Fletcher"),
+    "minecraft:leatherworker": (("Peletero", "Peletera"), "Leatherworker"),
+    "minecraft:librarian": (("Bibliotecario", "Bibliotecaria"), "Librarian"),
+    "minecraft:mason": (("Cantero", "Cantera"), "Mason"),
+    "minecraft:shepherd": (("Pastor", "Pastora"), "Shepherd"),
+    "minecraft:toolsmith": (("Herrero", "Herrera"), "Toolsmith"),
+    "minecraft:weaponsmith": (("Espadero", "Espadera"), "Weaponsmith"),
+    "minecraft:nitwit": (("Vecino", "Vecina"), "Villager"),
+    "minecraft:none": (("Sin oficio", "Sin oficio"), "Unemployed"),
+    "nino": (("Niño", "Niña"), "Child"),
+    "ambulante": (("Mercader ambulante", "Mercader ambulante"), "Wandering trader"),
+}
+for k, ((m, f), en_) in OFICIOS.items():
+    L(f"destinos.oficio.{k}.m", m, en_); L(f"destinos.oficio.{k}.f", f, en_)
+
+# Cotilleos nuestros para las charlas de Humanoid Villagers (solo con Destinos Core: destinoscore cotilleo deja en el
+# storage destinos:cotilleo el duque, el ducado, el rey, el reino y el enemigo de donde están; ver la variante del mod).
+# Cada charla: lo que tiene que haber (hay.<x>) y sus frases [(quién habla, español, inglés, datos que lleva)].
+COTILLEOS = [
+    ("duque", [(1, "¿Has visto a %s? Dicen que este año sube el tributo.", "Have you seen %s? They say the tithe goes up this year.", ["duque"]),
+               (2, "Mientras no le dé por subir también el pan...", "As long as bread doesn't go up too...", [])]),
+    ("duque", [(1, "En %s mandan los de siempre.", "Same old folk rule over %s.", ["ducado"]),
+               (2, "%s solo se acuerda de nosotros para cobrar.", "%s only remembers us when taxes are due.", ["duque"])]),
+    ("duque", [(1, "Dicen que %s salió a cazar y volvió sin nada.", "They say %s went hunting and came back empty-handed.", ["duque"]),
+               (2, "Como siempre. Los venados de aquí son más listos que los señores.", "As always. Our deer are smarter than our lords.", [])]),
+    ("rey", [(1, "Dicen que %s ya no sale de su castillo.", "They say %s never leaves the castle anymore.", ["rey"]),
+             (2, "Los reyes de %s nunca han pisado el barro.", "The kings of %s never set foot in the mud.", ["reino"])]),
+    ("rey", [(1, "¿Sabes cuántos años tiene %s?", "Do you know how old %s is?", ["rey"]),
+             (2, "Ni idea. Los reyes no envejecen en las monedas.", "No idea. Kings never age on coins.", [])]),
+    ("guerra", [(1, "¿Te has enterado? Estamos en guerra con %s.", "Have you heard? We're at war with %s.", ["enemigo"]),
+                (2, "Ya se llevaron a mi primo en la leva. Ojalá vuelva.", "They already took my cousin in the levy. I hope he comes back.", [])]),
+    ("guerra", [(1, "Si los de %s llegan hasta aquí, yo me echo al monte.", "If the %s lot get this far, I'm off to the hills.", ["enemigo"]),
+                (2, "Calla, que te oye el sargento.", "Hush, the sergeant will hear you.", [])]),
+    ("guerra", [(1, "El grano se va todo al ejército de %s.", "All the grain goes to the army of %s.", ["reino"]),
+                (2, "Y luego nos dirán que no hay pan.", "And then they'll tell us there's no bread.", [])]),
+    ("paz", [(1, "Desde que no hay guerra, el mercado va mejor.", "Since there's no war, the market's doing better.", []),
+             (2, "Ya veremos lo que dura la paz en %s.", "We'll see how long peace lasts in %s.", ["reino"])]),
+]
+for i, (_, frases) in enumerate(COTILLEOS, 1):
+    for j, (_, es_, en_, _) in enumerate(frases, 1):
+        L(f"destinos.cotilleo.{i}.{j}", es_, en_)
+fn("humvil/ajusta", [
+    "# Humanoid Villagers: solo maniquíes aleatorios, nunca con el nombre y la skin de un jugador (2 s después de cargar,",
+    "# cuando su datapack ya ha puesto sus ajustes; si no está, el marcador no existe y esto no hace nada)",
+    "scoreboard players set $human_pool humvil.settings 2",
+    "# su línea de debajo del nombre a la vista (la nuestra, con el oficio): si no, cada tick la vuelve a ocultar",
+    "scoreboard players set $npc_tag humvil.settings 0",
+    "scoreboard players set $custom_npc_tag humvil.settings 0",
+    "schedule function destinos:humvil/oficios 40t replace",
+    "schedule function destinos:humvil/cerca 10t replace",
+])
+fn("humvil/cerca", [
+    "schedule function destinos:humvil/cerca 10t replace",
+    "# nombre y oficio a la vista de cerca (a 6 bloques; se ocultan pasados 8, para que no parpadeen en el borde)",
+    "execute as @e[type=minecraft:mannequin,tag=destinos.hv.ve] at @s unless entity @a[distance=..8] run function destinos:humvil/oculta",
+    "execute as @a at @s as @e[type=minecraft:mannequin,tag=humvil.human,distance=..6] unless data entity @s {CustomNameVisible:1b} run function destinos:humvil/muestra",
+])
+fn("humvil/muestra", [
+    "tag @s add destinos.hv.ve",
+    "data modify entity @s CustomNameVisible set value 1b",
+])
+fn("humvil/oculta", [
+    "tag @s remove destinos.hv.ve",
+    "data modify entity @s CustomNameVisible set value 0b",
+])
+fn("humvil/oficios", [
+    "schedule function destinos:humvil/oficios 40t replace",
+    "# Humanoid Villagers vuelve a sus ajustes al reiniciarse: los nuestros, cada vez",
+    "scoreboard players set $human_pool humvil.settings 2",
+    "scoreboard players set $npc_tag humvil.settings 0",
+    "scoreboard players set $custom_npc_tag humvil.settings 0",
+    "execute as @a at @s as @e[type=minecraft:mannequin,tag=humvil.human,distance=..32] at @s run function destinos:humvil/oficio",
+])
+fn("humvil/oficio", [
+    "# @s: el maniquí de un aldeano; su aldeano (invisible) está debajo y lleva el mismo humvil.id",
+    "scoreboard players operation $id humvil.id = @s humvil.id",
+    "tag @e[type=!minecraft:mannequin,tag=humvil.human.transformed,distance=..3,predicate=humvil:lib/check_id,limit=1] add destinos.hv",
+    "execute unless entity @e[tag=destinos.hv,distance=..3,limit=1] run return 0",
+    'data modify storage destinos:tmp hv set value {p:"minecraft:none",g:"m",antes:""}',
+    "data modify storage destinos:tmp hv.p set from entity @e[tag=destinos.hv,distance=..3,limit=1] VillagerData.profession",
+    'execute if entity @e[tag=destinos.hv,distance=..3,type=minecraft:wandering_trader] run data modify storage destinos:tmp hv.p set value "ambulante"',
+    "# niño: edad negativa (sin el predicado de Humanoid Villagers, que no se puede nombrar si el mod no está)",
+    "execute store result score #edad dr.calc run data get entity @e[tag=destinos.hv,distance=..3,limit=1] Age",
+    'execute if score #edad dr.calc matches ..-1 run data modify storage destinos:tmp hv.p set value "nino"',
+    'execute if score @e[tag=destinos.hv,distance=..3,limit=1] humvil.transform.gender matches 1 run data modify storage destinos:tmp hv.g set value "f"',
+    "tag @e[tag=destinos.hv,distance=..3] remove destinos.hv",
+    "data modify storage destinos:tmp hv.antes set from entity @s description.translate",
+    "function destinos:humvil/etiqueta with storage destinos:tmp hv",
+])
+fn("humvil/etiqueta", [
+    "# Solo si el oficio ha cambiado (escribir en una entidad la vuelve a cargar entera)",
+    'execute store success score #hv dr.calc run data modify storage destinos:tmp hv.antes set value "destinos.oficio.$(p).$(g)"',
+    "execute if score #hv dr.calc matches 0 run return 0",
+    "# primero a la vista: el maniquí oculto no guarda su descripción y la perdería al escribir lo siguiente",
+    "data modify entity @s hide_description set value 0b",
+    'data modify entity @s description set value {translate:"destinos.oficio.$(p).$(g)",fallback:""}',
+])
+
 # ---------------------------------------------------------------- escribir
 if os.path.exists(OUT):
     shutil.rmtree(OUT)
@@ -1241,7 +1359,32 @@ if MOD:
         "#minecraft:is_overworld", {"id": "#c:is_overworld", "required": False}]})
     wj("worldgen/structure/capital.json", {"type": "destinos_core:capital", "biomes": "#destinos_core:capital",
                                            "step": "surface_structures", "spawn_overrides": {},
-                                           "terrain_adaptation": "beard_thin"})
+                                           "terrain_adaptation": "none"})
     wj("worldgen/structure_set/capitales.json", {"structures": [{"structure": "destinos_core:capital", "weight": 1}],
                                                  "placement": {"type": "destinos_core:capital", "salt": 0}})
+    # v0.6.3 Pueblos especializados: un pueblo con oficio por ducado y puestos de vigía en las fronteras, en el sitio
+    # que elige Destinos Core (EleccionPueblo.java), trazados como capitales pequeñas (EstructuraPueblo.java)
+    wj("worldgen/structure/pueblo.json", {"type": "destinos_core:pueblo", "biomes": "#destinos_core:capital",
+                                          "step": "surface_structures", "spawn_overrides": {},
+                                          "terrain_adaptation": "none"})
+    wj("worldgen/structure_set/pueblos.json", {"structures": [{"structure": "destinos_core:pueblo", "weight": 1}],
+                                               "placement": {"type": "destinos_core:pueblo", "salt": 0}})
+    # Los cotilleos: una función más en el pool de charlas de dos de Humanoid Villagers (si el mod no está, el tag
+    # queda suelto y no hace nada). Los nombres se leen del storage al decirlos (interpret: son componentes de texto).
+    def frase(i, j, quien, datos):
+        con = ",".join(f"{{storage:'destinos:cotilleo',nbt:'{d}',interpret:true}}" for d in datos)
+        txt = f"{{translate:'destinos.cotilleo.{i}.{j}'" + (f",with:[{con}]" if datos else "") + "}"
+        return f'{{participant:{quien},text:"{txt}"}}'
+    lineas = ["# Lo que se sabe de aquí (destinoscore cotilleo): si nada, sin cotilleos nuestros",
+              "data remove storage destinos:cotilleo hay",
+              "execute store result score #cot dr.calc at @s run destinoscore cotilleo",
+              "execute unless score #cot dr.calc matches 1 run return 0"]
+    for i, (hay, frases) in enumerate(COTILLEOS, 1):
+        charla = ",".join(frase(i, j, q, d) for j, (q, _, _, d) in enumerate(frases, 1))
+        lineas.append(f"execute if data storage destinos:cotilleo hay.{hay} run data modify storage humvil:pool conversations append value [{charla}]")
+    q = os.path.join(MOD, "data/destinos/function/humvil/cotilleos.mcfunction")
+    open(q, "w", encoding="utf-8").write("\n".join(lineas) + "\n")
+    q = os.path.join(MOD, "data/humvil/tags/function/pool/conversations/2_participants.json")
+    os.makedirs(os.path.dirname(q), exist_ok=True)
+    open(q, "w", encoding="utf-8").write(json.dumps({"replace": False, "values": [{"id": "destinos:humvil/cotilleos", "required": False}]}, indent=2) + "\n")
     print("variante del mod en", MOD)

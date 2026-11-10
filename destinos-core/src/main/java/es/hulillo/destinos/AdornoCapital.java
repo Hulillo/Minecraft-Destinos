@@ -81,9 +81,13 @@ public final class AdornoCapital extends StructurePiece {
 	private final int[] pentradas;
 	/** Si la capital está en las tierras baldías: calles de terracota y adobe. */
 	private final boolean badlands;
+	/** El oficio del pueblo propio (ordinal de MapaTerreno.TipoPueblo), o -1 en las capitales. */
+	private final int oficio;
+	/** Los rincones y las flores de los pueblos de campo, o null (capitales y ciudades). */
+	private final RinconesPueblo rincones;
 
 	AdornoCapital(int px, int py, int pz, int estilo, int color, BoundingBox capital, int techo, boolean puestos, int mercado, int pnivel,
-			int psemilla, int[] pentradas, boolean badlands) {
+			int psemilla, int[] pentradas, boolean badlands, int oficio) {
 		super(TIPO, 0, new BoundingBox(capital.minX(), techo, capital.minZ(), capital.maxX(), techo, capital.maxZ()));
 		this.px = px;
 		this.pz = pz;
@@ -96,6 +100,8 @@ public final class AdornoCapital extends StructurePiece {
 		this.psemilla = psemilla;
 		this.pentradas = pentradas;
 		this.badlands = badlands;
+		this.oficio = oficio;
+		this.rincones = rincones(oficio);
 	}
 
 	/** Pone el escudo del reino en los estandartes de la plaza. */
@@ -118,6 +124,17 @@ public final class AdornoCapital extends StructurePiece {
 		psemilla = t.getIntOr("psemilla", 0);
 		pentradas = t.getIntArray("pentradas").orElse(new int[0]);
 		badlands = t.getBooleanOr("badlands", false);
+		oficio = t.getIntOr("oficio", -1);
+		rincones = rincones(oficio);
+	}
+
+	private RinconesPueblo rincones(int oficio) {
+		return RinconesPueblo.rural(oficio) ? new RinconesPueblo(this, estilo, MapaTerreno.TipoPueblo.values()[oficio]) : null;
+	}
+
+	/** Si el pueblo es de campo: calles de tierra pisada y farolillos de madera en vez de empedrado (salvo en el desierto y la sabana). */
+	private boolean deTierra() {
+		return rincones != null && !badlands && (estilo == TEMPLADO || estilo == TAIGA || estilo == NIEVE);
 	}
 
 	static void registra() {
@@ -178,6 +195,7 @@ public final class AdornoCapital extends StructurePiece {
 		t.putInt("psemilla", psemilla);
 		t.putIntArray("pentradas", pentradas);
 		t.putBoolean("badlands", badlands);
+		t.putInt("oficio", oficio);
 	}
 
 	@Override
@@ -205,6 +223,10 @@ public final class AdornoCapital extends StructurePiece {
 			for (int cz = Math.floorDiv(z0, lado); cz <= Math.floorDiv(z1, lado); cz++) {
 				farola(level, caja, pos, cx, cz);
 			}
+		}
+		// en los pueblos de campo, rincones junto a las calles y flores por los prados
+		if (rincones != null) {
+			rincones.pon(level, caja, pos, x0, z0, x1, z1);
 		}
 		// 3. la plaza mayor: estandartes en las cuatro diagonales del borde (las calles entran por los lados) y un
 		// anillo de ocho puestos de mercado alrededor del pozo o la fuente del centro
@@ -252,8 +274,19 @@ public final class AdornoCapital extends StructurePiece {
 		return Math.abs(c) >= Math.abs(d) ? (c > 0 ? Direction.EAST : Direction.WEST) : (d > 0 ? Direction.SOUTH : Direction.NORTH);
 	}
 
+	/** La valla de madera de las mesas, postes y farolillos, según la cultura. */
+	Block valla() {
+		return estilo == SABANA ? Blocks.ACACIA_FENCE : estilo == TAIGA || estilo == NIEVE ? Blocks.SPRUCE_FENCE
+				: estilo == DESIERTO ? Blocks.BIRCH_FENCE : Blocks.DARK_OAK_FENCE;
+	}
+
+	/** Si (x, z) cae en la plaza mayor o a menos de margen bloques de su borde. */
+	boolean enPlaza(int x, int z, int margen) {
+		return fuera(x - px, z - pz) <= margen;
+	}
+
 	/** El peldaño de madera de los bancos, según la cultura. */
-	private Block asiento() {
+	Block asiento() {
 		return switch (estilo) {
 			case DESIERTO -> Blocks.SMOOTH_SANDSTONE_STAIRS;
 			case SABANA -> Blocks.ACACIA_STAIRS;
@@ -307,8 +340,7 @@ public final class AdornoCapital extends StructurePiece {
 		if (y == Integer.MIN_VALUE) {
 			return;
 		}
-		Block valla = estilo == SABANA ? Blocks.ACACIA_FENCE : estilo == TAIGA || estilo == NIEVE ? Blocks.SPRUCE_FENCE
-				: estilo == DESIERTO ? Blocks.BIRCH_FENCE : Blocks.DARK_OAK_FENCE;
+		Block valla = valla();
 		// la mesa: dos patas con tablero de alfombra del color del reino y un farol encima
 		for (int k = 0; k <= 1; k++) {
 			int mx = x + k * fuera.getStepX();
@@ -372,7 +404,7 @@ public final class AdornoCapital extends StructurePiece {
 	}
 
 	/** Un árbol pequeño del estilo de la capital: tronco de 4 y copa redonda (hojas que no se caen). */
-	private void arbolito(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int y, int z, int h) {
+	void arbolito(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int y, int z, int h) {
 		if (estilo == DESIERTO) {
 			for (int i = 0; i < 3; i++) {
 				level.setBlock(pos.set(x, y + i, z), Blocks.CACTUS.defaultBlockState(), 2);
@@ -516,6 +548,12 @@ public final class AdornoCapital extends StructurePiece {
 			return (h < 35 ? Blocks.TERRACOTTA : h < 60 ? Blocks.ORANGE_TERRACOTTA : h < 80 ? Blocks.PACKED_MUD : h < 92 ? Blocks.SMOOTH_RED_SANDSTONE
 					: Blocks.BROWN_TERRACOTTA).defaultBlockState();
 		}
+		if (deTierra()) {
+			// tierra pisada con alguna piedra suelta
+			Block b = estilo == TEMPLADO ? (h < 70 ? Blocks.DIRT_PATH : h < 82 ? Blocks.COBBLESTONE : h < 92 ? Blocks.PACKED_MUD : Blocks.MOSSY_COBBLESTONE)
+					: h < 65 ? Blocks.DIRT_PATH : h < 80 ? Blocks.MOSSY_COBBLESTONE : h < 92 ? Blocks.COBBLESTONE : Blocks.PACKED_MUD;
+			return b.defaultBlockState();
+		}
 		Block b = switch (estilo) {
 			case DESIERTO -> h < 45 ? Blocks.SMOOTH_SANDSTONE : h < 75 ? Blocks.CUT_SANDSTONE : Blocks.SANDSTONE;
 			case SABANA -> h < 40 ? Blocks.PACKED_MUD : h < 75 ? Blocks.MUD_BRICKS : h < 90 ? Blocks.TERRACOTTA : Blocks.COBBLESTONE;
@@ -593,13 +631,20 @@ public final class AdornoCapital extends StructurePiece {
 	}
 
 	/** Si (x, z) es calle (empedrada o aún de tierra pisada) a la altura y, más o menos uno. */
-	private boolean deCalle(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int y) {
+	boolean deCalle(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int y) {
 		int sy = SueloNatural.cima(level, x, z);
 		BlockState b = level.getBlockState(pos.set(x, sy, z));
 		return Math.abs(sy - y) <= 1 && (empedrado(b) || b.is(Blocks.DIRT_PATH));
 	}
 
 	private void ponFarola(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int y, int z) {
+		if (rincones != null) {
+			// en los pueblos, un poste de madera con su farolillo
+			level.setBlock(pos.set(x, y + 1, z), valla().defaultBlockState(), 2);
+			level.setBlock(pos.set(x, y + 2, z), valla().defaultBlockState(), 2);
+			level.setBlock(pos.set(x, y + 3, z), Blocks.LANTERN.defaultBlockState(), 2);
+			return;
+		}
 		BlockState base = switch (estilo) {
 			case DESIERTO -> Blocks.SANDSTONE_WALL.defaultBlockState();
 			case SABANA -> Blocks.MUD_BRICK_WALL.defaultBlockState();
@@ -760,6 +805,9 @@ public final class AdornoCapital extends StructurePiece {
 
 	/** El lado de las celdas de las farolas: en las tierras frías, de noches largas, más juntas. */
 	private int lado() {
+		if (rincones != null) {
+			return 20;
+		}
 		return estilo == NIEVE || estilo == TAIGA ? 12 : LADO;
 	}
 
@@ -774,7 +822,7 @@ public final class AdornoCapital extends StructurePiece {
 	}
 
 	/** Si los alto bloques desde (x, y, z) hacia arriba están vacíos (aire o plantas). */
-	private static boolean libre(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int y, int z, int alto) {
+	static boolean libre(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int y, int z, int alto) {
 		for (int i = 0; i < alto; i++) {
 			BlockState s = level.getBlockState(pos.set(x, y + i, z));
 			if (!s.isAir() && !(s.canBeReplaced() && s.getFluidState().isEmpty())) {

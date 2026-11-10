@@ -41,6 +41,10 @@ final class SeresObra {
 
 	/** Pone el ser s en pos; rot es el giro de la obra (de 90 en 90 grados, en el sentido de las agujas del reloj). */
 	static void pon(WorldGenLevel level, Obra.Ser s, BlockPos pos, int rot) {
+		// en el repaso de lo construido (ObrasMundo) ya están: saldrían dos veces
+		if (ObrasMundo.enRepaso()) {
+			return;
+		}
 		ServerLevel sl = level.getLevel();
 		EntityType<?> tipo = switch (s.tipo()) {
 			case CABALLO -> EntityType.HORSE;

@@ -14,6 +14,7 @@ import java.util.Objects;
 import java.util.Set;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
@@ -42,6 +43,8 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	private final NombresPolitica nombres;
 	/** Capitales ya elegidas de los reinos conocidos (no se guardan: salen siempre igual del terreno). */
 	private final Map<Long, MapaTerreno.Capital> capitales = new HashMap<>();
+	/** v0.6.3: los pueblos propios de cada ducado conocido (por Grafo.id), para los mapas. */
+	private final Map<Long, List<MapaTerreno.Pueblo>> pueblos = new HashMap<>();
 	/** Reinos sin sitio para capital (no se vuelve a mirar). */
 	private final Set<Long> sinCapital = new HashSet<>();
 	private long siguiente;
@@ -107,7 +110,9 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		List<PaquetePolitica.Capital> coronas = new ArrayList<>();
 		capitales.forEach((reino, c) -> coronas.add(new PaquetePolitica.Capital(c.x(), c.z(), Grafo.x(reino), Grafo.z(reino),
 				politica.capitalPerdida(grafo, reino))));
-		return new PaquetePolitica(politica.turno(), guerras, coronas);
+		List<PaquetePolitica.Pueblo> iconos = new ArrayList<>();
+		pueblos.values().forEach(l -> l.forEach(p -> iconos.add(new PaquetePolitica.Pueblo(p.x(), p.z(), p.tipo().ordinal()))));
+		return new PaquetePolitica(politica.turno(), guerras, coronas, iconos);
 	}
 
 	/**
@@ -142,6 +147,18 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 			capitales.put(reino, c.get());
 			grafo.fijaCapital(reino, Grafo.id(c.get().dcx(), c.get().dcz()));
 			nuevas = true;
+		}
+		// los pueblos propios de los ducados conocidos, cuando ya se sabe la capital de su reino (sin bloquear)
+		for (Map.Entry<Long, Grafo.Ducado> e : grafo.ducados().entrySet()) {
+			Grafo.Ducado d = e.getValue();
+			if (d.salvajeBase() || pueblos.containsKey(e.getKey()) || !capitales.containsKey(d.reinoBase()) && !sinCapital.contains(d.reinoBase())) {
+				continue;
+			}
+			List<MapaTerreno.Pueblo> l = mapa.pueblosSiListos(d.dcx(), d.dcz());
+			if (l != null) {
+				pueblos.put(e.getKey(), l);
+				nuevas |= !l.isEmpty();
+			}
 		}
 		if (politica.reinoProtegido() == Politica.NADIE) {
 			for (ServerPlayer p : server.getPlayerList().getPlayers()) {
@@ -570,6 +587,53 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 	Component nombreReino(MinecraftServer server, long reino) {
 		nombres.aseguraReino(server, reino);
 		return nombres.reino(server, reino);
+	}
+
+	/**
+	 * v0.6.3 Lo que se cuenta la gente del ducado (dcx, dcz) del reino (kx, kz) para los cotilleos de Humanoid
+	 * Villagers: el duque, el ducado, el rey, el reino y, si hay guerra, el enemigo (el primero). Lo que no hay no
+	 * va; "hay" dice qué hay.
+	 */
+	CompoundTag cotilleo(MinecraftServer server, int dcx, int dcz, int kx, int kz, boolean salvaje) {
+		CompoundTag t = new CompoundTag();
+		CompoundTag hay = new CompoundTag();
+		Gente g = politica.gente();
+		int anio = politica.anio();
+		long ducado = Grafo.id(dcx, dcz);
+		if (grafo.ducado(ducado) != null) {
+			pon(server, t, "ducado", nombreDucado(server, ducado));
+			Persona duque = g.duque(ducado);
+			if (duque != null && duque.vivo()) {
+				pon(server, t, "duque", NombresPolitica.conTitulo(duque, anio));
+				hay.putBoolean("duque", true);
+			}
+		}
+		if (!salvaje) {
+			long reino = Grafo.id(kx, kz);
+			pon(server, t, "reino", nombreReino(server, reino));
+			hay.putBoolean("reino", true);
+			Persona rey = g.rey(reino);
+			if (rey != null && rey.vivo()) {
+				pon(server, t, "rey", NombresPolitica.conTitulo(rey, anio));
+				hay.putBoolean("rey", true);
+			}
+			List<Long> enemigos = enemigos(reino);
+			if (!enemigos.isEmpty()) {
+				pon(server, t, "enemigo", nombreReino(server, enemigos.get(0)));
+				hay.putBoolean("guerra", true);
+			} else {
+				hay.putBoolean("paz", true);
+			}
+		}
+		t.put("hay", hay);
+		return t;
+	}
+
+	/** El texto c en t[clave], como componente de texto en NBT (lo lee interpret:true). */
+	private static void pon(MinecraftServer server, CompoundTag t, String clave, Component c) {
+		net.minecraft.network.chat.ComponentSerialization.CODEC
+				.encodeStart(server.registryAccess().createSerializationContext(net.minecraft.nbt.NbtOps.INSTANCE), c)
+				.result().ifPresent(tag -> t.put(clave, tag));
 	}
 
 	/** La capital del reino si se conoce y sigue siendo suya; si no, null. */

@@ -134,6 +134,10 @@ final class TablonesPueblos {
 	 * la campana sea de un pueblo o de una capital.
 	 */
 	private static boolean dePueblo(ServerLevel level, BlockPos p) {
+		// las capitales y los pueblos propios (ObrasMundo): por su plano, que no depende de que su señal llegue al chunk
+		if (ObrasMundo.enAsentamiento(p)) {
+			return true;
+		}
 		LevelChunk aqui = level.getChunkSource().getChunkNow(SectionPos.blockToSectionCoord(p.getX()), SectionPos.blockToSectionCoord(p.getZ()));
 		if (aqui == null) {
 			return false;

@@ -52,26 +52,31 @@ public final class MapaTerreno {
 	 * Lo que se sabe del terreno en el centro de una casilla. familia: tipo de bioma (desierto, selva, bosque…) para
 	 * que las fronteras prefieran los cambios de paisaje.
 	 */
-	public record Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia, int bioma) {
+	public record Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia, int bioma, boolean lago) {
 		/** Sin saber el bioma exacto (bioma: número de Biomas, o -1). */
 		public Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia) {
-			this(altura, oceano, rio, montana, familia, -1);
+			this(altura, oceano, rio, montana, familia, -1, false);
+		}
+
+		/** Sin saber si es lago (el agua ancha de río por todos lados). */
+		public Casilla(int altura, boolean oceano, boolean rio, boolean montana, int familia, int bioma) {
+			this(altura, oceano, rio, montana, familia, bioma, false);
 		}
 
 		/**
-		 * altura + 1024 en los bits 0-11, mar 12, río 13, montaña 14, familia + 1 en 15-20, bioma + 1 en 21-29 y el
-		 * bit 30 de "leída".
+		 * altura + 1024 en los bits 0-11, mar 12, río 13, montaña 14, familia + 1 en 15-20, bioma + 1 en 21-29, el
+		 * bit 30 de "leída" y el 31 de lago.
 		 */
 		int empaqueta() {
 			int a = Math.max(0, Math.min(4095, altura + 1024));
 			int f = Math.max(0, Math.min(63, familia + 1));
 			int b = Math.max(0, Math.min(511, bioma + 1));
-			return a | (oceano ? 1 << 12 : 0) | (rio ? 1 << 13 : 0) | (montana ? 1 << 14 : 0) | f << 15 | b << 21 | 1 << 30;
+			return a | (oceano ? 1 << 12 : 0) | (rio ? 1 << 13 : 0) | (montana ? 1 << 14 : 0) | f << 15 | b << 21 | 1 << 30 | (lago ? 1 << 31 : 0);
 		}
 
 		static Casilla desempaqueta(int v) {
 			return new Casilla((v & 4095) - 1024, (v & 1 << 12) != 0, (v & 1 << 13) != 0, (v & 1 << 14) != 0, (v >> 15 & 63) - 1,
-					(v >> 21 & 511) - 1);
+					(v >> 21 & 511) - 1, (v & 1 << 31) != 0);
 		}
 	}
 
@@ -109,9 +114,21 @@ public final class MapaTerreno {
 	 * La capital de un reino: el ducado donde está y el sitio en bloques. montana: el reino es de cultura de
 	 * montaña y ha preferido levantarla en las alturas. nivel: lo rica y grande que es (0 pobre, 1 normal, 2 rica),
 	 * por los recursos de su ducado y los ducados del reino; decide su muralla. riqueza: el número del que sale el
-	 * nivel (para calibrarlo).
+	 * nivel (para calibrarlo). ciudad: el ducado (Geo.clave) de la ciudad del reino, el más rico después del de la
+	 * capital, o NINGUNA. puerto: el ducado del puerto que todo reino con salida al mar (o a un río grande) tiene
+	 * seguro, o NINGUNA.
 	 */
-	public record Capital(int dcx, int dcz, int x, int z, boolean montana, int nivel, double riqueza) {
+	public record Capital(int dcx, int dcz, int x, int z, boolean montana, int nivel, double riqueza, long ciudad, long puerto) {
+		public static final long NINGUNA = Long.MIN_VALUE;
+	}
+
+	/** v0.6.3: el oficio de un pueblo propio de un ducado (el tier va en Plano). */
+	public enum TipoPueblo {
+		puesto, aldea, mina, aserradero, puerto, ciudad
+	}
+
+	/** v0.6.3: un pueblo propio de un ducado (como la capital, pero con oficio): su ducado, su sitio y su oficio. */
+	public record Pueblo(int dcx, int dcz, int x, int z, TipoPueblo tipo) {
 	}
 
 	/** Territorio de un punto: ducado (celda), reino (celda), salvaje y si la casilla es mar. */
@@ -165,12 +182,18 @@ public final class MapaTerreno {
 	/** Capitales que algún hilo de generación está calculando ahora mismo (los demás le esperan). */
 	private final Map<Long, CompletableFuture<Capital>> enLinea = new ConcurrentHashMap<>();
 	private final EleccionCapital eleccion;
+	private final EleccionPueblo eleccionPueblo;
+	/** Pueblos propios de cada ducado ya elegidos (se eligen al pedirlos: unas pocas muestras de terreno ya leído). */
+	private final ConcurrentHashMap<Long, List<Pueblo>> pueblos = new ConcurrentHashMap<>();
+	/** Los mismos, pedidos sin bloquear (para los mapas): se eligen en el hilo del terreno. */
+	private final ConcurrentHashMap<Long, CompletableFuture<List<Pueblo>>> pueblosEnCamino = new ConcurrentHashMap<>();
 
 	public MapaTerreno(Muestreador muestreador, int sal, ExecutorService hilo) {
 		this.muestreador = muestreador;
 		this.sal = sal;
 		this.hilo = hilo;
 		this.eleccion = new EleccionCapital(muestreador, sal);
+		this.eleccionPueblo = new EleccionPueblo(muestreador, this, sal);
 	}
 
 	public int sal() {
@@ -499,9 +522,12 @@ public final class MapaTerreno {
 		return new Resultado(g[0], g[1], g[2], g[3], g[4] == 1, oceano);
 	}
 
-	/** Lo que el mapa político necesita del terreno de una casilla, en un byte: bit 0 río, bit 1 montaña, del 2 al 5 la familia del bioma. */
+	/**
+	 * Lo que el mapa político necesita del terreno de una casilla, en un byte: bit 0 río, bit 1 montaña, del 2 al 5 la
+	 * familia del bioma (15 si no tiene) y bit 6 lago.
+	 */
 	static byte tipo(Casilla c) {
-		return (byte) ((c.rio() ? 1 : 0) | (c.montana() ? 2 : 0) | (Math.min(15, c.familia()) << 2));
+		return (byte) ((c.rio() ? 1 : 0) | (c.montana() ? 2 : 0) | ((Math.min(15, c.familia()) & 15) << 2) | (c.lago() ? 64 : 0));
 	}
 
 	/** Ventana cuyo núcleo contiene la coordenada de bloque (en un eje). */
@@ -608,6 +634,34 @@ public final class MapaTerreno {
 			enLinea.remove(k);
 			throw e;
 		}
+	}
+
+	/** v0.6.3: los pueblos propios del ducado (dcx, dcz): ninguno, uno con oficio y/o un puesto de vigía. */
+	public List<Pueblo> pueblos(int dcx, int dcz) {
+		long k = Geo.clave(dcx, dcz);
+		List<Pueblo> ya = pueblos.get(k);
+		if (ya != null) {
+			return ya;
+		}
+		// sin computeIfAbsent: el cálculo pide capitales, que también se guardan en mapas concurrentes
+		List<Pueblo> nuevos = List.copyOf(eleccionPueblo.calcula(dcx, dcz));
+		List<Pueblo> otro = pueblos.putIfAbsent(k, nuevos);
+		return otro != null ? otro : nuevos;
+	}
+
+	/** Los pueblos propios del ducado sin bloquear: null si aún se están eligiendo (y los pide). */
+	public List<Pueblo> pueblosSiListos(int dcx, int dcz) {
+		List<Pueblo> ya = pueblos.get(Geo.clave(dcx, dcz));
+		if (ya != null) {
+			return ya;
+		}
+		CompletableFuture<List<Pueblo>> f = pueblosEnCamino.computeIfAbsent(Geo.clave(dcx, dcz),
+				k -> CompletableFuture.supplyAsync(() -> pueblos(dcx, dcz), hilo));
+		if (!f.isDone()) {
+			return null;
+		}
+		pueblosEnCamino.remove(Geo.clave(dcx, dcz));
+		return f.isCompletedExceptionally() ? List.of() : f.join();
 	}
 
 	/** Terreno en el centro de cada casilla de la ventana (con margen). */

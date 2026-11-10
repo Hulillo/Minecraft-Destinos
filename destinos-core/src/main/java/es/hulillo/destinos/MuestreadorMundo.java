@@ -128,7 +128,24 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 		boolean oceano = b.is(BiomeTags.IS_OCEAN);
 		boolean rio = b.is(BiomeTags.IS_RIVER) || hayRioCerca(x, y, z);
 		boolean montana = b.is(BiomeTags.IS_MOUNTAIN) || suelo > nivelMar + 60;
-		return new MapaTerreno.Casilla(y, oceano, rio, montana, familia(b), Biomas.numero(b.getRegisteredName()));
+		boolean lago = !oceano && b.is(BiomeTags.IS_RIVER) && lago(x, y, z);
+		return new MapaTerreno.Casilla(y, oceano, rio, montana, familia(b), Biomas.numero(b.getRegisteredName()), lago);
+	}
+
+	/** Lo lejos que se mira, alrededor de una casilla de río, si sigue habiendo agua (los ríos no son tan anchos). */
+	private static final int RADIO_LAGO = 32;
+	private static final int[][] ROSA = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+
+	/** Si el agua de río de (x, z) es en realidad un lago: sigue habiendo agua en todas direcciones. */
+	private boolean lago(int x, int y, int z) {
+		for (int[] d : ROSA) {
+			int r = d[0] != 0 && d[1] != 0 ? RADIO_LAGO * 3 / 4 : RADIO_LAGO;
+			Holder<Biome> v = bioma(x + d[0] * r, y, z + d[1] * r);
+			if (!v.is(BiomeTags.IS_RIVER) && !v.is(BiomeTags.IS_OCEAN)) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	@Override

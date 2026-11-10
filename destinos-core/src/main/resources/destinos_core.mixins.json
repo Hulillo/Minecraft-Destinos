@@ -3,7 +3,7 @@
 	"minVersion": "0.8",
 	"package": "es.hulillo.destinos.mixin",
 	"compatibilityLevel": "JAVA_21",
-	"mixins": ["MixinLivingEntity", "MixinStructure", "MixinStructureStart"],
+	"mixins": ["AccesoNoiseBasedChunkGenerator", "AccesoStructureManager", "MixinBeardifier", "MixinChunkGenerator", "MixinLivingEntity", "MixinStructure", "MixinStructureStart"],
 	"injectors": {
 		"defaultRequire": 1
 	}

@@ -37,9 +37,17 @@ public final class CalleCapital extends StructurePiece {
 	public static final StructurePieceType TIPO = (StructurePieceType.ContextlessType) CalleCapital::new;
 	/** Cada cuántos bloques el puente lleva pilares hasta el fondo. */
 	private static final int PILARES = 5;
+	/** Lo hondo que puede ser un hueco para cruzarlo con un puente (más, es un barranco: ahí no hay calle). */
+	private static final int HONDO_PUENTE = 24;
 	/** Lo que se rebaja o se rellena como mucho para que la calle vaya suave; con más, sigue el suelo. */
-	private static final int MAX_CORTE = 3;
-	private static final int MAX_RELLENO = 2;
+	private static final int MAX_CORTE = 5;
+	private static final int MAX_RELLENO = 4;
+	/** Lo ancho del talud a cada lado de la calle, en bloques. */
+	private static final double CUNETA = 3.5;
+	/** La cuesta (bloques que sube por bloque que avanza) desde la que la calle lleva escalones. */
+	private static final double ESCALINATA = 0.3;
+	/** Lo que se rellena como mucho en el borde de una calle que va por tierra junto a una bajada. */
+	private static final int BORDE_HONDO = 5;
 	/** Sin altura guardada (piezas de antes): la calle sigue el suelo. */
 	private static final int SIN_ALTURA = Integer.MIN_VALUE;
 
@@ -91,7 +99,7 @@ public final class CalleCapital extends StructurePiece {
 	}
 
 	private static BoundingBox caja(int x0, int z0, int y0, int x1, int z1, int y1, double radio, int maximo) {
-		int m = (int) Math.ceil(radio) + 2;
+		int m = (int) Math.ceil(radio) + 1 + (int) Math.ceil(CUNETA);
 		int h = Math.max(MAX_CORTE, maximo);
 		return new BoundingBox(Math.min(x0, x1) - m, Math.min(y0, y1) - h - 1, Math.min(z0, z1) - m, Math.max(x0, x1) + m,
 				Math.max(y0, y1) + h + 2, Math.max(z0, z1) + m);
@@ -153,32 +161,56 @@ public final class CalleCapital extends StructurePiece {
 		double dz = z1 - z0;
 		double l2 = dx * dx + dz * dz;
 		// el pretil, unido a lo largo si el tramo va casi recto por un eje; en diagonal, postes sueltos
+		// lo que sube la calle por cada bloque que avanza
+		double pendiente = l2 == 0 || y0 == SIN_ALTURA ? 0 : Math.abs(y1 - y0) / Math.sqrt(l2);
 		Boolean aLoLargoDeZ = Math.abs(dz) >= 2 * Math.abs(dx) ? Boolean.TRUE : Math.abs(dx) >= 2 * Math.abs(dz) ? Boolean.FALSE : null;
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 		for (int x = ax; x <= bx; x++) {
 			for (int z = az; z <= bz; z++) {
 				double t = l2 == 0 ? 0 : Math.clamp(((x - x0) * dx + (z - z0) * dz) / l2, 0, 1);
 				double d = Math.hypot(x0 + t * dx - x, z0 + t * dz - z);
-				if (d > r + 1.5) {
+				if (d > r + CUNETA) {
 					continue;
 				}
 				boolean calle = d <= r + 0.3;
-				SueloNatural.tala(level, caja, x, z);
-				int y = y0 == SIN_ALTURA ? SIN_ALTURA : (int) Math.round(y0 + t * (y1 - y0));
+				if (d <= r + 1.5) {
+					SueloNatural.tala(level, caja, x, z);
+				}
+				double yf = y0 == SIN_ALTURA ? 0 : y0 + t * (y1 - y0);
+				int y = y0 == SIN_ALTURA ? SIN_ALTURA : (int) Math.floor(yf);
+				// en cuesta, justo antes de cada subida de un bloque va una fila de escalones (solo una: la de la
+				// columna cuya vecina cuesta arriba ya está un bloque más alta)
+				// y solo en tramos rectos por un eje, con cuesta de verdad y lejos de sus puntas (en cruces y curvas
+				// se mezclaban escalones de calles distintas, mirando cada uno a un lado)
+				boolean escalon = y0 != SIN_ALTURA && aLoLargoDeZ != null && pendiente >= ESCALINATA && t > 0.15 && t < 0.85
+						&& Math.floor(yf + pendiente) > y;
 				BlockState s = SueloNatural.superficie(level, pos, x, z);
 				if (s.is(Blocks.WATER)) {
 					if ((puente || madera) && d <= r + 1.3) {
 						puente(level, pos, !calle, Math.floorMod(x + z, madera ? 3 : PILARES) == 0, aLoLargoDeZ, madera);
 					}
+				} else if (y != SIN_ALTURA && pos.getY() < y - relleno() && y - pos.getY() <= HONDO_PUENTE && d <= r + 1.3
+						&& hueco(level, (int) Math.round(x0 + t * dx), (int) Math.round(z0 + t * dz), y)) {
+					// una zanja o un cauce (tapado en el perfil, o que se abrió después): la calle lo cruza por un puente, ya
+					// desde donde no se puede rellenar (antes, entre relleno y corte quedaba un hoyo sin calle)
+					puenteSeco(level, pos, x, y, z, !calle, Math.floorMod(x + z, PILARES) == 0, aLoLargoDeZ, madera);
+				} else if (y != SIN_ALTURA && calle && pos.getY() < y && y - pos.getY() <= BORDE_HONDO) {
+					// el borde de la calle sobre una bajada (el centro va por tierra): se rellena, sin puente ni pretil
+					s = allana(level, pos, s, y, 0, corte(), BORDE_HONDO);
+					pon(level, pos, s);
 				} else if (y != SIN_ALTURA && Math.abs(pos.getY() - y) > corte() + 1) {
 					// un acantilado o un barranco que el trazado no vio: ahí no se pinta calle
 					continue;
 				} else if (calle) {
 					s = allana(level, pos, s, y, 0, corte(), relleno());
 					pon(level, pos, s);
-				} else if (y != SIN_ALTURA) {
-					// la cuneta: un escalón entre la calle y el suelo de al lado, para que no quede un tajo
-					allana(level, pos, s, y, 1, corte(), relleno());
+					if (escalon && pos.getY() == y) {
+						escalon(level, pos, s, dx, dz, y1 > y0);
+					}
+				} else if (y != SIN_ALTURA && SueloNatural.natural(s)) {
+					// la cuneta (solo sobre suelo natural: nunca tapa otra calle ni una obra): un talud entre la calle y el suelo de al lado (un bloque más por cada uno que se aleja),
+					// para que no quede un tajo de tierra
+					allana(level, pos, s, y, Math.max(1, (int) Math.ceil(d - r - 0.3)), corte(), relleno());
 				}
 			}
 		}
@@ -252,6 +284,81 @@ public final class CalleCapital extends StructurePiece {
 	 * Una casilla del puente sobre el agua de pos: losa medio bloque por encima (se sube desde la orilla sin saltar),
 	 * pretil unido a lo largo (aLoLargoDeZ) y, a trechos, el pilar hasta el fondo.
 	 */
+	/**
+	 * Un tramo de puente sobre un hueco seco, a la altura y de la calle: tablero de piedra (o de madera), pretil a los
+	 * lados y, cada tanto, pilares hasta el fondo. El pretil no pisa el tablero de otro tramo.
+	 */
+	/**
+	 * Un escalón sobre la calle en pos (su suelo, de bloque s), con el lado alto hacia donde sube: de piedra, o de
+	 * arenisca en la arena. Así las cuestas son una escalinata y no pegotes de un bloque.
+	 */
+	private static void escalon(WorldGenLevel level, BlockPos.MutableBlockPos pos, BlockState s, double dx, double dz, boolean sube) {
+		pos.move(0, 1, 0);
+		if (!level.getBlockState(pos).canBeReplaced()) {
+			return;
+		}
+		Block b = s.is(Blocks.SMOOTH_SANDSTONE) || s.is(Blocks.SAND) || s.is(Blocks.SANDSTONE) ? Blocks.SMOOTH_SANDSTONE_STAIRS
+				: s.is(Blocks.DIRT_PATH) ? Blocks.MOSSY_COBBLESTONE_STAIRS : Blocks.COBBLESTONE_STAIRS;
+		net.minecraft.core.Direction arriba = Math.abs(dx) >= Math.abs(dz)
+				? (dx > 0 == sube ? net.minecraft.core.Direction.EAST : net.minecraft.core.Direction.WEST)
+				: (dz > 0 == sube ? net.minecraft.core.Direction.SOUTH : net.minecraft.core.Direction.NORTH);
+		level.setBlock(pos, b.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, arriba), 2);
+	}
+
+	/**
+	 * Si por el centro de la calle en (x, z) hay un hueco que cruzar a la altura y (o ya está el tablero del puente):
+	 * solo entonces el borde lleva puente y pretil; si no, era una bajada a un lado y quedaban pretiles por el suelo.
+	 */
+	private boolean hueco(WorldGenLevel level, int x, int z, int y) {
+		int g = SueloNatural.cima(level, x, z);
+		if (g >= y - relleno()) {
+			BlockState b = level.getBlockState(new BlockPos(x, g, z));
+			return g == y && (b.is(Blocks.STONE_BRICKS) || b.is(Blocks.SPRUCE_PLANKS));
+		}
+		return y - g <= HONDO_PUENTE;
+	}
+
+	private static void puenteSeco(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int y, int z, boolean pretil, boolean pilar,
+			Boolean aLoLargoDeZ, boolean madera) {
+		Block tablero = madera ? Blocks.SPRUCE_PLANKS : Blocks.STONE_BRICKS;
+		Block baranda = madera ? Blocks.SPRUCE_FENCE : Blocks.STONE_BRICK_WALL;
+		BlockState actual = level.getBlockState(pos.set(x, y, z));
+		if (!pretil) {
+			level.setBlock(pos, tablero.defaultBlockState(), 2);
+			pos.set(x, y + 1, z);
+			if (level.getBlockState(pos).is(baranda)) {
+				level.setBlock(pos, Blocks.AIR.defaultBlockState(), 2);
+			}
+		} else {
+			if (!actual.isAir() && !actual.canBeReplaced()) {
+				return;
+			}
+			level.setBlock(pos, tablero.defaultBlockState(), 2);
+			BlockState muro = baranda.defaultBlockState();
+			if (aLoLargoDeZ != null) {
+				if (madera) {
+					muro = aLoLargoDeZ ? muro.setValue(BlockStateProperties.NORTH, true).setValue(BlockStateProperties.SOUTH, true)
+							: muro.setValue(BlockStateProperties.EAST, true).setValue(BlockStateProperties.WEST, true);
+				} else {
+					muro = aLoLargoDeZ ? muro.setValue(BlockStateProperties.NORTH_WALL, WallSide.LOW).setValue(BlockStateProperties.SOUTH_WALL, WallSide.LOW)
+							: muro.setValue(BlockStateProperties.EAST_WALL, WallSide.LOW).setValue(BlockStateProperties.WEST_WALL, WallSide.LOW);
+				}
+			}
+			level.setBlock(pos.set(x, y + 1, z), muro, 2);
+		}
+		if (!pilar) {
+			return;
+		}
+		BlockState relleno = (madera ? Blocks.SPRUCE_LOG : Blocks.STONE_BRICKS).defaultBlockState();
+		for (int k = y - 1; k > y - HONDO_PUENTE - 2 && k > level.getMinY(); k--) {
+			BlockState b = level.getBlockState(pos.set(x, k, z));
+			if (!b.isAir() && !b.canBeReplaced() && !b.is(Blocks.WATER)) {
+				break;
+			}
+			level.setBlock(pos, relleno, 2);
+		}
+	}
+
 	private static void puente(WorldGenLevel level, BlockPos.MutableBlockPos pos, boolean pretil, boolean pilar, Boolean aLoLargoDeZ,
 			boolean madera) {
 		Block suelo = madera ? Blocks.MANGROVE_SLAB : Blocks.STONE_BRICK_SLAB;
