@@ -298,8 +298,9 @@ fn("reino/ducado_salvaje", [
     *indice(N_GEO, "Geo", "nuevo.geo"),
 ])
 fn("reino/ducado_noble", [
-    "# Macro: kx kz",
-    '$data modify storage destinos:tmp gen.cultura set from storage destinos:mundo reinos."k$(kx)_$(kz)".cultura',
+    "# Macro: kx kz · en el centro del ducado",
+    "# la cultura y el nombre del ducado, de su tierra (un reino puede ser mixto); su señor, de la dinastía del reino",
+    "function destinos:cultura/detectar",
     *nombre_nuevo("ND"),
     "data modify storage destinos:tmp nuevo.salvaje set value 0b",
     '$data modify storage destinos:tmp nuevo.reino set value "k$(kx)_$(kz)"',
@@ -314,7 +315,9 @@ fn("reino/ducado_noble", [
     *tirada("Gen", 2),
     'data modify storage destinos:tmp nuevo.g set value "m"',
     'execute if score #h dr.calc matches 1 run data modify storage destinos:tmp nuevo.g set value "f"',
-    "function destinos:reino/senor with storage destinos:tmp nuevo",
+    '$data modify storage destinos:tmp gen.cultura set from storage destinos:mundo reinos."k$(kx)_$(kz)".cultura',
+    "data modify storage destinos:tmp gen.g set from storage destinos:tmp nuevo.g",
+    "function destinos:reino/senor with storage destinos:tmp gen",
     *indice(N_FAMAS, "Fama", "nuevo.fama"),
 ])
 fn("reino/senor", [
@@ -1049,6 +1052,8 @@ MAPA = {
     "pista_peligro": ("Peligro: %s", "Danger: %s"),
     "pista_animales": ("Animales: %s", "Animals: %s"),
     "pista_bichos": ("Ojo con: %s", "Watch out for: %s"),
+    "pista_cultura": ("Cultura: %s", "Culture: %s"),
+    "pista_dinastia": ("Dinastía del reino: %s", "Ruling dynasty: %s"),
     "pista_altura": ("Altura: y=%s", "Height: y=%s"),
     "pista_fondo": ("Fondo a y=%s", "Seabed at y=%s"),
     "pista_rio": ("Pasa un río", "A river runs here"),

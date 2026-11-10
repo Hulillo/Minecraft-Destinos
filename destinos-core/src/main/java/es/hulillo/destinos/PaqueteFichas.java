@@ -36,9 +36,11 @@ public record PaqueteFichas(int anio, int turno, List<Reino> reinos, List<Nombre
 
 	/**
 	 * Un ducado: su nombre (con su tipo: "Ducado de X", "Marca de X", "Tierras de X"…), lo peligroso que es (0 seguro
-	 * a 3 muy peligroso) y los animales y monstruos que salen en sus biomas.
+	 * a 3 muy peligroso), los animales y monstruos que salen en sus biomas y la cultura de su tierra ("desierto"…: un
+	 * reino puede tener ducados de varias culturas).
 	 */
-	public record Nombre(int dcx, int dcz, Component nombre, int peligro, List<Component> animales, List<Component> peligros) {
+	public record Nombre(int dcx, int dcz, Component nombre, int peligro, List<Component> animales, List<Component> peligros,
+			String cultura) {
 	}
 
 	private static void textos(RegistryFriendlyByteBuf buf, List<Component> l) {
@@ -126,6 +128,7 @@ public record PaqueteFichas(int anio, int turno, List<Reino> reinos, List<Nombre
 			buf.writeByte(d.peligro());
 			textos(buf, d.animales());
 			textos(buf, d.peligros());
+			buf.writeUtf(d.cultura());
 		}
 	}
 
@@ -172,7 +175,8 @@ public record PaqueteFichas(int anio, int turno, List<Reino> reinos, List<Nombre
 			Component nombre = ComponentSerialization.TRUSTED_STREAM_CODEC.decode(buf);
 			int peligro = buf.readByte();
 			List<Component> animales = textos(buf);
-			ducados.add(new Nombre(dcx, dcz, nombre, peligro, animales, textos(buf)));
+			List<Component> peligros = textos(buf);
+			ducados.add(new Nombre(dcx, dcz, nombre, peligro, animales, peligros, buf.readUtf(32)));
 		}
 		return new PaqueteFichas(anio, turno, reinos, ducados);
 	}

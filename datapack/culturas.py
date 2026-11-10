@@ -1,6 +1,6 @@
 """Tablas de culturas de Destinos: Reinos.
 Nombres INSPIRADOS en la fonética de cada región, no copiados de lugares reales ni de figuras sagradas.
-Cada cultura: pre[16], mid[8], suf[16], m[12], f[12], casas[12]."""
+Cada cultura: pre[16], mid[8], suf[16], m[24], f[24] (el datapack elige entre los 12 primeros; los aldeanos, entre todos), casas[12]."""
 
 E4 = ["", "", "", ""]
 
@@ -10,8 +10,8 @@ CULTURAS = {
         pre="Kae Hrol Thor Vald Skar Brun Ulf Ast Grim Dur Ys Ker Hal Ran Sig Vor".split(),
         mid=E4 + "en ga ri o".split(),
         suf="vik gard heim dun mark strand fell holm rik stad borg vald nes by mor rel".split(),
-        m="Ivar Ulric Hakon Torvald Sigurd Bjorn Eirik Ragnar Leif Halvar Osric Gunnar".split(),
-        f="Freya Astrid Ragna Sigrid Ingrid Hilde Solveig Ylva Gudrun Thora Liv Eira".split(),
+        m="Ivar Ulric Hakon Torvald Sigurd Bjorn Eirik Ragnar Leif Halvar Osric Gunnar Arne Knut Sven Orm Rolf Egil Styrbjorn Ketil Vidar Haldor Brand Olaf".split(),
+        f="Freya Astrid Ragna Sigrid Ingrid Hilde Solveig Ylva Gudrun Thora Liv Eira Sigrun Gunnhild Ase Dagny Ragnhild Tove Siv Herdis Alfhild Brynja Vigdis Kari".split(),
         casas="Ravenholt Dunmore Grimsby Thorne Varg Hallgrim Ulfsson Skarde Brennar Osmund Kjeld Draven".split(),
     ),
     "llanura": dict(  # ibérica / europea medieval
@@ -19,8 +19,8 @@ CULTURAS = {
         pre="Val Cas Rob Mont Alb Sant Bel Cor Fer Leon Mir Tor Aris Vel Sal Ord".split(),
         mid=E4 + "ar el or in".split(),
         suf="mora ledo telia edo aria ona encia villa ena ia dor eira oza ano ura ante".split(),
-        m="Rodrigo Sancho Pelayo Fermín Nuño Alvar Bernat Jaume Vidal Gonzalo Martín Íñigo".split(),
-        f="Jimena Urraca Leonor Elvira Constanza Berenguela Sabela Inés Violante Brianda Oria Teresa".split(),
+        m="Rodrigo Sancho Pelayo Fermín Nuño Alvar Bernat Jaume Vidal Gonzalo Martín Íñigo Lope Diego Fortún García Bermudo Ramiro Esteban Tello Mendo Suero Álvaro Fadrique".split(),
+        f="Jimena Urraca Leonor Elvira Constanza Berenguela Sabela Inés Violante Brianda Oria Teresa Mencía Aldonza Sancha Mayor Estefanía Toda Lambra Orosia Catalina Beatriz Guiomar Marina".split(),
         casas="Castelar Valdés Quiroga Velasco Sarmiento Altamira Belmonte Montclar Ferrand Mirabel Lusignan Arvel".split(),
     ),
     "costa": dict(  # mediterránea
@@ -28,8 +28,8 @@ CULTURAS = {
         pre="Ys Lun Cal Mar Ner Sel Ael Ond Per Lir Cor Brin Amar Thal Ess Orin".split(),
         mid=E4 + "a i e o".split(),
         suf="mara porto lis rena sasa tira beth lane nia dos thea ruta line val sta lion".split(),
-        m="Teodoro Nikos Lucio Dario Marco Elio Stavros Cosimo Leandro Iason Fabio Ciro".split(),
-        f="Teodora Ariadna Livia Nerea Calista Selene Galatea Irene Chiara Dafne Melina Zoe".split(),
+        m="Teodoro Nikos Lucio Dario Marco Elio Stavros Cosimo Leandro Iason Fabio Ciro Andreas Lisandro Matteo Silvano Orestes Nicola Vasco Aurelio Spiro Tullio Fausto Demetrio".split(),
+        f="Teodora Ariadna Livia Nerea Calista Selene Galatea Irene Chiara Dafne Melina Zoe Eleni Fiora Nausica Aurora Cassia Ilaria Danae Ottavia Rhea Lucia Phaedra Serena".split(),
         casas="Mareni Orsini Kalanis Delmare Thalassi Corvara Lunetti Peralta Ysandre Ambrosi Nerezza Castellane".split(),
     ),
     "desierto": dict(  # árabe / persa
@@ -37,8 +37,8 @@ CULTURAS = {
         pre="Qal Sah Zaf Ash Dar Khal Mir Tal Jas Har Nar Az Ruk Sel Bah Iz".split(),
         mid=E4 + "ar im un ad".split(),
         suf="dir run ira esh an ar im ura ah iz oun bar eth al is ad".split(),
-        m="Darius Tariq Karim Rashid Faris Kamal Yusuf Nadir Samir Idris Zafir Malik".split(),
-        f="Noor Yasmin Layla Zahra Samira Amira Farah Leila Shirin Dalia Rania Soraya".split(),
+        m="Darius Tariq Karim Rashid Faris Kamal Yusuf Nadir Samir Idris Zafir Malik Hamid Jalil Omar Rafiq Basim Harun Qasim Sami Walid Anwar Fadil Hakim".split(),
+        f="Noor Yasmin Layla Zahra Samira Amira Farah Leila Shirin Dalia Rania Soraya Nadia Hala Salma Malika Rasha Basma Hanan Ziyna Lubna Mariam Afaf Inaya".split(),
         casas="Qadiri Sahrani Zafari Haruni Mirzani Kharimi Nadiri Azhari Bahrami Talesh Rukhan Darvesh".split(),
     ),
     "sabana": dict(  # África subsahariana
@@ -46,8 +46,8 @@ CULTURAS = {
         pre="Ka Mba Zan Olu Nde Ama Ki Sa Tem Kwa Ifa Bu Ndo Ase Ma Ko".split(),
         mid=E4 + "la ri ko me".split(),
         suf="ndi wa ra mbe ko si lo bari tu nga ye ji ru ma ni sa".split(),
-        m="Kwame Jabari Olu Sekou Tendai Kofi Amadou Bakari Femi Juma Obi Zuberi".split(),
-        f="Amara Nia Zuri Ayo Imani Folake Nala Kesi Abena Makena Adaeze Sanaa".split(),
+        m="Kwame Jabari Olu Sekou Tendai Kofi Amadou Bakari Femi Juma Obi Zuberi Kojo Ade Musa Chidi Tunde Kayode Jelani Baraka Ekon Mosi Dumaka Ayan".split(),
+        f="Amara Nia Zuri Ayo Imani Folake Nala Kesi Abena Makena Adaeze Sanaa Ama Kamaria Eshe Ifeoma Ngozi Thandi Zawadi Efua Kianga Lulu Dalili Ayana".split(),
         casas="Okara Ndiwe Kamara Diallo Adeyemi Mwangi Nkemba Sefari Obuya Tenbaro Kwasara Zambe".split(),
     ),
     "selva": dict(  # mesoamericana / caribeña
@@ -55,8 +55,8 @@ CULTURAS = {
         pre="Itz Xo Tla Ce Coa Ix Pa Tez Yax Ka Chal Mo Ato Na Teo Zu".split(),
         mid=E4 + "ca li ma to".split(),
         suf="tlan pan co mal huac kan lum chi pec xca mitl lan tzin yab hua tec".split(),
-        m="Tenoch Cuauhtli Yaotl Balam Ollin Mixtli Tecuani Necalli Tlacael Itzcoatl Kinich Chimal".split(),
-        f="Itzel Xochitl Citlali Yaretzi Nayeli Atzi Meztli Sacnite Zyanya Tonalli Ameyal Izel".split(),
+        m="Tenoch Cuauhtli Yaotl Balam Ollin Mixtli Tecuani Necalli Tlacael Itzcoatl Kinich Chimal Tizoc Ahuiliz Coaxoch Yohualli Ehecatl Tlaloc Pakal Ikal Tonatiuh Tochtli Cipactli Huitzil".split(),
+        f="Itzel Xochitl Citlali Yaretzi Nayeli Atzi Meztli Sacnite Zyanya Tonalli Ameyal Izel Xiadani Quetzalli Nenetl Ixchel Tlalli Yoloxochitl Coyolxa Nicte Itzayana Sihu Malinalli Chalchi".split(),
         casas="Tlacoatl Itzamal Xocotlan Coatlan Yaxkan Chalco Teomitl Ixpana Mocuil Patzin Tezcal Nahual".split(),
     ),
     "andina": dict(  # quechua / aimara
@@ -64,8 +64,8 @@ CULTURAS = {
         pre="Qori Wayra Illa Mayu Rumi Killa Sumaq Puma Yaku Tika Kusi Chaska Antu Wari Pacha Urqu".split(),
         mid=E4 + "ka ri pa wa".split(),
         suf="marka pampa qocha llaqta kancha wasi rumi yoc chaca bamba cota pata llo ta ri sa".split(),
-        m="Amaru Huayna Kusi Wayra Antay Illari Yupanqui Mayta Sinchi Rumi Tupaq Kallpa".split(),
-        f="Killa Sumaq Tika Chaska Nina Ayra Wayta Qori Yaku Sisa Urpi Asiri".split(),
+        m="Amaru Huayna Kusi Wayra Antay Illari Yupanqui Mayta Sinchi Rumi Tupaq Kallpa Atoc Huaman Pachacu Qhawa Uturunku Wiraqocha Achik Inti Phawaq Sayri Waman Hatun".split(),
+        f="Killa Sumaq Tika Chaska Nina Ayra Wayta Qori Yaku Sisa Urpi Asiri Ñusta Pacha Mamacha Kantu Rosa Phuyu Inkill Qoyllur Wayllu Kusikuyllur Waylla Suyay".split(),
         casas="Mayta Quispe Mamani Condori Huaman Apaza Yupanqui Choque Ticona Sinchi Kallpa Wari".split(),
     ),
     "cerezo": dict(  # japonesa
@@ -73,8 +73,8 @@ CULTURAS = {
         pre="Haru Aki Kaze Tsuki Yama Hana Sora Kiri Mizu Hoshi Kuro Shira Mori Taka Yuki Ishi".split(),
         mid=E4 + "no ga ra ki".split(),
         suf="mura saki gawa shima hara mine zaki kubo da no kawa yama zawa tani hama shiro".split(),
-        m="Haruto Kenji Takeshi Ren Daichi Hiro Sora Kaito Isamu Ryo Sho Akio".split(),
-        f="Hana Yuki Aiko Sakura Mei Rin Emi Asami Kaede Hikari Natsu Misaki".split(),
+        m="Haruto Kenji Takeshi Ren Daichi Hiro Sora Kaito Isamu Ryo Sho Akio Kenta Yuto Masato Shin Tatsuya Haru Riku Jiro Makoto Naoki Kazuki Tomoya".split(),
+        f="Hana Yuki Aiko Sakura Mei Rin Emi Asami Kaede Hikari Natsu Misaki Ayame Chiyo Fumiko Haruka Kiku Nanami Sayuri Tomoe Umeko Yoshiko Azumi Kohana".split(),
         casas="Kurosawa Mizuhara Yamashiro Hoshino Takamori Shiraishi Kazehaya Tsukimura Morikawa Akizuki Kirishima Isayama".split(),
     ),
     "bambu": dict(  # china
@@ -82,8 +82,8 @@ CULTURAS = {
         pre="Long Jin Shan Hua Lan Yun Qing Bai Mei Tian Zhu Feng Ling Xi An Jiang".split(),
         mid=E4 + E4,
         suf="shan he zhou ling lan nan yang ping cheng quan hai ning feng tai yuan xi".split(),
-        m="Wei Jun Hao Ming Lei Bo Zhen Tao Kang Liang Shen Yu".split(),
-        f="Mei Lan Xiu Lian Ying Hua Jing Yun Lin Qiao Ning Shu".split(),
+        m="Wei Jun Hao Ming Lei Bo Zhen Tao Kang Liang Shen Yu An Chen Feng Gang Hui Jian Long Peng Rui Sheng Xin Zhi".split(),
+        f="Mei Lan Xiu Lian Ying Hua Jing Yun Lin Qiao Ning Shu Fang Hong Jia Juan Li Mingzhu Ping Rou Ting Wan Xia Yan".split(),
         casas="Long Bai Jin Feng Lan Qing Han Zhou Yun Shen Tang Xu".split(),
     ),
     "estepa": dict(  # Asia central / mongola-túrquica
@@ -91,8 +91,8 @@ CULTURAS = {
         pre="Khar Tem Bat Altan Ulan Bor Ergen Tog Sar Ord Kush Jan Tamir Ak Kar Sel".split(),
         mid=E4 + "a u i e".split(),
         suf="baatar khan tai gol tur dar kent bek sar ul tash yurt ar mur dag gan".split(),
-        m="Temur Batu Arslan Bolat Erden Altan Kubat Sanjar Toghrul Daulet Ganbold Oktai".split(),
-        f="Saran Aigerim Khulan Ayana Altyn Dilnaz Gerel Saule Tsetseg Aruzhan Nomin Oyuna".split(),
+        m="Temur Batu Arslan Bolat Erden Altan Kubat Sanjar Toghrul Daulet Ganbold Oktai Bayar Chingis Jochi Kaidu Nogai Subut Yesu Berke Khasar Mongke Tolui Bekter".split(),
+        f="Saran Aigerim Khulan Ayana Altyn Dilnaz Gerel Saule Tsetseg Aruzhan Nomin Oyuna Borte Sorkhag Alani Khutulun Narantsetseg Odval Sarnai Tumen Bolormaa Enkhjin Aisulu Zhanar".split(),
         casas="Kharatai Tamirbek Ulanbor Altankhan Batargal Sarakhan Ordubek Kushtai Togrul Erdenbaatar Akhtash Selenge".split(),
     ),
     "islas": dict(  # Polinesia / Hawái / Oceanía
@@ -100,8 +100,8 @@ CULTURAS = {
         pre="Ka Lei Moa Hono Mana Wai Ao Kai Nalu Mo Pua Lani Rua Ara Tia Moe".split(),
         mid=E4 + "ka lo ni ma".split(),
         suf="lani lua kai nui hana pule moana roa tahi wai hiku ula motu nalu kohe rangi".split(),
-        m="Kai Makoa Nalu Ikaika Koa Kahiau Manaia Tavita Hemi Tamati Keanu Ioane".split(),
-        f="Leilani Malia Kalani Moana Aroha Mere Hina Kailani Noelani Ana Mahina Tiare".split(),
+        m="Kai Makoa Nalu Ikaika Koa Kahiau Manaia Tavita Hemi Tamati Keanu Ioane Kekoa Kana Pono Kalani Lono Mikala Aukai Kahale Rangi Tane Maui Wiremu".split(),
+        f="Leilani Malia Kalani Moana Aroha Mere Hina Kailani Noelani Ana Mahina Tiare Pua Lani Iolana Keala Nalani Lokelani Hoku Kiana Wahine Marama Ngaio Anuhea".split(),
         casas="Kealoha Makoa Nohea Kahale Ngata Paewai Faleolo Tupou Mahoe Kanoa Akana Ruatapu".split(),
     ),
 }
@@ -129,5 +129,7 @@ BIOMAS = {
 }
 
 for k, c in CULTURAS.items():
-    for campo, n in (("pre", 16), ("mid", 8), ("suf", 16), ("m", 12), ("f", 12), ("casas", 12)):
+    for campo, n in (("pre", 16), ("mid", 8), ("suf", 16), ("m", 24), ("f", 24), ("casas", 12)):
         assert len(c[campo]) == n, (k, campo, len(c[campo]))
+    for campo in ("m", "f"):
+        assert len(set(c[campo])) == len(c[campo]), (k, campo, "repetidos")

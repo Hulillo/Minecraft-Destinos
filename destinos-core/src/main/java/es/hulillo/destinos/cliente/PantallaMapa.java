@@ -2671,6 +2671,7 @@ public final class PantallaMapa extends Screen {
 				}
 			}
 			case BIOMAS -> terreno(lineas, d, tx, tz);
+			case CULTURA -> culturas(lineas, d);
 			case RELIEVE -> {
 				terreno(lineas, d, tx, tz);
 				int h = TerritoriosCliente.altura(tx, tz);
@@ -2685,6 +2686,22 @@ public final class PantallaMapa extends Screen {
 			}
 			default -> {
 			}
+		}
+	}
+
+	/** La cultura de la tierra del ducado y, si es otra, la de la dinastía de su reino (reinos mixtos). */
+	private static void culturas(List<Component> lineas, PaqueteTerritorio.Ducado d) {
+		PaqueteFichas.Nombre f = d.oceano() ? null : FichasCliente.fichaDucado(d.dcx(), d.dcz());
+		if (f == null || f.cultura().isEmpty()) {
+			return;
+		}
+		lineas.add(Component.translatableWithFallback("destinos.mapa.pista_cultura", "Cultura: %s",
+				Component.translatableWithFallback("destinos.cultura." + f.cultura(), f.cultura()))
+				.withColor(ModoMapa.CULTURAS.getOrDefault(f.cultura(), 0xFFFFFFFF) & 0xFFFFFF));
+		PaqueteFichas.Reino r = d.salvaje() ? null : FichasCliente.reino(d.kx(), d.kz());
+		if (r != null && !r.cultura().isEmpty() && !r.cultura().equals(f.cultura())) {
+			lineas.add(Component.translatableWithFallback("destinos.mapa.pista_dinastia", "Dinastía del reino: %s",
+					Component.translatableWithFallback("destinos.cultura." + r.cultura(), r.cultura())).withStyle(ChatFormatting.GRAY));
 		}
 	}
 

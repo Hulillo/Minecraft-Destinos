@@ -215,19 +215,36 @@ final class MuestreadorMundo implements MapaTerreno.Muestreador {
 	/** La misma elección que cultura/detectar del datapack: islas si hay mar cálido cerca, si no, la primera que encaja. */
 	@Override
 	public boolean culturaDeMontana(int x, int z) {
+		int i = indiceCultura(x, z);
+		return i >= 0 && DE_MONTANA[i];
+	}
+
+	/**
+	 * La cultura de la tierra en (x, z) ("norte", "desierto"…, como en culturas.py), con la misma elección que
+	 * cultura/detectar del datapack: islas si hay mar cálido cerca, si no, la primera que encaja, y si ninguna, llanura.
+	 */
+	public String cultura(int x, int z) {
+		int i = indiceCultura(x, z);
+		return i == ES_ISLAS ? "islas" : i < 0 ? "llanura" : CULTURAS[i];
+	}
+
+	private static final int ES_ISLAS = -2;
+
+	/** Índice en CULTURAS, ES_ISLAS o -1 (llanura). */
+	private int indiceCultura(int x, int z) {
 		int y = Math.max(altura(x, z), nivelMar);
 		for (int[] d : ALREDEDOR_ISLAS) {
 			if (bioma(x + d[0], y, z + d[1]).is(ISLAS)) {
-				return false;
+				return ES_ISLAS;
 			}
 		}
 		Holder<Biome> b = bioma(x, y, z);
 		for (int i = 0; i < CULTURAS.length; i++) {
 			if (b.is(TAGS_CULTURA[i])) {
-				return DE_MONTANA[i];
+				return i;
 			}
 		}
-		return false;
+		return -1;
 	}
 
 	/** Mira los sitios donde el juego intentaría poner un pueblo y si su bioma lo permite. */

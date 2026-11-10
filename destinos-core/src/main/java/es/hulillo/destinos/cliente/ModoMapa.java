@@ -120,8 +120,10 @@ enum ModoMapa {
 				return mezcla(DEBIL, FUERTE, 1 - (r.puesto() - 1) / (double) (n - 1));
 			}
 			case CULTURA: {
-				PaqueteFichas.Reino r = d.salvaje() ? null : FichasCliente.reino(d.kx(), d.kz());
-				return r == null ? (d.salvaje() ? SALVAJE : SIN_DATOS) : CULTURAS.getOrDefault(r.cultura(), SIN_DATOS);
+				// la de la tierra de cada ducado (un reino puede ser mixto); la tierra salvaje, más apagada
+				PaqueteFichas.Nombre f = FichasCliente.fichaDucado(d.dcx(), d.dcz());
+				Integer c = f == null ? null : CULTURAS.get(f.cultura());
+				return c == null ? (d.salvaje() ? SALVAJE : SIN_DATOS) : d.salvaje() ? mezcla(c, PERGAMINO, 0.5) : c;
 			}
 			case SEGURIDAD: {
 				int p = FichasCliente.peligro(d.dcx(), d.dcz());

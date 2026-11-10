@@ -377,11 +377,12 @@ final class PoliticaMundo implements PaqueteTerritorio.Politica {
 		}
 		Map<Long, Integer> peligro = peligros(server);
 		FaunaDucados fauna = FaunaDucados.de(server.overworld(), sal());
+		CulturaDucados culturas = CulturaDucados.de(server.overworld(), sal());
 		List<PaqueteFichas.Nombre> ducados = new ArrayList<>(grafo.ducados().size());
 		for (long id : grafo.ducados().keySet()) {
 			FaunaDucados.Fauna f = fauna.de(Grafo.x(id), Grafo.z(id));
 			ducados.add(new PaqueteFichas.Nombre(Grafo.x(id), Grafo.z(id), nombreDucado(server, id), Math.min(3, peligro.getOrDefault(id, 0)),
-					f.animales(), f.peligros()));
+					f.animales(), f.peligros(), culturas.de(Grafo.x(id), Grafo.z(id))));
 		}
 		return new PaqueteFichas(Estaciones.anio(server.overworld()), politica.turno(), reinos, ducados);
 	}
