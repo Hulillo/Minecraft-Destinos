@@ -172,6 +172,10 @@ public final class ObrasMundo {
 				continue;
 			}
 			for (StructurePiece pieza : plan.piezas()) {
+				// las calles, por sus moldes: cuadraditos a la altura de cada trozo
+				if (pieza instanceof CalleCapital calle) {
+					calle.moldes(chunk, BARBA, cercanas);
+				}
 				if (pieza.isCloseToChunk(chunk, BARBA) && !(pieza instanceof AdornoCapital) && !(pieza instanceof MuelleCapital)
 						&& !(pieza instanceof MarcaAsentamiento)) {
 					cercanas.add(pieza);

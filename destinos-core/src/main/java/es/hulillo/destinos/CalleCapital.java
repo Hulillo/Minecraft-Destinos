@@ -64,6 +64,8 @@ public final class CalleCapital extends StructurePiece {
 	private final int maximo;
 	/** En el pantano: sobre el agua, pasarela de mangle sobre pilotes (también en rondas y callejones). */
 	private boolean madera;
+	/** Si el terreno se amolda a este tramo antes de generarse (por tierra; no sobre el agua ni sobre una zanja que cruza por un puente). */
+	private boolean molde;
 
 	CalleCapital(int x0, int z0, int y0, int x1, int z1, int y1, double radio, boolean puente) {
 		this(x0, z0, y0, x1, z1, y1, radio, puente, 0);
@@ -127,12 +129,62 @@ public final class CalleCapital extends StructurePiece {
 		puente = t.getBooleanOr("puente", false);
 		maximo = t.getIntOr("max", 0);
 		madera = t.getBooleanOr("madera", false);
+		molde = t.getBooleanOr("molde", false);
 	}
 
 	/** La vuelve pasarela de madera sobre el agua (las capitales del pantano). */
 	CalleCapital deMadera() {
 		madera = true;
 		return this;
+	}
+
+	/** El terreno se amoldará a este tramo (lo dice el plano: va por tierra). */
+	CalleCapital conMolde() {
+		molde = true;
+		return this;
+	}
+
+	/**
+	 * Los moldes del tramo cerca del chunk: cuadraditos del ancho de la calle, uno detrás de otro sin pisarse, cada uno
+	 * a la altura de la calle en su centro. El relleno de Minecraft rebaja lo que queda por encima y rellena lo de
+	 * debajo, como bajo las casas, y la calle sale ya con su rampa hecha: al ponerse solo pinta el suelo. (Con una caja
+	 * por tramo entero, a una sola altura, quedaban terrazas rectangulares.)
+	 */
+	void moldes(ChunkPos chunk, int margen, java.util.List<StructurePiece> r) {
+		if (!molde || y0 == SIN_ALTURA) {
+			return;
+		}
+		int medio = Math.max(1, (int) Math.round(radio / 10.0));
+		double largo = Math.hypot(x1 - x0, z1 - z0);
+		int n = Math.max(1, (int) Math.round(largo / (2 * medio + 1)));
+		for (int k = 0; k < n; k++) {
+			double t = (k + 0.5) / n;
+			int x = (int) Math.round(x0 + t * (x1 - x0));
+			int z = (int) Math.round(z0 + t * (z1 - z0));
+			if (x + medio < chunk.getMinBlockX() - margen || x - medio > chunk.getMaxBlockX() + margen || z + medio < chunk.getMinBlockZ() - margen
+					|| z - medio > chunk.getMaxBlockZ() + margen) {
+				continue;
+			}
+			// el suelo de la calle queda en y: el aire empieza en y + 1
+			int y = (int) Math.floor(y0 + t * (y1 - y0)) + 1;
+			r.add(new Molde(new BoundingBox(x - medio, y, z - medio, x + medio, y + 1, z + medio)));
+		}
+	}
+
+	/** Una caja sin bloques, solo para que el terreno se amolde a ella. No se guarda ni se pone. */
+	private static final class Molde extends StructurePiece {
+		Molde(BoundingBox caja) {
+			super(TIPO, 0, caja);
+		}
+
+		@Override
+		protected void addAdditionalSaveData(StructurePieceSerializationContext ctx, CompoundTag t) {
+		}
+
+		@Override
+		public void postProcess(WorldGenLevel level, StructureManager estructuras, ChunkGenerator generador, RandomSource azar, BoundingBox caja,
+				ChunkPos chunk, BlockPos pivote) {
+		}
 	}
 
 	static void registra() {
@@ -151,6 +203,7 @@ public final class CalleCapital extends StructurePiece {
 		t.putBoolean("puente", puente);
 		t.putInt("max", maximo);
 		t.putBoolean("madera", madera);
+		t.putBoolean("molde", molde);
 	}
 
 	@Override

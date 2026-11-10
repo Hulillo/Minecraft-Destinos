@@ -645,9 +645,18 @@ public class EstructuraCapital extends Structure {
 				if (ax * ax + az * az < dentroPlaza && bx * bx + bz * bz < dentroPlaza) {
 					continue;
 				}
-				calles.add(new CalleCapital(a[0], a[1], y[k], b[0], b[1], y[k + 1], radio, true));
+				CalleCapital calle = new CalleCapital(a[0], a[1], y[k], b[0], b[1], y[k + 1], radio, true);
+				calles.add(porTierra(terreno, a, y[k]) && porTierra(terreno, b, y[k + 1]) ? calle.conMolde() : calle);
 			}
 		}
+	}
+
+	/**
+	 * Si la calle va por tierra en el punto p, a la altura y: ni sobre el agua ni en alto sobre una zanja (ahí cruza por
+	 * un puente). Solo entonces el terreno se amolda a ella: no se echa tierra en un río ni se tapa un cauce.
+	 */
+	private static boolean porTierra(TerrenoCapital terreno, int[] p, int y) {
+		return !terreno.agua(p[0], p[1]) && !terreno.aguaExacta(p[0], p[1]) && y - terreno.exacto(p[0], p[1]) <= PERFIL_RELLENO + 1;
 	}
 
 	/**
@@ -670,7 +679,7 @@ public class EstructuraCapital extends Structure {
 		for (int k = 0; k + 1 < n; k++) {
 			int[] a = c.get(k);
 			int[] b = c.get(k + 1);
-			calles.add(new CalleCapital(a[0], a[1], y[k], b[0], b[1], y[k + 1], ANCHO_PRINCIPAL, true, Math.min(maximo, MAX_RAMPA)));
+			calles.add(new CalleCapital(a[0], a[1], y[k], b[0], b[1], y[k + 1], ANCHO_PRINCIPAL, true, Math.min(maximo, MAX_RAMPA)).conMolde());
 		}
 	}
 
@@ -686,7 +695,8 @@ public class EstructuraCapital extends Structure {
 		int n = c.size();
 		double[] h = new double[n];
 		for (int k = 0; k < n; k++) {
-			h[k] = terreno.alto(c.get(k)[0], c.get(k)[1]);
+			// el suelo de verdad de esa columna, no el interpolado de la rejilla (que no ve cortados ni escalones)
+			h[k] = terreno.exacto(c.get(k)[0], c.get(k)[1]);
 		}
 		double[] suelo = h.clone();
 		h = sinZanjas(c, h);
