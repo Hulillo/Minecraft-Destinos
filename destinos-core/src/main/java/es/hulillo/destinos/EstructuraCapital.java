@@ -333,6 +333,9 @@ public class EstructuraCapital extends Structure {
 			entradas[k] = (int) Math.round(Math.toDegrees(Math.atan2(destinos.get(k)[1] - pz, destinos.get(k)[0] - px)) * 10);
 		}
 		PlazaMayor mayor = new PlazaMayor(px, pz, alturaPlaza, estilo, madera, color, nivelPlaza, Geo.hash(px, pz, K_PLAZA), entradas);
+		// en terrazas, las calles llegan a la plaza y a las obras grandes a la altura de su suelo
+		terreno.pisa(mayor.getBoundingBox(), alturaPlaza);
+		grandes.forEach(g -> terreno.pisa(g.getBoundingBox(), g.getBoundingBox().minY()));
 		Optional<PlazaMayor> mercado = Optional.of(mayor);
 
 		fase(fases, reloj, "castillo, plaza y nobles");
@@ -582,6 +585,12 @@ public class EstructuraCapital extends Structure {
 			pisan.add(mayor);
 			pisan.addAll(casas);
 			faro.ifPresent(pisan::add);
+			for (StructurePiece m : enMuralla) {
+				if (m instanceof MurallaCapital muro) {
+					terrazas.encaja(muro);
+				}
+			}
+			// después de la muralla: donde una calle la cruza, manda el suelo de la calle
 			terrazas.encaja(calles, pisan);
 		}
 		long ms = (System.nanoTime() - antes) / 1_000_000;

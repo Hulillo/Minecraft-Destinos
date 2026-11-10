@@ -104,6 +104,27 @@ public final class TerrazaCapital extends StructurePiece {
 		alto[i * lado + j] = Math.abs(y - alto[i * lado + j]) > MAX_OBRA ? (short) SIN : (short) y;
 	}
 
+	/** Como fija, para la muralla: si su pie queda lejos del bancal (un arco sobre una hondonada, un cortado), la columna se queda como estaba. */
+	void acerca(int x, int z, int y) {
+		int i = x - x0;
+		int j = z - z0;
+		if (i >= 0 && j >= 0 && i < lado && j < lado && alto[i * lado + j] != SIN && Math.abs(y - alto[i * lado + j]) <= TerrenoCapital.ESCALON) {
+			alto[i * lado + j] = (short) y;
+		}
+	}
+
+	/** El suelo bajo la muralla y en los dos bloques de fuera queda a su pie: ni medio enterrada en el bancal de arriba ni en el aire sobre el de abajo. */
+	void encaja(MurallaCapital muro) {
+		muro.recorre(muro.getBoundingBox(), (x, z, pie, arriba, portillo, andado, nx, nz, fuera) -> {
+			acerca(x, z, pie);
+			if (fuera) {
+				for (int k = 1; k <= 2; k++) {
+					acerca(x + (int) Math.round(nx * k), z + (int) Math.round(nz * k), pie);
+				}
+			}
+		});
+	}
+
 	/** La columna (x, z) no se toca (un puente, un muelle). */
 	void suelta(int x, int z) {
 		int i = x - x0;

@@ -158,6 +158,10 @@ final class TerrenoCapital {
 	 * su bancal.
 	 */
 	int alto(int x, int z) {
+		int obra = pisado(x, z);
+		if (obra != Integer.MIN_VALUE) {
+			return obra;
+		}
 		double h = suave(x, z);
 		double w = terrazas ? peso(x, z) : 0;
 		return (int) Math.round(w <= 0 ? h : h * (1 - w) + nivel(h) * w);
@@ -168,7 +172,9 @@ final class TerrenoCapital {
 	/** Lo que sube cada bancal sobre el de debajo. */
 	static final int ESCALON = 5;
 	/** El desnivel (entre el décimo más bajo y el décimo más alto del sitio) desde el que la capital se hace en terrazas. */
-	private static final int DESNIVEL_TERRAZAS = 14;
+	private static final int DESNIVEL_TERRAZAS = 16;
+	/** Y ese desnivel, además, respecto al radio del sitio: solo las laderas empinadas de verdad (un sitio grande con una cuesta suave se queda como está). */
+	private static final double PENDIENTE_TERRAZAS = 0.3;
 	/** La franja del borde en que los bancales se van fundiendo con el terreno de fuera. */
 	private static final int BORDE_TERRAZAS = 10;
 
@@ -197,7 +203,7 @@ final class TerrenoCapital {
 		}
 		java.util.Collections.sort(h);
 		desnivelSitio = h.get(h.size() * 9 / 10) - h.get(h.size() / 10);
-		if (desnivelSitio < DESNIVEL_TERRAZAS) {
+		if (desnivelSitio < Math.max(DESNIVEL_TERRAZAS, radio * PENDIENTE_TERRAZAS)) {
 			return false;
 		}
 		terrazas = true;
@@ -205,6 +211,29 @@ final class TerrenoCapital {
 		tcz = cz;
 		tradio = radio + BORDE_TERRAZAS;
 		return true;
+	}
+
+	/** Las obras ya decididas en una capital en terrazas: {minX, minZ, maxX, maxZ, suelo}. */
+	private final List<int[]> pisadas = new ArrayList<>();
+
+	/**
+	 * En una capital en terrazas, el suelo de la caja queda desde ahora a la altura y (el de una obra ya decidida: la
+	 * plaza, el castillo, una casa noble): lo que se trace después (las calles) llega a ella a su altura y no a la del
+	 * bancal que había debajo. Sin terrazas no hace nada: la obra se asienta en el terreno, que apenas cambia.
+	 */
+	void pisa(BoundingBox b, int y) {
+		if (terrazas) {
+			pisadas.add(new int[] {b.minX(), b.minZ(), b.maxX(), b.maxZ(), y});
+		}
+	}
+
+	private int pisado(int x, int z) {
+		for (int[] p : pisadas) {
+			if (x >= p[0] && x <= p[2] && z >= p[1] && z <= p[3]) {
+				return p[4];
+			}
+		}
+		return Integer.MIN_VALUE;
 	}
 
 	private int desnivelSitio;
@@ -273,6 +302,10 @@ final class TerrenoCapital {
 	 * bloque a bloque (la muralla) pregunta aquí. Cada consulta nueva cuesta lo que un punto de la rejilla.
 	 */
 	int exacto(int x, int z) {
+		int obra = pisado(x, z);
+		if (obra != Integer.MIN_VALUE) {
+			return obra;
+		}
 		double w = terrazas ? peso(x, z) : 0;
 		if (w >= 1) {
 			return (int) nivel(suave(x, z));
