@@ -24,13 +24,10 @@ import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
  * troncos, 1 muralla de piedra con almenas, 2 muralla de ladrillo de piedra más gruesa y alta, con torres. En el
  * desierto, de arenisca.
  *
- * El trazado se hace una vez, en el plano: el contorno de lo construido (con un margen, parándose en el borde de los
- * cortados) se vuelve una línea cerrada de vértices cada PASO_TRAMO bloques, y cada vértice lleva la altura del
- * adarve, suavizada a lo largo del anillo y sin cuestas de más de una por cada dos bloques. Cada tramo une dos
- * vértices: por dentro, la cara de la línea; el grueso, hacia fuera. Así la muralla va por arriba lisa (se puede
- * patrullar), por abajo baja con cimiento hasta el suelo y, donde el suelo se hunde mucho (un barranco, una zanja),
- * lo cruza con arcos sobre pilares en vez de bajar por él. Se para en las casas, deja paso bajo las calles (la
- * empalizada las cierra), cruza el agua con reja y deja libres las puertas.
+ * Todo se decide en el plano (PlanMuralla): por dónde va, a qué altura, dónde no hay muro (laderas muy empinadas),
+ * las puertas de cada calle que la cruza y las torres. Aquí solo se pone: el terreno ya se ha amoldado a lo largo de
+ * la muralla (como a las casas), cada columna va del pie al adarve sin mirar qué hay, con cimiento hasta el suelo o
+ * arcos sobre pilares donde se hunde mucho, y reja sobre el agua.
  */
 public final class MurallaCapital extends StructurePiece {
 	public static final StructurePieceType TIPO = (StructurePieceType.ContextlessType) MurallaCapital::new;
@@ -41,42 +38,30 @@ public final class MurallaCapital extends StructurePiece {
 	private static final int[] RADIOS = {76, 88, 108};
 	/** Cuántos arcos tiene el contorno (los radios que se calculan para ceñir la muralla a lo construido). */
 	static final int ARCOS = 64;
-	private static final int[] ALTO = {4, 5, 7};
-	private static final int[] GRUESO = {1, 2, 3};
-	/** Cada cuántos bloques va un vértice del trazado. */
-	private static final int PASO_TRAMO = 6;
-	/** Torres: cada cuántos bloques de muralla como mucho (normal, rica); y en los quiebros, desde la mitad. */
-	private static final int[] ESPACIO_TORRES = {0, 44, 30};
-	private static final double QUIEBRO = Math.toRadians(22);
-	private static final int RADIO_TORRE = 3;
-	/** El alto libre bajo el dintel de las puertas. */
-	private static final int PASO = 4;
 	/** Lo que se baja como mucho con cimiento macizo; más hondo, arcos. */
 	private static final int HONDO_MACIZO = 6;
 	/** Cada cuántos bloques va un pilar bajo los arcos, y lo gruesos que son. */
 	private static final int VANO = 7;
 	private static final int PILAR = 2;
-	/** Lo hondo que puede ser un hueco bajo los arcos (más, la muralla se corta). */
+	/** Hasta dónde bajan los pilares de los arcos. */
 	private static final int HONDO_ARCOS = 28;
-	/** Hasta dónde se mira alrededor de cada vértice el suelo más alto (el de arriba de un cortado o una ladera). */
-	private static final int ENTERRADA = 2;
 
 	static int radio(int nivel) {
 		return RADIOS[Math.clamp(nivel, 0, RADIOS.length - 1)];
 	}
 
 	static int alto(int nivel) {
-		return ALTO[Math.clamp(nivel, 0, ALTO.length - 1)];
+		return PlanMuralla.alto(nivel);
 	}
 
 	static int grueso(int nivel) {
-		return GRUESO[Math.clamp(nivel, 0, GRUESO.length - 1)];
+		return PlanMuralla.grueso(nivel);
 	}
 
 	private final int cx;
 	private final int cz;
 	private final int nivel;
-	/** Torre (su caja dice dónde y su minY la altura del adarve menos ALTO) o tramo de (xa, za, ya) a (xb, zb, yb). */
+	/** Torre (su caja dice dónde y su minY la altura de su suelo) o tramo de (xa, za, ya) a (xb, zb, yb). */
 	private final boolean torre;
 	private final int xa;
 	private final int za;
@@ -86,18 +71,24 @@ public final class MurallaCapital extends StructurePiece {
 	private final int yb;
 	/** Lo que se lleva andado del anillo al empezar el tramo (para repartir los pilares de los arcos). */
 	private final int andado;
+	/** Si toca agua: ahí no se amolda el terreno (no se echa tierra en el río). */
+	private final boolean agua;
 	/** El castillo, si lo hay: centro y medio lado de su muralla (ahí la de la ciudad se para y empalma con ella). */
 	private final int kx;
 	private final int kz;
 	private final int km;
-	/** Cajas (x0, z0, x1, z1 seguidos) donde no se pone muralla: delante y detrás de las puertas. */
+	/** Cajas (x0, z0, x1, z1 seguidos) donde no se pone muralla: delante y detrás de los portones. */
 	private final int[] huecos;
+	/** Los portillos de cerca (x, z, y, medio ancho seguidos). */
+	private final int[] portillos;
+	/** Las torres de cerca (x, z seguidos): el tramo no entra en ellas. */
+	private final int[] torres;
 
-	private MurallaCapital(int cx, int cz, int nivel, boolean torre, int[] tramo, int andado, int[] castillo, int[] huecos, BoundingBox caja) {
+	private MurallaCapital(PlanMuralla p, boolean torre, int[] tramo, int andado, boolean agua, int[] portillos, int[] torres, BoundingBox caja) {
 		super(TIPO, 0, caja);
-		this.cx = cx;
-		this.cz = cz;
-		this.nivel = nivel;
+		this.cx = p.cx;
+		this.cz = p.cz;
+		this.nivel = p.nivel;
 		this.torre = torre;
 		this.xa = tramo[0];
 		this.za = tramo[1];
@@ -106,30 +97,37 @@ public final class MurallaCapital extends StructurePiece {
 		this.zb = tramo[4];
 		this.yb = tramo[5];
 		this.andado = andado;
-		this.kx = castillo == null ? 0 : castillo[0];
-		this.kz = castillo == null ? 0 : castillo[1];
-		this.km = castillo == null ? -1 : castillo[2];
-		this.huecos = huecos;
+		this.agua = agua;
+		this.kx = p.castillo == null ? 0 : p.castillo[0];
+		this.kz = p.castillo == null ? 0 : p.castillo[1];
+		this.km = p.castillo == null ? -1 : p.castillo[2];
+		this.huecos = p.huecos;
+		this.portillos = portillos;
+		this.torres = torres;
 	}
 
 	private MurallaCapital(CompoundTag t) {
 		super(TIPO, t);
 		cx = t.getIntOr("cx", 0);
 		cz = t.getIntOr("cz", 0);
-		nivel = Math.clamp(t.getIntOr("nivel", 0), 0, ALTO.length - 1);
-		// las piezas de antes (arcos por ángulo, sin "v") ya no se ponen
-		torre = t.getIntOr("v", 0) == 2 && t.getBooleanOr("torre", false);
+		nivel = Math.clamp(t.getIntOr("nivel", 0), 0, PlanMuralla.ALTO.length - 1);
+		// las piezas de antes del plano (sin "v" 3) ya no se ponen
+		boolean nueva = t.getIntOr("v", 0) == 3;
+		torre = nueva && t.getBooleanOr("torre", false);
 		xa = t.getIntOr("xa", 0);
 		za = t.getIntOr("za", 0);
-		ya = t.getIntOr("ya", Integer.MIN_VALUE);
+		ya = nueva ? t.getIntOr("ya", Integer.MIN_VALUE) : Integer.MIN_VALUE;
 		xb = t.getIntOr("xb", 0);
 		zb = t.getIntOr("zb", 0);
 		yb = t.getIntOr("yb", Integer.MIN_VALUE);
 		andado = t.getIntOr("andado", 0);
+		agua = t.getBooleanOr("agua", false);
 		kx = t.getIntOr("kx", 0);
 		kz = t.getIntOr("kz", 0);
 		km = t.getIntOr("km", -1);
 		huecos = t.getIntArray("huecos").orElse(new int[0]);
+		portillos = t.getIntArray("portillos").orElse(new int[0]);
+		torres = t.getIntArray("torres").orElse(new int[0]);
 	}
 
 	static void registra() {
@@ -251,171 +249,104 @@ public final class MurallaCapital extends StructurePiece {
 
 	/** El radio interior de la muralla en el ángulo a (décimas de grado), entre los de los arcos. */
 	static double radioEn(int[] radios, double a) {
-		double f = Math.floorMod((long) Math.floor(a * 1000), 3600_000L) / 1000.0 / 3600 * ARCOS;
-		int i = (int) Math.floor(f);
-		double t = f - i;
-		return radios[i % ARCOS] * (1 - t) + radios[(i + 1) % ARCOS] * t;
+		return PlanMuralla.radioEn(radios, a);
 	}
 
 	/**
-	 * Las piezas de la muralla alrededor de (cx, cz) con los radios del contorno (null: el círculo de su nivel);
-	 * alturaEn da la altura del suelo. Dentro de la muralla del castillo (centro y medio lado en castillo, o null) no
-	 * se pone nada: la de la ciudad llega hasta la suya y ahí empalma.
+	 * Las piezas del plano: una torre por cada torre y un tramo por cada tramo de muro (los de cuesta y los que caen
+	 * dentro del castillo, no).
 	 */
-	static void piezas(int cx, int cz, int nivel, int[] radios, IntBinaryOperator alturaEn, int[] castillo, int[] huecos, List<StructurePiece> piezas) {
-		if (radios == null) {
-			radios = new int[ARCOS];
-			java.util.Arrays.fill(radios, radio(nivel));
+	static void piezas(PlanMuralla p, List<StructurePiece> piezas) {
+		int r = PlanMuralla.RADIO_TORRE + 1;
+		for (PlanMuralla.Torre t : p.torres) {
+			BoundingBox caja = new BoundingBox(t.x() - r, t.y(), t.z() - r, t.x() + r, t.y() + 1, t.z() + r);
+			piezas.add(new MurallaCapital(p, true, new int[6], 0, false, new int[0], new int[0], caja));
 		}
-		int[][] v = vertices(cx, cz, radios);
-		int[] y = adarve(v, nivel, alturaEn);
-		// las torres antes que los tramos: así el tramo ve la torre ya puesta y no la atraviesa
-		torres(cx, cz, nivel, v, y, castillo, huecos, piezas);
-		tramos(cx, cz, nivel, v, y, castillo, huecos, piezas);
-	}
-
-	/** Los vértices de la línea de la muralla (su cara de dentro), cada PASO_TRAMO bloques más o menos. */
-	private static int[][] vertices(int cx, int cz, int[] radios) {
-		double medio = java.util.Arrays.stream(radios).average().orElse(RADIOS[0]);
-		int n = Math.max(24, (int) Math.round(2 * Math.PI * medio / PASO_TRAMO));
-		int[][] v = new int[n][2];
-		for (int k = 0; k < n; k++) {
-			double a = k * 3600.0 / n;
-			double r = radioEn(radios, a);
-			double ang = Math.toRadians(a / 10);
-			v[k][0] = cx + (int) Math.round(Math.cos(ang) * r);
-			v[k][1] = cz + (int) Math.round(Math.sin(ang) * r);
-		}
-		return v;
-	}
-
-	/**
-	 * La altura del pie de la muralla en cada vértice: la del suelo más alto en su sitio y a ENTERRADA bloques
-	 * alrededor (en el borde de un cortado, la de arriba), suavizada a lo largo del anillo pero nunca más de un
-	 * bloque por debajo de ese suelo (el suavizado no la mete en las lomas), y sin cuestas de más de una por cada dos
-	 * bloques (lo que sobra se sube: más cimiento o arcos, nunca la muralla metida en el suelo).
-	 */
-	private static int[] adarve(int[][] v, int nivel, IntBinaryOperator alturaEn) {
-		int n = v.length;
-		double[] h = new double[n];
-		int[] alto = new int[n];
-		for (int k = 0; k < n; k++) {
-			int x = v[k][0];
-			int z = v[k][1];
-			alto[k] = Math.max(Math.max(alturaEn.applyAsInt(x, z), alturaEn.applyAsInt(x + ENTERRADA, z)),
-					Math.max(alturaEn.applyAsInt(x - ENTERRADA, z),
-							Math.max(alturaEn.applyAsInt(x, z + ENTERRADA), alturaEn.applyAsInt(x, z - ENTERRADA))));
-			h[k] = alto[k];
-		}
-		for (int pasada = 0; pasada < 3; pasada++) {
-			double[] g = h.clone();
-			for (int k = 0; k < n; k++) {
-				g[k] = (h[(k + n - 1) % n] + 2 * h[k] + h[(k + 1) % n]) / 4;
-			}
-			h = g;
-		}
-		int[] y = new int[n];
-		for (int k = 0; k < n; k++) {
-			y[k] = Math.max((int) Math.round(h[k]), alto[k] - 1);
-		}
-		for (boolean cambia = true; cambia;) {
-			cambia = false;
-			for (int k = 0; k < n; k++) {
-				int s = (k + 1) % n;
-				int cuesta = Math.max(1, (int) Math.hypot(v[s][0] - v[k][0], v[s][1] - v[k][1]) / 2);
-				if (y[s] < y[k] - cuesta) {
-					y[s] = y[k] - cuesta;
-					cambia = true;
-				} else if (y[k] < y[s] - cuesta) {
-					y[k] = y[s] - cuesta;
-					cambia = true;
-				}
-			}
-		}
-		return y;
-	}
-
-	/** Torres en los quiebros de la línea y, si no, cada ESPACIO_TORRES bloques (las pobres, sin torres). */
-	private static void torres(int cx, int cz, int nivel, int[][] v, int[] y, int[] castillo, int[] huecos, List<StructurePiece> piezas) {
-		int espacio = ESPACIO_TORRES[nivel];
-		if (espacio <= 0) {
-			return;
-		}
-		int n = v.length;
-		double andado = espacio / 2.0;
-		int medio = GRUESO[nivel] / 2;
-		for (int k = 0; k < n; k++) {
-			int[] a = v[(k + n - 1) % n];
-			int[] b = v[k];
-			int[] c = v[(k + 1) % n];
-			andado += Math.hypot(b[0] - a[0], b[1] - a[1]);
-			double giro = Math.abs(Math.atan2(c[1] - b[1], c[0] - b[0]) - Math.atan2(b[1] - a[1], b[0] - a[0]));
-			giro = Math.min(giro, 2 * Math.PI - giro);
-			if (andado < espacio && !(giro > QUIEBRO && andado >= espacio / 2.0)) {
-				continue;
-			}
-			double[] fuera = fuera(cx, cz, b[0], b[1]);
-			int tx = b[0] + (int) Math.round(fuera[0] * medio);
-			int tz = b[1] + (int) Math.round(fuera[1] * medio);
-			if (enCastillo(castillo, tx, tz, RADIO_TORRE + 2) || enHueco(huecos, tx, tz, RADIO_TORRE + 4)) {
-				continue;
-			}
-			andado = 0;
-			int r = RADIO_TORRE + 1;
-			piezas.add(new MurallaCapital(cx, cz, nivel, true, new int[6], 0, castillo, huecos,
-					new BoundingBox(tx - r, y[k], tz - r, tx + r, y[k] + 1, tz + r)));
-		}
-	}
-
-	/** Un tramo por cada par de vértices seguidos (menos los que caen enteros dentro del castillo). */
-	private static void tramos(int cx, int cz, int nivel, int[][] v, int[] y, int[] castillo, int[] huecos, List<StructurePiece> piezas) {
-		int n = v.length;
-		int borde = GRUESO[nivel] + 2;
+		int borde = PlanMuralla.grueso(p.nivel) + 2;
 		double andado = 0;
-		for (int k = 0; k < n; k++) {
-			int[] a = v[k];
-			int[] b = v[(k + 1) % n];
-			int s = (k + 1) % n;
-			double largo = Math.hypot(b[0] - a[0], b[1] - a[1]);
-			boolean tapa = enCastillo(castillo, a[0], a[1], -2) && enCastillo(castillo, b[0], b[1], -2);
-			if (!tapa) {
-				BoundingBox caja = new BoundingBox(Math.min(a[0], b[0]) - borde, Math.min(y[k], y[s]), Math.min(a[1], b[1]) - borde,
-						Math.max(a[0], b[0]) + borde, Math.max(y[k], y[s]) + 1, Math.max(a[1], b[1]) + borde);
-				piezas.add(new MurallaCapital(cx, cz, nivel, false, new int[] {a[0], a[1], y[k], b[0], b[1], y[s]}, (int) Math.round(andado),
-						castillo, huecos, caja));
+		for (int k = 0; k < p.n(); k++) {
+			int s = p.siguiente(k);
+			int[] a = p.v[k];
+			int[] b = p.v[s];
+			if (p.hayMuro(k)) {
+				BoundingBox caja = new BoundingBox(Math.min(a[0], b[0]) - borde, Math.min(p.pie[k], p.pie[s]), Math.min(a[1], b[1]) - borde,
+						Math.max(a[0], b[0]) + borde, Math.max(p.pie[k], p.pie[s]) + 1, Math.max(a[1], b[1]) + borde);
+				piezas.add(new MurallaCapital(p, false, new int[] {a[0], a[1], p.pie[k], b[0], b[1], p.pie[s]}, (int) Math.round(andado),
+						p.agua[k], cercanos(p, caja), torresCerca(p, caja), caja));
 			}
-			andado += largo;
+			andado += p.largo(k);
 		}
 	}
 
-	/** La dirección hacia fuera del anillo en (x, z), de largo 1. */
-	private static double[] fuera(int cx, int cz, double x, double z) {
-		double d = Math.max(1e-6, Math.hypot(x - cx, z - cz));
-		return new double[] {(x - cx) / d, (z - cz) / d};
+	/** Para /destinoscore muralla: lienzos, torres, portillos y portones de las piezas dadas, y qué hay en aqui. "" si no hay muralla. */
+	static String resumen(List<StructurePiece> piezas, BlockPos aqui) {
+		int lienzos = 0;
+		int torresN = 0;
+		int conAgua = 0;
+		java.util.Set<Long> portillosV = new java.util.HashSet<>();
+		java.util.Set<String> portones = new java.util.HashSet<>();
+		String encima = "";
+		for (StructurePiece pieza : piezas) {
+			if (!(pieza instanceof MurallaCapital m) || m.ya == Integer.MIN_VALUE && !m.torre) {
+				continue;
+			}
+			if (m.torre) {
+				torresN++;
+			} else {
+				lienzos++;
+				conAgua += m.agua ? 1 : 0;
+			}
+			for (int k = 0; k + 3 < m.portillos.length; k += 4) {
+				portillosV.add(Geo.clave(m.portillos[k], m.portillos[k + 1]));
+			}
+			portones.add(java.util.Arrays.toString(m.huecos));
+			if (m.getBoundingBox().isInside(aqui.getX(), m.getBoundingBox().minY(), aqui.getZ())) {
+				encima = m.torre ? " · estás en una torre (suelo a y=" + m.getBoundingBox().minY() + ")"
+						: " · estás en un lienzo (pie de y=" + m.ya + " a y=" + m.yb + (m.agua ? ", con agua" : "") + ")";
+			}
+		}
+		if (lienzos + torresN == 0) {
+			return "";
+		}
+		int huecos = portones.stream().mapToInt(h -> h.equals("[]") ? 0 : h.split(",").length / 4).max().orElse(0);
+		return lienzos + " lienzos (" + conAgua + " con agua), " + torresN + " torres, " + portillosV.size() + " portillos, " + huecos
+				+ " portones" + encima;
 	}
 
-	private static boolean enHueco(int[] huecos, int x, int z, int margen) {
+	private static int[] cercanos(PlanMuralla p, BoundingBox caja) {
+		return p.portillos.stream()
+				.filter(q -> q.x() >= caja.minX() - 3 && q.x() <= caja.maxX() + 3 && q.z() >= caja.minZ() - 3 && q.z() <= caja.maxZ() + 3)
+				.flatMapToInt(q -> java.util.stream.IntStream.of(q.x(), q.z(), q.y(), q.medio())).toArray();
+	}
+
+	private static int[] torresCerca(PlanMuralla p, BoundingBox caja) {
+		int r = PlanMuralla.RADIO_TORRE + 2;
+		return p.torres.stream()
+				.filter(t -> t.x() >= caja.minX() - r && t.x() <= caja.maxX() + r && t.z() >= caja.minZ() - r && t.z() <= caja.maxZ() + r)
+				.flatMapToInt(t -> java.util.stream.IntStream.of(t.x(), t.z())).toArray();
+	}
+
+	private static boolean enHueco(int[] huecos, int x, int z) {
 		for (int k = 0; k + 3 < huecos.length; k += 4) {
-			if (x >= huecos[k] - margen && x <= huecos[k + 2] + margen && z >= huecos[k + 1] - margen && z <= huecos[k + 3] + margen) {
+			if (x >= huecos[k] && x <= huecos[k + 2] && z >= huecos[k + 1] && z <= huecos[k + 3]) {
 				return true;
 			}
 		}
 		return false;
 	}
 
-	private static boolean enCastillo(int[] castillo, int x, int z, int margen) {
-		return castillo != null && Math.max(Math.abs(x - castillo[0]), Math.abs(z - castillo[1])) <= castillo[2] + margen;
-	}
-
-	/** No cuenta para el allanado: va columna a columna sobre el suelo (y sobre el agua, sin echar tierra en ella). */
+	/**
+	 * El terreno se amolda a la muralla como a las casas (lo de encima de su pie se corta y lo de debajo se rellena),
+	 * menos donde toca agua: ahí no se echa tierra en el río.
+	 */
 	@Override
 	public boolean isCloseToChunk(ChunkPos chunk, int distancia) {
-		return false;
+		return !agua && (torre || ya != Integer.MIN_VALUE) && super.isCloseToChunk(chunk, distancia);
 	}
 
 	@Override
 	protected void addAdditionalSaveData(StructurePieceSerializationContext ctx, CompoundTag t) {
-		t.putInt("v", 2);
+		t.putInt("v", 3);
 		t.putInt("cx", cx);
 		t.putInt("cz", cz);
 		t.putInt("nivel", nivel);
@@ -427,10 +358,13 @@ public final class MurallaCapital extends StructurePiece {
 		t.putInt("zb", zb);
 		t.putInt("yb", yb);
 		t.putInt("andado", andado);
+		t.putBoolean("agua", agua);
 		t.putInt("kx", kx);
 		t.putInt("kz", kz);
 		t.putInt("km", km);
 		t.putIntArray("huecos", huecos);
+		t.putIntArray("portillos", portillos);
+		t.putIntArray("torres", torres);
 	}
 
 	@Override
@@ -447,29 +381,32 @@ public final class MurallaCapital extends StructurePiece {
 	/**
 	 * El tramo de (xa, za) a (xb, zb): cada columna a menos del grueso de la línea, hacia fuera, con el adarve a la
 	 * altura que toca en ese punto. En las puntas, redondeado: así los tramos se empalman sin huecos en los quiebros.
+	 * Fuera quedan solo los portones, el castillo y las torres (que ya están puestas); en los portillos, el paso.
 	 */
 	private void tramo(WorldGenLevel level, BoundingBox caja, BlockPos.MutableBlockPos pos) {
 		BoundingBox mia = getBoundingBox();
-		int grueso = GRUESO[nivel];
+		int grueso = PlanMuralla.grueso(nivel);
 		double dx = xb - xa;
 		double dz = zb - za;
 		double largo = Math.max(1e-6, Math.hypot(dx, dz));
-		double[] fuera = fuera(cx, cz, (xa + xb) / 2.0, (za + zb) / 2.0);
+		double d = Math.max(1e-6, Math.hypot((xa + xb) / 2.0 - cx, (za + zb) / 2.0 - cz));
 		// la normal del tramo, hacia fuera del anillo
 		double nx = -dz / largo;
 		double nz = dx / largo;
-		if (nx * fuera[0] + nz * fuera[1] < 0) {
+		if (nx * ((xa + xb) / 2.0 - cx) / d + nz * ((za + zb) / 2.0 - cz) / d < 0) {
 			nx = -nx;
 			nz = -nz;
 		}
 		for (int x = Math.max(mia.minX(), caja.minX()); x <= Math.min(mia.maxX(), caja.maxX()); x++) {
 			for (int z = Math.max(mia.minZ(), caja.minZ()); z <= Math.min(mia.maxZ(), caja.maxZ()); z++) {
-				if (km >= 0 && Math.max(Math.abs(x - kx), Math.abs(z - kz)) <= km || enHueco(huecos, x, z, 0)) {
+				if (km >= 0 && Math.max(Math.abs(x - kx), Math.abs(z - kz)) <= km || enHueco(huecos, x, z) || enTorre(x, z)) {
 					continue;
 				}
 				double t = Math.clamp(((x - xa) * dx + (z - za) * dz) / (largo * largo), 0, 1);
-				double ox = x - (xa + t * dx);
-				double oz = z - (za + t * dz);
+				double qx = xa + t * dx;
+				double qz = za + t * dz;
+				double ox = x - qx;
+				double oz = z - qz;
 				double hondo = ox * nx + oz * nz;
 				if (hondo < -0.5 || hondo >= grueso - 0.5 || Math.hypot(ox, oz) >= grueso + 0.5) {
 					continue;
@@ -483,44 +420,84 @@ public final class MurallaCapital extends StructurePiece {
 				if (!esMuralla(level.getBlockState(pos.set(x, SueloNatural.cima(level, x, z), z)))) {
 					SueloNatural.tala(level, caja, x, z);
 				}
-				columna(level, pos, x, z, pie, pie + ALTO[nivel] + (almena ? 1 : 0), andado + t * largo);
+				int[] portillo = portillo(qx, qz);
+				if (portillo != null) {
+					portillo(level, pos, x, z, portillo[2], pie + PlanMuralla.alto(nivel) + (almena ? 1 : 0));
+				} else {
+					columna(level, pos, x, z, pie, pie + PlanMuralla.alto(nivel) + (almena ? 1 : 0), andado + t * largo);
+				}
 			}
+		}
+	}
+
+	private boolean enTorre(int x, int z) {
+		for (int k = 0; k + 1 < torres.length; k += 2) {
+			if (Math.hypot(x - torres[k], z - torres[k + 1]) <= PlanMuralla.RADIO_TORRE + 0.5) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** El portillo cuyo paso incluye el punto (qx, qz) de la línea, o null. */
+	private int[] portillo(double qx, double qz) {
+		for (int k = 0; k + 3 < portillos.length; k += 4) {
+			if (Math.hypot(qx - portillos[k], qz - portillos[k + 1]) <= portillos[k + 3] + 0.5) {
+				return new int[] {portillos[k], portillos[k + 1], portillos[k + 2]};
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Una columna del paso de un portillo: el suelo a la altura de la calle (lo que falte debajo, cimiento), libre
+	 * PASO_PORTILLO encima y el dintel con la muralla hasta arriba (al menos dos por encima del paso).
+	 */
+	private void portillo(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int suelo, int arriba) {
+		BlockState s = SueloNatural.superficie(level, pos, x, z);
+		int h = pos.getY();
+		boolean arena = SueloNatural.arena(s) || s.is(Blocks.SMOOTH_SANDSTONE);
+		BlockState bloque = bloque(arena);
+		for (int y = Math.min(h, suelo - 1); y < suelo; y++) {
+			if (!level.getBlockState(pos.set(x, y, z)).isFaceSturdy(level, pos, net.minecraft.core.Direction.UP)) {
+				level.setBlock(pos, cimiento(arena), 2);
+			}
+		}
+		BlockState pisa = level.getBlockState(pos.set(x, suelo, z));
+		if (pisa.isAir() || pisa.canBeReplaced()) {
+			level.setBlock(pos, Blocks.COBBLESTONE.defaultBlockState(), 2);
+		}
+		for (int y = suelo + 1; y <= suelo + PlanMuralla.PASO_PORTILLO; y++) {
+			level.setBlock(pos.set(x, y, z), Blocks.AIR.defaultBlockState(), 2);
+		}
+		for (int y = suelo + PlanMuralla.PASO_PORTILLO + 1; y <= Math.max(arriba, suelo + PlanMuralla.PASO_PORTILLO + 2); y++) {
+			level.setBlock(pos.set(x, y, z), bloque, 2);
+		}
+		for (int y = Math.max(arriba, suelo + PlanMuralla.PASO_PORTILLO + 2) + 1; y <= h; y++) {
+			libre(level, pos.set(x, y, z));
 		}
 	}
 
 	/**
 	 * Una columna de la muralla con el pie en pie y lo alto en arriba (a lo largo del anillo en andado, para los
-	 * pilares). Sobre el agua, reja; sobre una casa, nada; sobre una calle, la puerta: paso de PASO de alto y encima el
-	 * dintel (la empalizada, que no da para tanto, la cierra). Si el suelo queda por debajo del pie, cimiento hasta él;
-	 * si queda muy por debajo, arco entre pilares.
+	 * pilares). Sobre el agua, reja. Si el suelo queda por debajo del pie, cimiento hasta él; si queda muy por debajo,
+	 * arco entre pilares. Si el amoldado no llegó a quitar una loma (suelo natural por encima del pie), la columna sube
+	 * con ella, como mucho un bloque enterrada: nunca a ras de suelo.
 	 */
 	private void columna(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int pie, int arriba, double andado) {
 		BlockState s = SueloNatural.superficie(level, pos, x, z);
 		int suelo = pos.getY();
 		if (s.is(Blocks.WATER)) {
-			reja(level, pos, Math.max(arriba - suelo, ALTO[nivel]));
+			reja(level, pos, Math.max(arriba - suelo, PlanMuralla.alto(nivel)));
 			return;
 		}
 		boolean arena = SueloNatural.arena(s) || s.is(Blocks.SMOOTH_SANDSTONE);
 		BlockState bloque = bloque(arena);
-		if (calle(s) && nivel > 0 && suelo >= pie - 2) {
-			for (int y = suelo + 1; y <= suelo + PASO; y++) {
-				libre(level, pos.set(x, y, z));
-			}
-			pon(level, pos, x, z, suelo + PASO + 1, Math.max(arriba, suelo + PASO + 2), bloque);
-			return;
+		if (SueloNatural.natural(s)) {
+			int sube = Math.max(0, suelo - 1 - pie);
+			pie += sube;
+			arriba += sube;
 		}
-		// sobre cualquier suelo (tierra, piedra, caminos, empedrados, muros de contención del allanado) la muralla
-		// sigue; solo se aparta de lo construido de verdad: algo que no es suelo natural muy por encima de su pie (un
-		// tejado), y entonces se para al llegar a ello sin dejar el resto del tramo
-		if (!calle(s) && !SueloNatural.natural(s) && suelo > pie + 2) {
-			return;
-		}
-		// suelo natural por encima del pie (una loma, la ladera de arriba): la muralla sube con él, como mucho un
-		// bloque enterrada, para que nunca quede a ras de suelo con las almenas asomando
-		int sube = Math.max(0, suelo - 1 - pie);
-		pie += sube;
-		arriba += sube;
 		for (int y = arriba + 1; y <= suelo; y++) {
 			libre(level, pos.set(x, y, z));
 		}
@@ -540,17 +517,8 @@ public final class MurallaCapital extends StructurePiece {
 		if (abajo.isAir() || abajo.canBeReplaced() || SueloNatural.natural(abajo)) {
 			level.setBlock(pos, desde == suelo ? cimiento(arena) : bloque, 2);
 		}
-		pon(level, pos, x, z, desde + 1, arriba, bloque);
-	}
-
-	/** Pone bloque de y0 a y1 en la columna x, z, parando donde haya algo hecho (una casa, un tejado). */
-	private static void pon(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int y0, int y1, BlockState bloque) {
-		for (int y = y0; y <= y1; y++) {
-			BlockState aqui = level.getBlockState(pos.set(x, y, z));
-			if (!aqui.isAir() && !aqui.canBeReplaced() && !SueloNatural.natural(aqui) && !pavimento(aqui) && !aqui.is(bloque.getBlock())) {
-				return;
-			}
-			level.setBlock(pos, bloque, 2);
+		for (int y = desde + 1; y <= arriba; y++) {
+			level.setBlock(pos.set(x, y, z), bloque, 2);
 		}
 	}
 
@@ -588,14 +556,14 @@ public final class MurallaCapital extends StructurePiece {
 		int tx = (mia.minX() + mia.maxX()) / 2;
 		int tz = (mia.minZ() + mia.maxZ()) / 2;
 		int y0 = mia.minY();
-		int adarve = y0 + ALTO[nivel];
-		int azotea = y0 + ALTO[nivel] + 4;
+		int adarve = y0 + PlanMuralla.alto(nivel);
+		int azotea = y0 + PlanMuralla.alto(nivel) + 4;
 		// hacia la ciudad (la puerta) y a lo largo de la muralla (las salidas al adarve)
 		net.minecraft.core.Direction dentro = Math.abs(cx - tx) >= Math.abs(cz - tz)
 				? (cx > tx ? net.minecraft.core.Direction.EAST : net.minecraft.core.Direction.WEST)
 				: (cz > tz ? net.minecraft.core.Direction.SOUTH : net.minecraft.core.Direction.NORTH);
 		net.minecraft.core.Direction lado = dentro.getClockWise();
-		int r = RADIO_TORRE;
+		int r = PlanMuralla.RADIO_TORRE;
 		BlockState suelo = Blocks.SPRUCE_PLANKS.defaultBlockState();
 		for (int x = Math.max(mia.minX(), caja.minX()); x <= Math.min(mia.maxX(), caja.maxX()); x++) {
 			for (int z = Math.max(mia.minZ(), caja.minZ()); z <= Math.min(mia.maxZ(), caja.maxZ()); z++) {
@@ -607,9 +575,6 @@ public final class MurallaCapital extends StructurePiece {
 				}
 				BlockState s = SueloNatural.superficie(level, pos, x, z);
 				int h = pos.getY();
-				if (!SueloNatural.natural(s) && !s.is(Blocks.WATER) && !s.canBeReplaced()) {
-					continue;
-				}
 				BlockState bloque = bloque(SueloNatural.arena(s));
 				BlockState base = nivel == 0 ? bloque : (SueloNatural.arena(s) ? Blocks.SANDSTONE : Blocks.COBBLESTONE).defaultBlockState();
 				// cimiento hasta el suelo de la torre
@@ -678,14 +643,4 @@ public final class MurallaCapital extends StructurePiece {
 		}
 	}
 
-	/** El suelo de calles y plazas, sobre el que la muralla se puede poner (nunca tablones: pueden ser una casa). */
-	private static boolean pavimento(BlockState s) {
-		return s.is(Blocks.DIRT_PATH) || s.is(Blocks.SMOOTH_SANDSTONE) || s.is(Blocks.COBBLESTONE) || s.is(Blocks.MOSSY_COBBLESTONE)
-				|| s.is(Blocks.PACKED_MUD) || s.is(Blocks.GRAVEL);
-	}
-
-	/** El suelo de una calle (de las de la capital o de los caminos de los pueblos). */
-	private static boolean calle(BlockState s) {
-		return s.is(Blocks.DIRT_PATH) || s.is(Blocks.SMOOTH_SANDSTONE) || s.is(Blocks.COBBLESTONE) || s.is(Blocks.OAK_PLANKS);
-	}
 }

@@ -86,6 +86,11 @@ public final class CalleCapital extends StructurePiece {
 		return x0;
 	}
 
+	/** El trozo para el plano de la muralla: x0, z0, y0, x1, z1, y1 y el radio en décimas. */
+	int[] trozo() {
+		return new int[] {x0, z0, y0, x1, z1, y1, radio};
+	}
+
 	int z0() {
 		return z0;
 	}

@@ -47,6 +47,7 @@ COMANDOS = [
     "destinoscore pueblos",
     # la capital que ha salido sola al cargar los chunks: que su chunk la tenga y los de alrededor la conozcan
     "execute positioned 196 100 667 run destinoscore capital",
+    "execute positioned 196 100 667 run destinoscore muralla",
     # los cotilleos de Humanoid Villagers: lo que se sabe de la zona ya calculada al principio (#vx #vz, reino)
     "execute positioned 1234 100 -5678 run destinoscore cotilleo",
     "data get storage destinos:cotilleo hay",

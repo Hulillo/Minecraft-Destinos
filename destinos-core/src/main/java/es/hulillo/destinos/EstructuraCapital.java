@@ -537,12 +537,18 @@ public class EstructuraCapital extends Structure {
 			huecos[4 * k + 2] = Math.max(a[0], b[0]);
 			huecos[4 * k + 3] = Math.max(a[1], b[1]);
 		}
-		List<StructurePiece> muralla = new ArrayList<>();
-		if (plano.muralla()) {
-			MurallaCapital.piezas(cx, cz, nivel, contorno, terreno::alto, muroCastillo, huecos, muralla);
-		}
 		// las calles que van a las puertas salen un poco por fuera de la muralla y ahí se acaban
 		calles.removeIf(c -> fueraDe(contorno, cx, cz, c.x0(), c.z0()) && fueraDe(contorno, cx, cz, c.x1(), c.z1()));
+		// el plano de la muralla, entero antes de poner nada: tramos, laderas sin muro, portillos de las demás calles y
+		// torres; y su franja, solo suya (lo que la pisa se quita, con su gente)
+		List<StructurePiece> muralla = new ArrayList<>();
+		if (plano.muralla()) {
+			PlanMuralla planMuro = PlanMuralla.traza(cx, cz, nivel, contorno, terreno::alto, terreno::agua, muroCastillo, huecos,
+					calles.stream().map(CalleCapital::trozo).toList());
+			despejaFranja(planMuro, casas, gente);
+			MurallaCapital.piezas(planMuro, muralla);
+			DestinosCore.LOG.info("Destinos Core: muralla de {}, {}: {}", cx, cz, planMuro.resumen());
+		}
 		// sin los trozos que caen enteros en el agua (la orilla del mar); donde cruza un río, reja
 		List<StructurePiece> enMuralla = muralla.stream().filter(m -> !terreno.todoAgua(m.getBoundingBox())).toList();
 		fase(fases, reloj, "muralla y puertas");
@@ -1049,6 +1055,30 @@ public class EstructuraCapital extends Structure {
 	 * Las puertas de la muralla: donde cada calle principal pasa por ella (por el medio de su grueso), una puerta
 	 * mirando hacia fuera, a la altura de la calle; no dos muy juntas, ni en el agua ni en el castillo.
 	 */
+	/**
+	 * Quita del plano lo que pisa la franja de la muralla (la muralla no esquiva nada) y la gente de su puerta. El
+	 * contorno ya rodea lo construido con margen: esto solo salta donde el borde de un cortado lo ciñe.
+	 */
+	private static void despejaFranja(PlanMuralla muro, List<StructurePiece> casas, List<StructurePiece> gente) {
+		List<BoundingBox> fuera = new ArrayList<>();
+		casas.removeIf(c -> {
+			BoundingBox b = c.getBoundingBox();
+			if (muro.pisa(b.minX(), b.minZ(), b.maxX(), b.maxZ())) {
+				fuera.add(b);
+				return true;
+			}
+			return false;
+		});
+		if (fuera.isEmpty()) {
+			return;
+		}
+		gente.removeIf(g -> {
+			BoundingBox b = g.getBoundingBox();
+			return fuera.stream().anyMatch(f -> b.minX() <= f.maxX() + 4 && b.maxX() >= f.minX() - 4 && b.minZ() <= f.maxZ() + 4 && b.maxZ() >= f.minZ() - 4);
+		});
+		DestinosCore.LOG.info("Destinos Core: {} casas fuera por pisar la muralla", fuera.size());
+	}
+
 	private static List<PuertaCapital> portones(TerrenoCapital terreno, List<List<int[]>> calles, int[] contorno, int cx, int cz, int nivel,
 			int[] castillo, int estilo, int madera, int color) {
 		List<PuertaCapital> r = new ArrayList<>();

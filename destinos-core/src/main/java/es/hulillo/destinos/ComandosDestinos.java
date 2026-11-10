@@ -37,6 +37,7 @@ final class ComandosDestinos {
 				.then(Commands.literal("capital").executes(ctx -> capital(ctx.getSource())))
 				.then(Commands.literal("pueblos").executes(ctx -> pueblos(ctx.getSource())))
 				.then(Commands.literal("cotilleo").executes(ctx -> cotilleo(ctx.getSource())))
+				.then(Commands.literal("muralla").executes(ctx -> muralla(ctx.getSource())))
 				.then(Commands.literal("revisa").executes(ctx -> revisa(ctx.getSource(), 2))
 						.then(Commands.argument("reinos", IntegerArgumentType.integer(0, 6))
 								.executes(ctx -> revisa(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "reinos")))))
@@ -192,6 +193,28 @@ final class ComandosDestinos {
 		server.getCommandStorage().set(Identifier.fromNamespaceAndPath("destinos", "cotilleo"),
 				pol.cotilleo(server, r.dcx(), r.dcz(), r.kx(), r.kz(), r.salvaje()));
 		return 1;
+	}
+
+	/**
+	 * /destinoscore muralla: la muralla de los asentamientos de alrededor según su plano (lienzos, torres, portillos y
+	 * portones), y si estás encima de ella, de qué es lo que pisas.
+	 */
+	private static int muralla(CommandSourceStack fuente) {
+		ServerLevel level = fuente.getLevel();
+		BlockPos aqui = BlockPos.containing(fuente.getPosition());
+		int n = 0;
+		for (ObrasMundo.Plan plan : ObrasMundo.cerca(level, aqui.getX() >> 4, aqui.getZ() >> 4)) {
+			String r = MurallaCapital.resumen(plan.piezas(), aqui);
+			if (!r.isEmpty()) {
+				n++;
+				String texto = plan.que() + ": " + r;
+				fuente.sendSuccess(() -> Component.literal(texto), false);
+			}
+		}
+		if (n == 0) {
+			fuente.sendFailure(Component.literal("Destinos Core: por aquí no hay ningún asentamiento con muralla trazado"));
+		}
+		return n;
 	}
 
 	private static int estado(CommandSourceStack fuente) {
