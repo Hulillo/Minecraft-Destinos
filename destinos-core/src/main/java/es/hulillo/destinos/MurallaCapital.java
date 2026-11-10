@@ -501,27 +501,33 @@ public final class MurallaCapital extends StructurePiece {
 			pon(level, pos, x, z, suelo + PASO + 1, Math.max(arriba, suelo + PASO + 2), bloque);
 			return;
 		}
-		if (!calle(s) && !SueloNatural.natural(s)) {
+		// sobre cualquier suelo (tierra, piedra, caminos, empedrados, muros de contención del allanado) la muralla
+		// sigue; solo se aparta de lo construido de verdad: algo que no es suelo natural muy por encima de su pie (un
+		// tejado), y entonces se para al llegar a ello sin dejar el resto del tramo
+		if (!calle(s) && !SueloNatural.natural(s) && suelo > pie + 2) {
 			return;
 		}
-		// un bulto del terreno por encima del pie: la muralla lo corta (o, si es mucho, se sube sobre él)
-		if (suelo > arriba - 3) {
-			arriba = suelo + ALTO[nivel];
+		// un bulto del terreno por encima del pie: la muralla lo corta (el adarve sigue a su altura) y el terreno
+		// de encima se quita
+		for (int y = arriba + 1; y <= suelo; y++) {
+			libre(level, pos.set(x, y, z));
 		}
 		int hondo = pie - suelo;
-		if (hondo > HONDO_ARCOS) {
-			return;
-		}
 		int desde;
 		if (hondo <= HONDO_MACIZO) {
-			desde = suelo;
+			desde = Math.min(suelo, pie);
 		} else {
-			// arco: pilares cada VANO; entre ellos, la bóveda baja hacia los pilares (más honda junto a ellos)
+			// arco: pilares cada VANO hasta el suelo (o hasta HONDO_ARCOS); entre ellos, la bóveda baja hacia los
+			// pilares (más honda junto a ellos)
 			double enVano = Math.floorMod((int) Math.floor(andado), VANO);
 			double alPilar = Math.min(enVano, VANO - enVano) - PILAR / 2.0;
-			desde = alPilar <= 0 ? suelo : Math.max(suelo, pie - 1 - (int) Math.max(0, 3 - alPilar));
+			desde = alPilar <= 0 ? Math.max(suelo, pie - HONDO_ARCOS) : pie - 1 - (int) Math.max(0, 3 - alPilar);
 		}
-		level.setBlock(pos.set(x, desde, z), desde == suelo ? cimiento(arena) : bloque, 2);
+		arriba = Math.max(arriba, pie + 1);
+		BlockState abajo = level.getBlockState(pos.set(x, desde, z));
+		if (abajo.isAir() || abajo.canBeReplaced() || SueloNatural.natural(abajo)) {
+			level.setBlock(pos, desde == suelo ? cimiento(arena) : bloque, 2);
+		}
 		pon(level, pos, x, z, desde + 1, arriba, bloque);
 	}
 
@@ -529,7 +535,7 @@ public final class MurallaCapital extends StructurePiece {
 	private static void pon(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int y0, int y1, BlockState bloque) {
 		for (int y = y0; y <= y1; y++) {
 			BlockState aqui = level.getBlockState(pos.set(x, y, z));
-			if (!aqui.isAir() && !aqui.canBeReplaced() && !SueloNatural.natural(aqui)) {
+			if (!aqui.isAir() && !aqui.canBeReplaced() && !SueloNatural.natural(aqui) && !pavimento(aqui) && !aqui.is(bloque.getBlock())) {
 				return;
 			}
 			level.setBlock(pos, bloque, 2);
@@ -658,6 +664,12 @@ public final class MurallaCapital extends StructurePiece {
 		for (int y = agua + 3; y <= agua + Math.max(alto, 4); y++) {
 			level.setBlock(pos.set(x, y, z), bloque, 2);
 		}
+	}
+
+	/** El suelo de calles y plazas, sobre el que la muralla se puede poner (nunca tablones: pueden ser una casa). */
+	private static boolean pavimento(BlockState s) {
+		return s.is(Blocks.DIRT_PATH) || s.is(Blocks.SMOOTH_SANDSTONE) || s.is(Blocks.COBBLESTONE) || s.is(Blocks.MOSSY_COBBLESTONE)
+				|| s.is(Blocks.PACKED_MUD) || s.is(Blocks.GRAVEL);
 	}
 
 	/** El suelo de una calle (de las de la capital o de los caminos de los pueblos). */
