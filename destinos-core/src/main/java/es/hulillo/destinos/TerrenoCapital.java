@@ -153,8 +153,94 @@ final class TerrenoCapital {
 		return Math.clamp(i, 0, lado - 1) * lado + Math.clamp(j, 0, lado - 1);
 	}
 
-	/** La altura de arriba en (x, z), interpolada entre los cuatro puntos de alrededor. */
+	/**
+	 * La altura de arriba en (x, z), interpolada entre los cuatro puntos de alrededor; en una capital en terrazas, la de
+	 * su bancal.
+	 */
 	int alto(int x, int z) {
+		double h = suave(x, z);
+		double w = terrazas ? peso(x, z) : 0;
+		return (int) Math.round(w <= 0 ? h : h * (1 - w) + nivel(h) * w);
+	}
+
+	// ------------------------------------------------------------------ terrazas
+
+	/** Lo que sube cada bancal sobre el de debajo. */
+	static final int ESCALON = 5;
+	/** El desnivel (entre el décimo más bajo y el décimo más alto del sitio) desde el que la capital se hace en terrazas. */
+	private static final int DESNIVEL_TERRAZAS = 14;
+	/** La franja del borde en que los bancales se van fundiendo con el terreno de fuera. */
+	private static final int BORDE_TERRAZAS = 10;
+
+	private boolean terrazas;
+	private int tcx;
+	private int tcz;
+	private int tradio;
+
+	/**
+	 * Si el sitio (el círculo de radio alrededor de (cx, cz)) es una ladera, la capital se hace en terrazas: desde
+	 * ahora la altura de cada punto de dentro es la de su bancal (la del terreno, redondeada a escalones de ESCALON:
+	 * los bordes de los bancales siguen las curvas de nivel) y todo el trazado, que solo pregunta aquí, ve llano en
+	 * cada bancal y un salto entre uno y otro. Devuelve si se ha hecho.
+	 */
+	boolean aterraza(int cx, int cz, int radio) {
+		List<Integer> h = new ArrayList<>();
+		for (int x = cx - radio; x <= cx + radio; x += PASO) {
+			for (int z = cz - radio; z <= cz + radio; z += PASO) {
+				if (Math.hypot(x - cx, z - cz) <= radio && !agua(x, z)) {
+					h.add((int) Math.round(suave(x, z)));
+				}
+			}
+		}
+		if (h.size() < 20) {
+			return false;
+		}
+		java.util.Collections.sort(h);
+		if (h.get(h.size() * 9 / 10) - h.get(h.size() / 10) < DESNIVEL_TERRAZAS) {
+			return false;
+		}
+		terrazas = true;
+		tcx = cx;
+		tcz = cz;
+		tradio = radio + BORDE_TERRAZAS;
+		return true;
+	}
+
+	boolean enTerrazas() {
+		return terrazas;
+	}
+
+	/** El radio hasta el que llegan las terrazas (con su borde). */
+	int radioTerrazas() {
+		return tradio;
+	}
+
+	private static double nivel(double h) {
+		return Math.round(h / ESCALON) * (double) ESCALON;
+	}
+
+	/** Cuánto manda el bancal en (x, z): 1 dentro, bajando a 0 por el borde; 0 fuera y sobre el agua. */
+	private double peso(int x, int z) {
+		double d = Math.hypot(x - tcx, z - tcz);
+		if (d >= tradio || agua(x, z)) {
+			return 0;
+		}
+		return Math.min(1, (tradio - d) / BORDE_TERRAZAS);
+	}
+
+	/**
+	 * La altura a la que hay que dejar el suelo de (x, z) para hacer su bancal, o Integer.MIN_VALUE donde no se toca
+	 * (fuera, en el borde donde se funde con el terreno, y sobre el agua).
+	 */
+	int bancal(int x, int z) {
+		if (!terrazas || peso(x, z) < 1) {
+			return Integer.MIN_VALUE;
+		}
+		return (int) nivel(suave(x, z));
+	}
+
+	/** La altura del terreno en (x, z), interpolada entre los cuatro puntos de alrededor, sin redondear. */
+	private double suave(int x, int z) {
 		double fx = (x - x0) / (double) PASO;
 		double fz = (z - z0) / (double) PASO;
 		int i = (int) Math.floor(fx);
@@ -163,7 +249,7 @@ final class TerrenoCapital {
 		double tz = fz - j;
 		double a = alto[punto(i, j)] * (1 - tx) + alto[punto(i + 1, j)] * tx;
 		double b = alto[punto(i, j + 1)] * (1 - tx) + alto[punto(i + 1, j + 1)] * tx;
-		return (int) Math.round(a * (1 - tz) + b * tz);
+		return a * (1 - tz) + b * tz;
 	}
 
 	/** Columnas leídas una a una del generador (alto, agua), para lo que no puede fiarse de la rejilla interpolada. */
@@ -179,7 +265,12 @@ final class TerrenoCapital {
 	 * bloque a bloque (la muralla) pregunta aquí. Cada consulta nueva cuesta lo que un punto de la rejilla.
 	 */
 	int exacto(int x, int z) {
-		return exacta(x, z)[0];
+		double w = terrazas ? peso(x, z) : 0;
+		if (w >= 1) {
+			return (int) nivel(suave(x, z));
+		}
+		int h = exacta(x, z)[0];
+		return w <= 0 ? h : (int) Math.round(h * (1 - w) + nivel(suave(x, z)) * w);
 	}
 
 	/** Si en la columna (x, z) hay agua de al menos dos de hondo, leída del generador en esa misma columna. */

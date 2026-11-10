@@ -213,7 +213,7 @@ public final class ObrasMundo {
 
 	/** Si en el repaso la pieza se vuelve a poner: no la gente (plantillas de un bloque con su ser), ni el adorno, ni las marcas, ni las torres. */
 	private static boolean seRepasa(StructurePiece pieza) {
-		if (pieza instanceof AdornoCapital || pieza instanceof MarcaAsentamiento) {
+		if (pieza instanceof AdornoCapital || pieza instanceof MarcaAsentamiento || pieza instanceof TerrazaCapital) {
 			return false;
 		}
 		// los lienzos de la muralla sí, y van después de calles y casas: reponen lo que les hayan quitado (las calles
