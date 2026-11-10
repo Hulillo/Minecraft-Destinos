@@ -299,9 +299,21 @@ final class Auditoria {
 				// donde se pisa: lo primero firme bajando desde un poco por encima de la altura del plano (así no
 				// cuentan el tejado de una casa, el dintel de un portillo ni el arco de un portón que pasan por encima)
 				int y = (int) Math.floor(t[2] + (t[5] - t[2]) * f);
-				h = y + LEJOS + 1;
-				while (h > y - LEJOS - 1 && pisable(x, h, z)) {
-					h--;
+				// el suelo pisable más cercano a esa altura: firme, con dos bloques libres encima (un alero o un arco a
+				// cuatro bloques por encima no es el suelo de la calle)
+				h = Integer.MIN_VALUE;
+				for (int d = 0; d <= LEJOS && h == Integer.MIN_VALUE; d++) {
+					for (int f : new int[] {y + d, y - d}) {
+						if (h == Integer.MIN_VALUE && !pisable(x, f, z) && pisable(x, f + 1, z) && pisable(x, f + 2, z)) {
+							h = f;
+						}
+					}
+				}
+				if (h == Integer.MIN_VALUE) {
+					h = y + LEJOS + 1;
+					while (h > y - LEJOS - 1 && pisable(x, h, z)) {
+						h--;
+					}
 				}
 				if (Math.abs(h - y) > LEJOS) {
 					fallo("calles.lejos_del_plano", x, h, z, " (plano " + y + ", " + nombre(x, h, z) + ")");
