@@ -303,9 +303,9 @@ final class Auditoria {
 				// cuatro bloques por encima no es el suelo de la calle)
 				h = Integer.MIN_VALUE;
 				for (int d = 0; d <= LEJOS && h == Integer.MIN_VALUE; d++) {
-					for (int f : new int[] {y + d, y - d}) {
-						if (h == Integer.MIN_VALUE && !pisable(x, f, z) && pisable(x, f + 1, z) && pisable(x, f + 2, z)) {
-							h = f;
+					for (int piso : new int[] {y + d, y - d}) {
+						if (h == Integer.MIN_VALUE && !pisable(x, piso, z) && pisable(x, piso + 1, z) && pisable(x, piso + 2, z)) {
+							h = piso;
 						}
 					}
 				}
