@@ -42,6 +42,10 @@ public final class CalleCapital extends StructurePiece {
 	/** Lo que se rebaja o se rellena como mucho para que la calle vaya suave; con más, sigue el suelo. */
 	private static final int MAX_CORTE = 5;
 	private static final int MAX_RELLENO = 4;
+	/** Lo ancho del talud a cada lado de la calle, en bloques. */
+	private static final double CUNETA = 3.5;
+	/** La cuesta (bloques que sube por bloque que avanza) desde la que la calle lleva escalones. */
+	private static final double ESCALINATA = 0.3;
 	/** Lo que se rellena como mucho en el borde de una calle que va por tierra junto a una bajada. */
 	private static final int BORDE_HONDO = 5;
 	/** Sin altura guardada (piezas de antes): la calle sigue el suelo. */
@@ -95,7 +99,7 @@ public final class CalleCapital extends StructurePiece {
 	}
 
 	private static BoundingBox caja(int x0, int z0, int y0, int x1, int z1, int y1, double radio, int maximo) {
-		int m = (int) Math.ceil(radio) + 2;
+		int m = (int) Math.ceil(radio) + 1 + (int) Math.ceil(CUNETA);
 		int h = Math.max(MAX_CORTE, maximo);
 		return new BoundingBox(Math.min(x0, x1) - m, Math.min(y0, y1) - h - 1, Math.min(z0, z1) - m, Math.max(x0, x1) + m,
 				Math.max(y0, y1) + h + 2, Math.max(z0, z1) + m);
@@ -165,16 +169,21 @@ public final class CalleCapital extends StructurePiece {
 			for (int z = az; z <= bz; z++) {
 				double t = l2 == 0 ? 0 : Math.clamp(((x - x0) * dx + (z - z0) * dz) / l2, 0, 1);
 				double d = Math.hypot(x0 + t * dx - x, z0 + t * dz - z);
-				if (d > r + 1.5) {
+				if (d > r + CUNETA) {
 					continue;
 				}
 				boolean calle = d <= r + 0.3;
-				SueloNatural.tala(level, caja, x, z);
+				if (d <= r + 1.5) {
+					SueloNatural.tala(level, caja, x, z);
+				}
 				double yf = y0 == SIN_ALTURA ? 0 : y0 + t * (y1 - y0);
 				int y = y0 == SIN_ALTURA ? SIN_ALTURA : (int) Math.floor(yf);
 				// en cuesta, justo antes de cada subida de un bloque va una fila de escalones (solo una: la de la
 				// columna cuya vecina cuesta arriba ya está un bloque más alta)
-				boolean escalon = y0 != SIN_ALTURA && y1 != y0 && Math.floor(yf + pendiente) > y;
+				// y solo en tramos rectos por un eje, con cuesta de verdad y lejos de sus puntas (en cruces y curvas
+				// se mezclaban escalones de calles distintas, mirando cada uno a un lado)
+				boolean escalon = y0 != SIN_ALTURA && aLoLargoDeZ != null && pendiente >= ESCALINATA && t > 0.15 && t < 0.85
+						&& Math.floor(yf + pendiente) > y;
 				BlockState s = SueloNatural.superficie(level, pos, x, z);
 				if (s.is(Blocks.WATER)) {
 					if ((puente || madera) && d <= r + 1.3) {
@@ -199,8 +208,9 @@ public final class CalleCapital extends StructurePiece {
 						escalon(level, pos, s, dx, dz, y1 > y0);
 					}
 				} else if (y != SIN_ALTURA) {
-					// la cuneta: un escalón entre la calle y el suelo de al lado, para que no quede un tajo
-					allana(level, pos, s, y, 1, corte(), relleno());
+					// la cuneta: un talud entre la calle y el suelo de al lado (un bloque más por cada uno que se aleja),
+					// para que no quede un tajo de tierra
+					allana(level, pos, s, y, Math.max(1, (int) Math.ceil(d - r - 0.3)), corte(), relleno());
 				}
 			}
 		}
