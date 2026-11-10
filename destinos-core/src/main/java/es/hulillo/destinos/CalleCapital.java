@@ -207,8 +207,8 @@ public final class CalleCapital extends StructurePiece {
 					if (escalon && pos.getY() == y) {
 						escalon(level, pos, s, dx, dz, y1 > y0);
 					}
-				} else if (y != SIN_ALTURA) {
-					// la cuneta: un talud entre la calle y el suelo de al lado (un bloque más por cada uno que se aleja),
+				} else if (y != SIN_ALTURA && SueloNatural.natural(s)) {
+					// la cuneta (solo sobre suelo natural: nunca tapa otra calle ni una obra): un talud entre la calle y el suelo de al lado (un bloque más por cada uno que se aleja),
 					// para que no quede un tajo de tierra
 					allana(level, pos, s, y, Math.max(1, (int) Math.ceil(d - r - 0.3)), corte(), relleno());
 				}
