@@ -52,7 +52,7 @@ final class Auditoria {
 		for (String k : new String[] {"muralla.columnas", "muralla.arcos", "muralla.portillos", "muralla.hueco", "muralla.enterrada", "muralla.colgando",
 			"muralla.portillo_tapado",
 			"casas", "casas.tierra_dentro", "casas.colgando", "casas.enterrada", "casas.puerta_tapada", "calles.bloques", "calles.escalon",
-			"calles.lejos_del_plano", "calles.sin_suelo", "sin_cargar"}) {
+			"calles.lejos_del_plano", "calles.sin_suelo", "terrazas.columnas", "terrazas.sin_hacer", "sin_cargar"}) {
 			cuenta.put(k, 0);
 		}
 	}
@@ -61,7 +61,9 @@ final class Auditoria {
 	static List<String> de(ServerLevel level, String que, List<StructurePiece> piezas) {
 		Auditoria a = new Auditoria(level);
 		for (StructurePiece p : piezas) {
-			if (p instanceof MurallaCapital m) {
+			if (p instanceof TerrazaCapital t) {
+				a.terrazas(t);
+			} else if (p instanceof MurallaCapital m) {
 				a.muralla(m);
 			} else if (p instanceof CalleCapital c) {
 				a.calle(c);
@@ -112,6 +114,29 @@ final class Auditoria {
 			y--;
 		}
 		return y;
+	}
+
+	// ------------------------------------------------------------------ terrazas
+
+	/** Las columnas de terreno que no han quedado a la altura de su bancal (más de un bloque de diferencia). */
+	private void terrazas(TerrazaCapital t) {
+		BoundingBox b = t.getBoundingBox();
+		for (int x = b.minX(); x <= b.maxX(); x++) {
+			for (int z = b.minZ(); z <= b.maxZ(); z++) {
+				int alto = t.bancal(x, z);
+				if (TerrazaCapital.sin(alto) || !level.hasChunk(x >> 4, z >> 4)) {
+					continue;
+				}
+				int h = suelo(x, z);
+				if (!SueloNatural.natural(en(x, h, z))) {
+					continue;
+				}
+				suma("terrazas.columnas");
+				if (Math.abs(h - alto) > 1) {
+					fallo("terrazas.sin_hacer", x, h, z, " (bancal " + alto + ")");
+				}
+			}
+		}
 	}
 
 	// ------------------------------------------------------------------ muralla
