@@ -218,6 +218,24 @@ public final class ObrasMundo {
 		return !(pieza instanceof net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece) || b.getXSpan() > 2 || b.getZSpan() > 2;
 	}
 
+	/**
+	 * Antes de poner una casa, quita el terreno natural que haya dentro de su caja por encima de su suelo: si el
+	 * relleno de Minecraft no llegó a amoldar ese chunk (un monte donde va la casa), la plantilla no pone aire en las
+	 * habitaciones y quedaban llenas de tierra. Lo que la casa trae (jardineras, huertos) se pone después.
+	 */
+	private static void vacia(WorldGenLevel region, BoundingBox b, int suelo, BoundingBox caja) {
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+		for (int x = Math.max(b.minX(), caja.minX()); x <= Math.min(b.maxX(), caja.maxX()); x++) {
+			for (int z = Math.max(b.minZ(), caja.minZ()); z <= Math.min(b.maxZ(), caja.maxZ()); z++) {
+				for (int y = suelo + 1; y <= b.maxY(); y++) {
+					if (SueloNatural.natural(region.getBlockState(pos.set(x, y, z)))) {
+						region.setBlock(pos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 2);
+					}
+				}
+			}
+		}
+	}
+
 	/** Quita los medios bloques de terreno de los mods (Terrain Slabs…) de las columnas de la caja b (y uno alrededor) dentro de caja. */
 	private static void sinLosas(WorldGenLevel region, BoundingBox b, BoundingBox caja) {
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
@@ -278,6 +296,8 @@ public final class ObrasMundo {
 					azar.setFeatureSeed(semilla, n, 0);
 					if (repaso) {
 						sinLosas(region, pieza.getBoundingBox(), caja);
+					} else if (pieza instanceof net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece casa && seRepasa(pieza)) {
+						vacia(region, casa.getBoundingBox(), casa.getBoundingBox().minY() + casa.getGroundLevelDelta(), caja);
 					}
 					long t = System.nanoTime();
 					pieza.postProcess(region, estructuras, generador, azar, caja, cp, plan.pivote());

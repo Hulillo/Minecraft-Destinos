@@ -143,7 +143,8 @@ public final class MurallaCapital extends StructurePiece {
 	 * cortado (el pueblo en una meseta, o al pie de un monte), la muralla se queda en el borde y no baja (o sube) por
 	 * él: alto da la altura del terreno.
 	 */
-	static int[] contorno(int cx, int cz, List<BoundingBox> cajas, int margen, int minimo, int maximo, IntBinaryOperator alto) {
+	static int[] contorno(int cx, int cz, List<BoundingBox> cajas, int margen, int minimo, int maximo, IntBinaryOperator alto,
+			java.util.function.BiPredicate<Integer, Integer> agua) {
 		double[] r = new double[ARCOS];
 		double[] justo = new double[ARCOS];
 		java.util.Arrays.fill(r, minimo);
@@ -176,7 +177,7 @@ public final class MurallaCapital extends StructurePiece {
 		int[] radios = new int[ARCOS];
 		for (int i = 0; i < ARCOS; i++) {
 			llenos[i] = (int) Math.round(Math.clamp(r[i], minimo, maximo));
-			radios[i] = borde(cx, cz, i, (int) Math.ceil(justo[i]), llenos[i], alto);
+			radios[i] = borde(cx, cz, i, (int) Math.ceil(justo[i]), llenos[i], alto, agua);
 		}
 		// un recorte suelto (un arco solo, con los dos vecinos sin recortar) no es el borde de una meseta sino una
 		// zanja o un barranquillo estrecho: ahí la muralla seguía su radio y se metía en pico hacia dentro, bajando
@@ -207,7 +208,7 @@ public final class MurallaCapital extends StructurePiece {
 	 * El radio del arco i recortado al borde de un cortado: desde lo justo para las casas (o el centro, si por ahí no
 	 * hay ninguna) hacia fuera, el primer punto en que el terreno ha bajado o subido más de CORTADO, un poco antes.
 	 */
-	private static int borde(int cx, int cz, int i, int justo, int radio, IntBinaryOperator alto) {
+	private static int borde(int cx, int cz, int i, int justo, int radio, IntBinaryOperator alto, java.util.function.BiPredicate<Integer, Integer> agua) {
 		double a = (i + 0.5) / ARCOS * 2 * Math.PI;
 		double ux = Math.cos(a);
 		double uz = Math.sin(a);
@@ -217,7 +218,13 @@ public final class MurallaCapital extends StructurePiece {
 		}
 		int h = alto.applyAsInt(cx + (int) Math.round(ux * desde), cz + (int) Math.round(uz * desde));
 		for (int rr = desde + 2; rr <= radio; rr += 2) {
-			int y = alto.applyAsInt(cx + (int) Math.round(ux * rr), cz + (int) Math.round(uz * rr));
+			int px = cx + (int) Math.round(ux * rr);
+			int pz = cz + (int) Math.round(uz * rr);
+			// un río o la orilla del mar: la muralla va por la orilla, sin cruzarlo
+			if (agua.test(px, pz)) {
+				return Math.max(justo, rr - 3);
+			}
+			int y = alto.applyAsInt(px, pz);
 			if (Math.abs(y - h) > CORTADO && sigue(cx, cz, ux, uz, rr, h, y, alto)) {
 				return Math.max(justo, rr - 3);
 			}

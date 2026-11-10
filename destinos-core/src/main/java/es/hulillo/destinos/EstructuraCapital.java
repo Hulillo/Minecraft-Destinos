@@ -523,7 +523,7 @@ public class EstructuraCapital extends Structure {
 		mercado.ifPresent(m -> construido.add(m.getBoundingBox()));
 		nobles.forEach(n -> construido.add(n.getBoundingBox()));
 		int[] contorno = MurallaCapital.contorno(cx, cz, construido, MARGEN_MURO, (rPlaza + radio) / 2, Math.min(radio + 6, MAX_ALCANCE - 6),
-				terreno::alto);
+				terreno::alto, terreno::agua);
 		int[] muroCastillo = castillo.map(c -> new int[] {c.cx, c.cz, CastilloCapital.MURO + 1}).orElse(null);
 		// donde la cruza una calle principal, una puerta de verdad: torres, arco y rastrillo; la muralla llega a los lados
 		// de sus torres y deja libre lo de delante y lo de detrás (el paso y las puertas de las torres)
