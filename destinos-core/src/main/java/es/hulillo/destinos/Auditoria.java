@@ -137,6 +137,16 @@ final class Auditoria {
 		return b.toString();
 	}
 
+	/** La altura del primer bloque que no es aire de y hacia abajo (hasta 60 bloques), con su nombre. */
+	private String firmeBajo(int x, int y, int z) {
+		for (int k = 0; k < 60; k++) {
+			if (!en(x, y - k, z).isAir()) {
+				return (y - k) + " " + nombre(x, y - k, z);
+			}
+		}
+		return "nada en 60";
+	}
+
 	/** Los bloques de la columna (x, z) desde y hacia arriba, para ver qué hay donde algo no cuadra. */
 	private String pila(int x, int y, int z, int cuantos) {
 		StringBuilder b = new StringBuilder();
@@ -240,7 +250,8 @@ final class Auditoria {
 				puesta += m.deMuralla(en(x, y, z)) ? 1 : 0;
 			}
 			if (puesta < Math.min(3, alto)) {
-				fallo("muralla.hueco", x, pie + 1, z, " (pie " + pie + ", de pie-2 arriba: " + pila(x, pie - 2, z, 9) + bancal(x, z) + ")");
+				fallo("muralla.hueco", x, pie + 1, z, " (pie " + pie + ", de pie-2 arriba: " + pila(x, pie - 2, z, 9) + bancal(x, z) + ", en la cima " + nombre(x, suelo(x, z), z)
+						+ ", debajo " + nombre(x, suelo(x, z) - 1, z) + ", primer firme bajo el pie a " + firmeBajo(x, pie, z) + ")");
 				return;
 			}
 			if (caraDeFuera) {
