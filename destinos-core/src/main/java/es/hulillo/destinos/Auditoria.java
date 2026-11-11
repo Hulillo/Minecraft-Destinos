@@ -289,7 +289,11 @@ final class Auditoria {
 					}
 					Direction d = s.getValue(DoorBlock.FACING);
 					if (!paso(x + d.getStepX(), y, z + d.getStepZ()) || !paso(x - d.getStepX(), y, z - d.getStepZ())) {
-						fallo("casas.puerta_tapada", x, y, z);
+						boolean delante = !paso(x + d.getStepX(), y, z + d.getStepZ());
+						int qx = delante ? x + d.getStepX() : x - d.getStepX();
+						int qz = delante ? z + d.getStepZ() : z - d.getStepZ();
+						fallo("casas.puerta_tapada", x, y, z, " (" + (delante ? "delante" : "detrás") + " de abajo arriba: " + nombre(qx, y - 2, qz) + ", "
+								+ nombre(qx, y - 1, qz) + ", " + nombre(qx, y, qz) + ", " + nombre(qx, y + 1, qz) + bancal(qx, qz) + ")");
 					}
 				}
 			}
