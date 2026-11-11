@@ -50,14 +50,24 @@ final class TerrenoCapital {
 		int ladoNucleo = 2 * m + 1;
 		// en un pool propio y no con parallel(): el común (ForkJoin) lo comparten otros mods y, al esperar, un hilo
 		// suyo puede ponerse a hacer tareas ajenas que esperan a su vez al servidor (riesgo de dejarlo todo colgado)
-		int total = ladoNucleo * ladoNucleo;
+		reparte(ladoNucleo * ladoNucleo, k -> calcula((n - m) + k / ladoNucleo, (n - m) + k % ladoNucleo));
+	}
+
+	/** Hace las tareas 0..total-1 repartidas entre los hilos del terreno y espera a que acaben todas. */
+	private static void reparte(int total, java.util.function.IntConsumer tarea) {
 		int trozos = Math.min(HILOS, total);
+		if (trozos <= 1) {
+			for (int k = 0; k < total; k++) {
+				tarea.accept(k);
+			}
+			return;
+		}
 		List<Callable<Void>> tareas = new ArrayList<>(trozos);
 		for (int t = 0; t < trozos; t++) {
 			int desde = t;
 			tareas.add(() -> {
 				for (int k = desde; k < total; k += trozos) {
-					calcula((n - m) + k / ladoNucleo, (n - m) + k % ladoNucleo);
+					tarea.accept(k);
 				}
 				return null;
 			});
@@ -74,7 +84,7 @@ final class TerrenoCapital {
 		}
 	}
 
-	private static final int HILOS = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() - 1));
+	private static final int HILOS = Math.clamp(Runtime.getRuntime().availableProcessors() - 1, 1, 6);
 	private static final ExecutorService POOL = Executors.newFixedThreadPool(HILOS, r -> {
 		Thread t = new Thread(r, "Destinos Core - terreno capital");
 		t.setDaemon(true);
@@ -326,10 +336,61 @@ final class TerrenoCapital {
 	}
 
 	/** Columnas leídas una a una del generador (alto, agua), para lo que no puede fiarse de la rejilla interpolada. */
-	private final java.util.Map<Long, int[]> exactas = new java.util.HashMap<>();
+	private final java.util.Map<Long, int[]> exactas = new java.util.concurrent.ConcurrentHashMap<>();
+	/** Mientras se ensaya (ver ensaya): las columnas que se piden, sin leerlas. */
+	private java.util.Set<Long> ensayo;
+	private static final int[] NADA = {0, 0};
 
 	private int[] exacta(int x, int z) {
-		return exactas.computeIfAbsent(Geo.clave(x, z), k -> columna(ctx, x, z));
+		if (ensayo != null) {
+			ensayo.add(Geo.clave(x, z));
+			return NADA;
+		}
+		int[] c = exactas.get(Geo.clave(x, z));
+		if (c == null) {
+			c = columna(ctx, x, z);
+			exactas.put(Geo.clave(x, z), c);
+		}
+		return c;
+	}
+
+	/**
+	 * Lee de una vez, repartidas entre los hilos del terreno, las columnas exactas que va a pedir un trazado: cada una
+	 * cuesta varios milisegundos y, pedidas una a una, eran más de la mitad de lo que tarda una capital. Las que ya
+	 * están leídas, o no hace falta leer (bajo una obra, una calle o un bancal), se saltan.
+	 */
+	void precarga(java.util.Collection<int[]> puntos) {
+		java.util.Set<Long> claves = new java.util.HashSet<>();
+		for (int[] p : puntos) {
+			if (pisado(p[0], p[1]) == Integer.MIN_VALUE && !(terrazas && peso(p[0], p[1]) >= 1)) {
+				claves.add(Geo.clave(p[0], p[1]));
+			}
+		}
+		precargaClaves(claves);
+	}
+
+	private void precargaClaves(java.util.Set<Long> claves) {
+		long[] faltan = claves.stream().filter(k -> !exactas.containsKey(k)).mapToLong(Long::longValue).toArray();
+		reparte(faltan.length, k -> exactas.put(faltan[k], columna(ctx, Geo.claveX(faltan[k]), Geo.claveZ(faltan[k]))));
+	}
+
+	/**
+	 * Ensaya un trazado que pide columnas exactas en sitios que no dependen de lo que se le conteste (la muralla): se
+	 * hace una vez contestándole cualquier cosa, solo para apuntar qué columnas pide, y se leen todas a la vez. Lo que
+	 * el ensayo devuelva no vale: después se hace de verdad.
+	 */
+	void ensaya(Runnable trazado) {
+		ensayo = new java.util.HashSet<>();
+		java.util.Set<Long> pedidas;
+		try {
+			trazado.run();
+		} catch (RuntimeException e) {
+			// con alturas inventadas puede no salir: da igual, lo apuntado hasta aquí se precarga
+		} finally {
+			pedidas = ensayo;
+			ensayo = null;
+		}
+		precargaClaves(pedidas);
 	}
 
 	/**

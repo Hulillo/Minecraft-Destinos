@@ -556,8 +556,10 @@ public class EstructuraCapital extends Structure {
 		List<StructurePiece> muralla = new ArrayList<>();
 		if (plano.muralla()) {
 			// con el suelo de verdad de cada columna (no el interpolado de la rejilla, que no ve cortados ni zanjas)
-			PlanMuralla planMuro = PlanMuralla.traza(cx, cz, nivel, contorno, terreno::exacto, terreno::aguaExacta, muroCastillo, huecos,
-					calles.stream().map(CalleCapital::trozo).toList());
+			List<int[]> trozos = calles.stream().map(CalleCapital::trozo).toList();
+			// primero un ensayo, para leer de una vez (entre varios hilos) las columnas que la muralla va a pedir
+			terreno.ensaya(() -> PlanMuralla.traza(cx, cz, nivel, contorno, terreno::exacto, terreno::aguaExacta, muroCastillo, huecos, trozos));
+			PlanMuralla planMuro = PlanMuralla.traza(cx, cz, nivel, contorno, terreno::exacto, terreno::aguaExacta, muroCastillo, huecos, trozos);
 			despejaFranja(planMuro, casas, gente);
 			MurallaCapital.piezas(planMuro, estilo == AdornoCapital.DESIERTO || enBadlands, muralla);
 			DestinosCore.LOG.info("Destinos Core: muralla de {}, {}: {}", cx, cz, planMuro.resumen());
@@ -661,6 +663,10 @@ public class EstructuraCapital extends Structure {
 	 */
 	private static void tramos(TerrenoCapital terreno, List<List<int[]>> lista, double radio, int px, int pz, List<CalleCapital> calles) {
 		long dentroPlaza = (long) (AdornoCapital.PLAZA / 2) * (AdornoCapital.PLAZA / 2);
+		// las columnas de todas las calles de la lista, leídas de una vez entre varios hilos
+		List<int[]> puntos = new ArrayList<>();
+		lista.forEach(puntos::addAll);
+		terreno.precarga(puntos);
 		for (List<int[]> c : lista) {
 			int[] y = perfil(terreno, c);
 			terreno.calzada(c, y, radio);
@@ -690,6 +696,7 @@ public class EstructuraCapital extends Structure {
 	 * dos de camino hacia atrás, rebajando o terraplenando lo que haga falta.
 	 */
 	private static void rampa(TerrenoCapital terreno, List<int[]> c, int arriba, List<CalleCapital> calles) {
+		terreno.precarga(c);
 		int[] y = perfil(terreno, c);
 		int n = c.size();
 		y[n - 1] = arriba;
