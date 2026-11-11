@@ -760,10 +760,11 @@ public class EstructuraCapital extends Structure {
 			}
 		}
 		if (terreno.enTerrazas()) {
-			// entre bancales la calle sube como una rampa que se puede andar (un bloque cada dos, como la subida al
-			// castillo) y no a saltos: el suelo de las terrazas se encaja luego con ella
+			// entre bancales la calle sube como una escalinata que se puede andar (como mucho un bloque por cada uno que
+			// avanza) y no a saltos: el suelo de las terrazas se encaja luego con ella. Más tendida (un bloque cada dos)
+			// se quedaba atrás en las laderas empinadas y acababa enterrada
 			for (int k = 1; k < n; k++) {
-				int lim = Math.max(1, (int) Math.floor(Math.hypot(c.get(k)[0] - c.get(k - 1)[0], c.get(k)[1] - c.get(k - 1)[1]) / 2));
+				int lim = Math.max(1, (int) Math.floor(Math.hypot(c.get(k)[0] - c.get(k - 1)[0], c.get(k)[1] - c.get(k - 1)[1])));
 				y[k] = Math.clamp(y[k], y[k - 1] - lim, y[k - 1] + lim);
 			}
 		}
