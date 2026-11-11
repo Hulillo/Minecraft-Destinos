@@ -558,8 +558,10 @@ public class EstructuraCapital extends Structure {
 			// con el suelo de verdad de cada columna (no el interpolado de la rejilla, que no ve cortados ni zanjas)
 			List<int[]> trozos = calles.stream().map(CalleCapital::trozo).toList();
 			// primero un ensayo, para leer de una vez (entre varios hilos) las columnas que la muralla va a pedir
-			terreno.ensaya(() -> PlanMuralla.traza(cx, cz, nivel, contorno, terreno::exacto, terreno::aguaExacta, muroCastillo, huecos, trozos));
-			PlanMuralla planMuro = PlanMuralla.traza(cx, cz, nivel, contorno, terreno::exacto, terreno::aguaExacta, muroCastillo, huecos, trozos);
+			// (en terrazas, sobre el terreno de antes de aterrazar: siguiendo los bancales subía y bajaba a saltos de un
+			// escalón entero; así sube seguida y es el suelo de las terrazas el que se encaja con su pie)
+			terreno.ensaya(() -> PlanMuralla.traza(cx, cz, nivel, contorno, terreno::deMuralla, terreno::aguaExacta, muroCastillo, huecos, trozos));
+			PlanMuralla planMuro = PlanMuralla.traza(cx, cz, nivel, contorno, terreno::deMuralla, terreno::aguaExacta, muroCastillo, huecos, trozos);
 			despejaFranja(planMuro, casas, gente);
 			MurallaCapital.piezas(planMuro, estilo == AdornoCapital.DESIERTO || enBadlands, muralla);
 			DestinosCore.LOG.info("Destinos Core: muralla de {}, {}: {}", cx, cz, planMuro.resumen());
@@ -678,6 +680,12 @@ public class EstructuraCapital extends Structure {
 					continue;
 				}
 				CalleCapital calle = new CalleCapital(a[0], a[1], y[k], b[0], b[1], y[k + 1], radio, true);
+				if (terreno.enTerrazas()) {
+					// en terrazas el suelo se encaja con la calle: sobre agua hay puente, pero entre bancales no
+					calle.sinPuenteSeco();
+					calles.add(!terreno.agua(a[0], a[1]) && !terreno.agua(b[0], b[1]) ? calle.conMolde() : calle);
+					continue;
+				}
 				calles.add(porTierra(terreno, a, y[k]) && porTierra(terreno, b, y[k + 1]) ? calle.conMolde() : calle);
 			}
 		}
@@ -749,6 +757,14 @@ public class EstructuraCapital extends Structure {
 			// suavizar quedaba por encima de un hoyo (un puente que no lleva a ningún sitio) o metida en un monte
 			if (tapado[k] <= suelo[k]) {
 				y[k] = (int) Math.clamp(y[k], Math.round(suelo[k]) - PERFIL_CORTE, Math.round(suelo[k]) + PERFIL_RELLENO);
+			}
+		}
+		if (terreno.enTerrazas()) {
+			// entre bancales la calle sube como una rampa que se puede andar (un bloque cada dos, como la subida al
+			// castillo) y no a saltos: el suelo de las terrazas se encaja luego con ella
+			for (int k = 1; k < n; k++) {
+				int lim = Math.max(1, (int) Math.floor(Math.hypot(c.get(k)[0] - c.get(k - 1)[0], c.get(k)[1] - c.get(k - 1)[1]) / 2));
+				y[k] = Math.clamp(y[k], y[k - 1] - lim, y[k - 1] + lim);
 			}
 		}
 		return y;
@@ -1513,7 +1529,10 @@ public class EstructuraCapital extends Structure {
 			BoundingBox b = m.elemento().getBoundingBox(plantillas, sitio, giro);
 			// el suelo al que se amolda el terreno: si se sabe dónde está la puerta, el de la calle (justo bajo su pie); con
 			// el de la plantilla, en algunas casas el terreno quedaba a la altura de la puerta y la tapaba
-			int delta = m.puerta() == CatalogoCapital.SIN_PUERTA ? m.elemento().getGroundLevelDelta() : yPuerta + 1 - y;
+			// (el más bajo de los dos: las casas con un escalón delante de la puerta lo llevan apoyado en el suelo, un
+			// bloque por debajo de la calle; subiéndoles el terreno, el escalón quedaba hundido en un hoyo)
+			int delta = m.puerta() == CatalogoCapital.SIN_PUERTA ? m.elemento().getGroundLevelDelta()
+					: Math.min(m.elemento().getGroundLevelDelta(), yPuerta + 1 - y);
 			casas.add(new PoolElementStructurePiece(plantillas, m.elemento(), sitio, delta, giro, b, LiquidSettings.APPLY_WATERLOGGING));
 			// delante de la puerta, donde espera su aldeano, y de ahí el caminito a la calle
 			puertas.add(new int[] {x, z});

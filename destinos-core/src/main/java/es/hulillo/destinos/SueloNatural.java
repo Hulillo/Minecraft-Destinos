@@ -79,7 +79,9 @@ final class SueloNatural {
 			for (net.minecraft.core.Direction d : net.minecraft.core.Direction.values()) {
 				BlockPos q = p.relative(d);
 				BlockState c = level.getBlockState(q);
-				if (caja.isInside(q) && Math.abs(q.getX() - x) <= RADIO_TALA && Math.abs(q.getZ() - z) <= RADIO_TALA
+				// también en los chunks de al lado (se pueden tocar al decorar): si no, medio árbol se quedaba en el aire
+				if (Math.abs(q.getX() - caja.getCenter().getX()) <= 23 && Math.abs(q.getZ() - caja.getCenter().getZ()) <= 23
+						&& Math.abs(q.getX() - x) <= RADIO_TALA && Math.abs(q.getZ() - z) <= RADIO_TALA
 						&& deArbol(c) && (deTronco || !c.is(BlockTags.LOGS)) && visto.add(q)) {
 					cola.add(q);
 				}
@@ -87,8 +89,9 @@ final class SueloNatural {
 		}
 	}
 
-	private static final int MAX_TALA = 600;
-	private static final int RADIO_TALA = 7;
+	/** Un abeto gigante pasa de mil bloques entre tronco y copa: con menos, quedaba medio árbol flotando. */
+	private static final int MAX_TALA = 3000;
+	private static final int RADIO_TALA = 9;
 
 	private static boolean deArbol(BlockState s) {
 		// las hojas que no se caen las ha puesto alguien (setos, jardineras): no son de un árbol

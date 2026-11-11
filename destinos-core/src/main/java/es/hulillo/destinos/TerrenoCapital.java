@@ -411,6 +411,12 @@ final class TerrenoCapital {
 		return w <= 0 ? h : (int) Math.round(h * (1 - w) + nivel(suave(x, z)) * w);
 	}
 
+	/** El suelo para la muralla: el de verdad de la columna, sin bancales (bajo una obra o una calle ya trazada, el suyo). */
+	int deMuralla(int x, int z) {
+		int obra = pisado(x, z);
+		return obra != Integer.MIN_VALUE ? obra : exacta(x, z)[0];
+	}
+
 	/** Si en la columna (x, z) hay agua de al menos dos de hondo, leída del generador en esa misma columna. */
 	boolean aguaExacta(int x, int z) {
 		return exacta(x, z)[1] >= 2;

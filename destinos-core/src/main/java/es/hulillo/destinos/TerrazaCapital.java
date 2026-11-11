@@ -40,6 +40,8 @@ public final class TerrazaCapital extends StructurePiece {
 	private final int lado;
 	/** La altura del bancal de cada columna del cuadrado (SIN donde no se toca). */
 	private final short[] alto;
+	/** Las columnas cuyo suelo lo ha fijado una calle, una obra o la muralla: ahí no va pretil. */
+	private final boolean[] ocupada;
 	private final boolean arena;
 
 	private TerrazaCapital(int x0, int z0, int lado, short[] alto, boolean arena, BoundingBox caja) {
@@ -48,6 +50,7 @@ public final class TerrazaCapital extends StructurePiece {
 		this.z0 = z0;
 		this.lado = lado;
 		this.alto = alto;
+		this.ocupada = new boolean[alto.length];
 		this.arena = arena;
 	}
 
@@ -57,6 +60,7 @@ public final class TerrazaCapital extends StructurePiece {
 		z0 = 0;
 		lado = 0;
 		alto = new short[0];
+		ocupada = new boolean[0];
 		arena = false;
 	}
 
@@ -102,14 +106,16 @@ public final class TerrazaCapital extends StructurePiece {
 			return;
 		}
 		alto[i * lado + j] = Math.abs(y - alto[i * lado + j]) > MAX_OBRA ? (short) SIN : (short) y;
+		ocupada[i * lado + j] = true;
 	}
 
 	/** Como fija, para la muralla: si su pie queda lejos del bancal (un arco sobre una hondonada, un cortado), la columna se queda como estaba. */
 	void acerca(int x, int z, int y) {
 		int i = x - x0;
 		int j = z - z0;
-		if (i >= 0 && j >= 0 && i < lado && j < lado && alto[i * lado + j] != SIN && Math.abs(y - alto[i * lado + j]) <= TerrenoCapital.ESCALON) {
+		if (i >= 0 && j >= 0 && i < lado && j < lado && alto[i * lado + j] != SIN && Math.abs(y - alto[i * lado + j]) <= MAX_OBRA) {
 			alto[i * lado + j] = (short) y;
+			ocupada[i * lado + j] = true;
 		}
 	}
 
@@ -130,6 +136,7 @@ public final class TerrazaCapital extends StructurePiece {
 		int i = x - x0;
 		int j = z - z0;
 		if (i >= 0 && j >= 0 && i < lado && j < lado) {
+			ocupada[i * lado + j] = true;
 			alto[i * lado + j] = (short) SIN;
 		}
 	}
@@ -180,13 +187,39 @@ public final class TerrazaCapital extends StructurePiece {
 			return SIN;
 		}
 		int bajo = t;
-		for (int[] d : new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+		// también en diagonal: en las esquinas quedaba la tierra del relleno a la vista
+		for (int[] d : new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}) {
 			int v = bancal(x + d[0], z + d[1]);
 			if (v != SIN) {
 				bajo = Math.min(bajo, v);
 			}
 		}
 		return t - bajo >= SALTO_MURO ? bajo : SIN;
+	}
+
+	/** El salto desde el que el borde del bancal lleva pretil, para que nadie se caiga. */
+	private static final int SALTO_PRETIL = 3;
+
+	/** Si el borde de (x, z) lleva pretil: un bancal sin calle ni obra encima, con una caída de SALTO_PRETIL o más a un lado (no en diagonal). */
+	boolean pretil(int x, int z) {
+		int i = x - x0;
+		int j = z - z0;
+		if (i < 0 || j < 0 || i >= lado || j >= lado || alto[i * lado + j] == SIN || ocupada[i * lado + j]) {
+			return false;
+		}
+		int t = alto[i * lado + j];
+		for (int[] d : new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+			int v = bancal(x + d[0], z + d[1]);
+			if (v != SIN && t - v >= SALTO_PRETIL) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** De qué es el muro de contención de un trozo de bancal: 0 mampostería, 1 sillería, 2 tapial, 3 talud de tierra. Cambia por tramos y de un bancal a otro. */
+	private int estilo(int x, int z, int t) {
+		return Math.floorMod(Geo.hash(Math.floorDiv(x + z, 14), Math.floorDiv(x - z, 14), t), 4);
 	}
 
 	/** El terreno no se amolda a esta pieza con el relleno de Minecraft: lo hace ella, columna a columna. */
@@ -231,21 +264,70 @@ public final class TerrazaCapital extends StructurePiece {
 		for (int y = h; y < t; y++) {
 			level.setBlock(pos.set(x, y, z), relleno, 2);
 		}
-		level.setBlock(pos.set(x, t, z), s.is(Blocks.GRAVEL) ? relleno : s, 2);
+		BlockState arriba = s.is(Blocks.GRAVEL) ? relleno : s;
+		level.setBlock(pos.set(x, t, z), arriba, 2);
 		int bajo = muro(x, z);
 		if (bajo != SIN) {
-			// el muro de contención: de piedra (con musgo a trozos) de la altura del bancal de abajo a la de este
-			for (int y = Math.min(bajo, h) + 1; y <= t; y++) {
-				level.setBlock(pos.set(x, y, z), piedra(x, y, z), 2);
+			// el muro de contención, de la altura del bancal de abajo a la de este; arriba se queda la hierba (o lo que
+			// hubiera): el bancal se ve verde por encima y el muro solo de frente
+			int estilo = t - bajo <= 2 ? 3 : estilo(x, z, t);
+			for (int y = Math.min(bajo, h) + 1; y < t; y++) {
+				level.setBlock(pos.set(x, y, z), cara(estilo, x, y, z, y - bajo), 2);
+			}
+			if (pretil(x, z) && level.getBlockState(pos.set(x, t + 1, z)).canBeReplaced()) {
+				level.setBlock(pos, pretil(estilo, x, z, t), 2);
 			}
 		}
 	}
 
-	private BlockState piedra(int x, int y, int z) {
+	/** El bloque de la cara del muro: según el estilo del tramo, con musgo y piezas distintas a trozos; lo de más abajo, más basto. */
+	private BlockState cara(int estilo, int x, int y, int z, int altura) {
+		int azar = Math.floorMod(Geo.hash(x, z, y), 12);
 		if (arena) {
-			return (Math.floorMod(Geo.hash(x, z, y), 4) == 0 ? Blocks.CUT_SANDSTONE : Blocks.SANDSTONE).defaultBlockState();
+			return (estilo == 2 ? (azar < 4 ? Blocks.MUD_BRICKS : Blocks.PACKED_MUD)
+					: azar < 3 ? Blocks.CUT_SANDSTONE : azar == 3 ? Blocks.SMOOTH_SANDSTONE : Blocks.SANDSTONE).defaultBlockState();
 		}
-		int azar = Math.floorMod(Geo.hash(x, z, y), 6);
-		return (azar == 0 ? Blocks.MOSSY_COBBLESTONE : azar == 1 ? Blocks.STONE_BRICKS : Blocks.COBBLESTONE).defaultBlockState();
+		return (switch (estilo) {
+			case 0 -> azar < 3 ? Blocks.MOSSY_COBBLESTONE : azar == 3 ? Blocks.ANDESITE : azar == 4 ? Blocks.MOSS_BLOCK : Blocks.COBBLESTONE;
+			case 1 -> azar < 2 ? Blocks.MOSSY_STONE_BRICKS : azar == 2 ? Blocks.CRACKED_STONE_BRICKS : altura <= 1 && azar < 6 ? Blocks.COBBLESTONE
+					: Blocks.STONE_BRICKS;
+			case 2 -> altura <= 1 ? (azar < 5 ? Blocks.MOSSY_COBBLESTONE : Blocks.COBBLESTONE) : azar < 4 ? Blocks.MUD_BRICKS : Blocks.PACKED_MUD;
+			default -> azar < 4 ? Blocks.COARSE_DIRT : azar < 6 ? Blocks.ROOTED_DIRT : azar == 6 ? Blocks.MOSS_BLOCK : azar == 7 ? Blocks.MOSSY_COBBLESTONE
+					: Blocks.DIRT;
+		}).defaultBlockState();
+	}
+
+	/** El pretil del borde: murete del material del muro (valla de madera en el talud de tierra, con algún seto), unido a los de al lado. */
+	private BlockState pretil(int estilo, int x, int z, int t) {
+		boolean[] une = new boolean[4];
+		net.minecraft.core.Direction[] lados = {net.minecraft.core.Direction.NORTH, net.minecraft.core.Direction.EAST, net.minecraft.core.Direction.SOUTH,
+				net.minecraft.core.Direction.WEST};
+		for (int k = 0; k < 4; k++) {
+			int qx = x + lados[k].getStepX();
+			int qz = z + lados[k].getStepZ();
+			une[k] = pretil(qx, qz) && bancal(qx, qz) == t;
+		}
+		if (estilo == 3 && !arena) {
+			if (Math.floorMod(Geo.hash(x, z, t), 5) == 0) {
+				return Blocks.OAK_LEAVES.defaultBlockState().setValue(net.minecraft.world.level.block.LeavesBlock.PERSISTENT, true);
+			}
+			return Blocks.SPRUCE_FENCE.defaultBlockState()
+					.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.NORTH, une[0])
+					.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.EAST, une[1])
+					.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.SOUTH, une[2])
+					.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.WEST, une[3]);
+		}
+		net.minecraft.world.level.block.Block muro = arena ? Blocks.SANDSTONE_WALL
+				: estilo == 1 ? Blocks.STONE_BRICK_WALL : estilo == 2 ? Blocks.MUD_BRICK_WALL
+						: Math.floorMod(Geo.hash(x, z, t), 3) == 0 ? Blocks.MOSSY_COBBLESTONE_WALL : Blocks.COBBLESTONE_WALL;
+		net.minecraft.world.level.block.state.properties.WallSide si = net.minecraft.world.level.block.state.properties.WallSide.LOW;
+		net.minecraft.world.level.block.state.properties.WallSide no = net.minecraft.world.level.block.state.properties.WallSide.NONE;
+		boolean recto = une[0] && une[2] && !une[1] && !une[3] || une[1] && une[3] && !une[0] && !une[2];
+		return muro.defaultBlockState()
+				.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.NORTH_WALL, une[0] ? si : no)
+				.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.EAST_WALL, une[1] ? si : no)
+				.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.SOUTH_WALL, une[2] ? si : no)
+				.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.WEST_WALL, une[3] ? si : no)
+				.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.UP, !recto);
 	}
 }

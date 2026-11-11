@@ -66,6 +66,8 @@ public final class CalleCapital extends StructurePiece {
 	private boolean madera;
 	/** Si el terreno se amolda a este tramo antes de generarse (por tierra; no sobre el agua ni sobre una zanja que cruza por un puente). */
 	private boolean molde;
+	/** En una capital en terrazas: no hace puente seco entre bancales (el suelo se encaja con ella). */
+	private boolean sinPuenteSeco;
 
 	CalleCapital(int x0, int z0, int y0, int x1, int z1, int y1, double radio, boolean puente) {
 		this(x0, z0, y0, x1, z1, y1, radio, puente, 0);
@@ -130,11 +132,17 @@ public final class CalleCapital extends StructurePiece {
 		maximo = t.getIntOr("max", 0);
 		madera = t.getBooleanOr("madera", false);
 		molde = t.getBooleanOr("molde", false);
+		sinPuenteSeco = t.getBooleanOr("sin_puente_seco", false);
 	}
 
 	/** La vuelve pasarela de madera sobre el agua (las capitales del pantano). */
 	CalleCapital deMadera() {
 		madera = true;
+		return this;
+	}
+
+	CalleCapital sinPuenteSeco() {
+		sinPuenteSeco = true;
 		return this;
 	}
 
@@ -227,6 +235,7 @@ public final class CalleCapital extends StructurePiece {
 		t.putInt("max", maximo);
 		t.putBoolean("madera", madera);
 		t.putBoolean("molde", molde);
+		t.putBoolean("sin_puente_seco", sinPuenteSeco);
 	}
 
 	@Override
@@ -275,7 +284,7 @@ public final class CalleCapital extends StructurePiece {
 					if ((puente || madera) && d <= r + 1.3) {
 						puente(level, pos, !calle, Math.floorMod(x + z, madera ? 3 : PILARES) == 0, aLoLargoDeZ, madera);
 					}
-				} else if (y != SIN_ALTURA && pos.getY() < y - relleno() && y - pos.getY() <= HONDO_PUENTE && d <= r + 1.3
+				} else if (!sinPuenteSeco && y != SIN_ALTURA && pos.getY() < y - relleno() && y - pos.getY() <= HONDO_PUENTE && d <= r + 1.3
 						&& hueco(level, (int) Math.round(x0 + t * dx), (int) Math.round(z0 + t * dz), y)) {
 					// una zanja o un cauce (tapado en el perfil, o que se abrió después): la calle lo cruza por un puente, ya
 					// desde donde no se puede rellenar (antes, entre relleno y corte quedaba un hoyo sin calle)
@@ -340,7 +349,7 @@ public final class CalleCapital extends StructurePiece {
 			pos.set(x, y + holgura, z);
 			BlockState abajo = level.getBlockState(pos);
 			// lo que queda arriba es lo de debajo de la hierba: vuelve a ser hierba en la cuneta
-			if (holgura > 0 && abajo.is(Blocks.DIRT) && s.is(Blocks.GRASS_BLOCK)) {
+			if (holgura > 0 && abajo.is(Blocks.DIRT) && SueloNatural.natural(s) && !s.is(Blocks.DIRT)) {
 				level.setBlock(pos, s, 2);
 				return s;
 			}

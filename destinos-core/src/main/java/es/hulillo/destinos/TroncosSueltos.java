@@ -43,16 +43,48 @@ final class TroncosSueltos {
 					}
 					List<BlockPos> grupo = grupo(level, pos.immutable(), caja, visto);
 					if (grupo != null) {
+						// también lo que cae en los chunks de al lado (se pueden tocar al decorar), y con sus hojas: sin
+						// tronco no se caen solas en un chunk recién generado
 						for (BlockPos p : grupo) {
-							if (caja.isInside(p)) {
-								level.setBlock(p, Blocks.AIR.defaultBlockState(), 2);
-							}
+							level.setBlock(p, Blocks.AIR.defaultBlockState(), 2);
 						}
+						sinHojas(level, grupo, caja);
 					}
 				}
 			}
 		}
 	}
+
+	/** Quita las hojas (de árbol, no las de setos) que colgaban de los troncos quitados, hasta HOJAS bloques de ellos. */
+	private static void sinHojas(WorldGenLevel level, List<BlockPos> troncos, BoundingBox caja) {
+		ArrayDeque<BlockPos> cola = new ArrayDeque<>(troncos);
+		java.util.Map<BlockPos, Integer> lejos = new java.util.HashMap<>();
+		for (BlockPos p : troncos) {
+			lejos.put(p, 0);
+		}
+		while (!cola.isEmpty()) {
+			BlockPos p = cola.poll();
+			int d = lejos.get(p);
+			if (d >= HOJAS) {
+				continue;
+			}
+			for (Direction dir : Direction.values()) {
+				BlockPos q = p.relative(dir);
+				if (lejos.containsKey(q) || Math.abs(q.getX() - caja.getCenter().getX()) > 23 || Math.abs(q.getZ() - caja.getCenter().getZ()) > 23) {
+					continue;
+				}
+				BlockState s = level.getBlockState(q);
+				if (s.is(BlockTags.LEAVES) && s.hasProperty(net.minecraft.world.level.block.LeavesBlock.PERSISTENT)
+						&& !s.getValue(net.minecraft.world.level.block.LeavesBlock.PERSISTENT)) {
+					level.setBlock(q, Blocks.AIR.defaultBlockState(), 2);
+					lejos.put(q, d + 1);
+					cola.add(q);
+				}
+			}
+		}
+	}
+
+	private static final int HOJAS = 4;
 
 	/** El grupo de troncos unido a desde, si está suelto; null si toca algo firme o es muy grande. */
 	private static List<BlockPos> grupo(WorldGenLevel level, BlockPos desde, BoundingBox caja, Set<BlockPos> visto) {
