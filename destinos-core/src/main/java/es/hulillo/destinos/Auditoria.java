@@ -240,7 +240,7 @@ final class Auditoria {
 				puesta += m.deMuralla(en(x, y, z)) ? 1 : 0;
 			}
 			if (puesta < Math.min(3, alto)) {
-				fallo("muralla.hueco", x, pie + 1, z);
+				fallo("muralla.hueco", x, pie + 1, z, " (pie " + pie + ", de pie-2 arriba: " + pila(x, pie - 2, z, 9) + bancal(x, z) + ")");
 				return;
 			}
 			if (caraDeFuera) {
