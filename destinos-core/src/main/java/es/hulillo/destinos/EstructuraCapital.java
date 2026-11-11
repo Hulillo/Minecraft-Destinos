@@ -1504,8 +1504,10 @@ public class EstructuraCapital extends Structure {
 			int y = m.puerta() == CatalogoCapital.SIN_PUERTA ? yPuerta - entrada.getY() : yPuerta + 1 - entrada.getY() - m.puerta();
 			BlockPos sitio = new BlockPos(ox, y, oz);
 			BoundingBox b = m.elemento().getBoundingBox(plantillas, sitio, giro);
-			casas.add(new PoolElementStructurePiece(plantillas, m.elemento(), sitio, m.elemento().getGroundLevelDelta(), giro, b,
-					LiquidSettings.APPLY_WATERLOGGING));
+			// el suelo al que se amolda el terreno: si se sabe dónde está la puerta, el de la calle (justo bajo su pie); con
+			// el de la plantilla, en algunas casas el terreno quedaba a la altura de la puerta y la tapaba
+			int delta = m.puerta() == CatalogoCapital.SIN_PUERTA ? m.elemento().getGroundLevelDelta() : yPuerta + 1 - y;
+			casas.add(new PoolElementStructurePiece(plantillas, m.elemento(), sitio, delta, giro, b, LiquidSettings.APPLY_WATERLOGGING));
 			// delante de la puerta, donde espera su aldeano, y de ahí el caminito a la calle
 			puertas.add(new int[] {x, z});
 			accesos.pon(x, z, yPuerta, sx, sz, yCalle);
