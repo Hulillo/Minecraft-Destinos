@@ -105,6 +105,38 @@ final class Auditoria {
 		}
 	}
 
+	/** De dónde viene el agua que hay en (x, y, z): sigue el líquido unido a ella y dice cuánto es, cuántas fuentes y qué rodea a las más altas. */
+	private String deDondeViene(int x, int y, int z) {
+		java.util.ArrayDeque<BlockPos> cola = new java.util.ArrayDeque<>();
+		java.util.Set<BlockPos> vistos = new java.util.HashSet<>();
+		BlockPos primero = new BlockPos(x, y, z);
+		cola.add(primero);
+		vistos.add(primero);
+		List<BlockPos> fuentes = new ArrayList<>();
+		while (!cola.isEmpty() && vistos.size() < 6000) {
+			BlockPos p = cola.poll();
+			if (level.getFluidState(p).isSource()) {
+				fuentes.add(p);
+			}
+			for (net.minecraft.core.Direction d : net.minecraft.core.Direction.values()) {
+				BlockPos q = p.relative(d);
+				if (level.hasChunk(q.getX() >> 4, q.getZ() >> 4) && !level.getFluidState(q).isEmpty() && vistos.add(q)) {
+					cola.add(q);
+				}
+			}
+		}
+		fuentes.sort((a, b) -> b.getY() - a.getY());
+		StringBuilder b = new StringBuilder("agua unida: " + vistos.size() + " bloques, " + fuentes.size() + " fuentes; las más altas:");
+		for (int k = 0; k < Math.min(4, fuentes.size()); k++) {
+			BlockPos f = fuentes.get(k);
+			b.append(' ').append(f.getX()).append(' ').append(f.getY()).append(' ').append(f.getZ()).append(" [encima ").append(nombre(f.getX(), f.getY() + 1, f.getZ()))
+					.append(", debajo ").append(nombre(f.getX(), f.getY() - 1, f.getZ())).append(", lados ").append(nombre(f.getX() + 1, f.getY(), f.getZ())).append(' ')
+					.append(nombre(f.getX() - 1, f.getY(), f.getZ())).append(' ').append(nombre(f.getX(), f.getY(), f.getZ() + 1)).append(' ')
+					.append(nombre(f.getX(), f.getY(), f.getZ() - 1)).append(", bancal ").append(terraza == null ? "-" : String.valueOf(terraza.bancal(f.getX(), f.getZ()))).append(']');
+		}
+		return b.toString();
+	}
+
 	/** Los bloques de la columna (x, z) desde y hacia arriba, para ver qué hay donde algo no cuadra. */
 	private String pila(int x, int y, int z, int cuantos) {
 		StringBuilder b = new StringBuilder();
@@ -379,7 +411,7 @@ final class Auditoria {
 				h = suelo(x, z);
 			}
 			if (!en(x, h, z).getFluidState().isEmpty()) {
-				fallo("calles.sin_suelo", x, h, z, " (de dos abajo arriba: " + pila(x, h - 2, z, 5) + ")");
+				fallo("calles.sin_suelo", x, h, z, " (de dos abajo arriba: " + pila(x, h - 2, z, 5) + (cuenta.get("calles.sin_suelo") == 1 ? "; " + deDondeViene(x, h, z) : "") + ")");
 				antes = Integer.MIN_VALUE;
 				continue;
 			}
