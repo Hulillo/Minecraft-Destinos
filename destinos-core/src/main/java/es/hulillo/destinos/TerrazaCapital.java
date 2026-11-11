@@ -133,12 +133,16 @@ public final class TerrazaCapital extends StructurePiece {
 		return choques + " columnas con dos calles a distinta altura" + (choques > 0 ? ":" + ejemplos : "");
 	}
 
-	/** Como fija, para la muralla: si su pie queda lejos del bancal (un arco sobre una hondonada, un cortado), la columna se queda como estaba. */
+	/**
+	 * Como fija, para la muralla: su pie está trazado sobre el terreno de antes de aterrazar, así que si queda lejos del
+	 * bancal (un cortado, una ladera muy empinada) la columna se deja como la hizo el mundo. Rebajada al bancal, la
+	 * muralla se quedaba sin suelo y ahí no se levantaba: un hueco.
+	 */
 	void acerca(int x, int z, int y) {
 		int i = x - x0;
 		int j = z - z0;
-		if (i >= 0 && j >= 0 && i < lado && j < lado && alto[i * lado + j] != SIN && Math.abs(y - alto[i * lado + j]) <= MAX_OBRA) {
-			alto[i * lado + j] = (short) y;
+		if (i >= 0 && j >= 0 && i < lado && j < lado && alto[i * lado + j] != SIN) {
+			alto[i * lado + j] = Math.abs(y - alto[i * lado + j]) <= MAX_OBRA ? (short) y : (short) SIN;
 			ocupada[i * lado + j] = true;
 		}
 	}
