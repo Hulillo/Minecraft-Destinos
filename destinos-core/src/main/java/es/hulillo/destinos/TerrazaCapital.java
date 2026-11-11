@@ -288,6 +288,10 @@ public final class TerrazaCapital extends StructurePiece {
 		if (!s.getFluidState().isEmpty() || !SueloNatural.natural(s) || Math.abs(h - t) > MAXIMO) {
 			return;
 		}
+		// ni se abre la orilla de una charca o un arroyo: el agua se iría bancal abajo
+		if (h > t && SueloNatural.aguaAlLado(level, pos, x, z, t + 1, h + 1)) {
+			return;
+		}
 		// la capa de arriba, como la que había (hierba, arena, nieve, piedra…); debajo, tierra (o arenisca: la arena se caería)
 		BlockState relleno = (SueloNatural.arena(s) ? Blocks.SANDSTONE : s.is(Blocks.STONE) || s.is(Blocks.GRAVEL) ? Blocks.STONE : Blocks.DIRT)
 				.defaultBlockState();

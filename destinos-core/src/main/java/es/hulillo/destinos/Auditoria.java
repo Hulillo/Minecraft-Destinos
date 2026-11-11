@@ -379,7 +379,7 @@ final class Auditoria {
 				h = suelo(x, z);
 			}
 			if (!en(x, h, z).getFluidState().isEmpty()) {
-				fallo("calles.sin_suelo", x, h, z);
+				fallo("calles.sin_suelo", x, h, z, " (de dos abajo arriba: " + pila(x, h - 2, z, 5) + ")");
 				antes = Integer.MIN_VALUE;
 				continue;
 			}

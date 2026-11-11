@@ -361,6 +361,11 @@ public final class CalleCapital extends StructurePiece {
 					return s;
 				}
 			}
+			// ni se abre la orilla de una charca o un arroyo: el agua se iría calle abajo
+			if (SueloNatural.aguaAlLado(level, pos, x, z, y + holgura + 1, h + 1)) {
+				pos.set(x, h, z);
+				return s;
+			}
 			// y lo de encima de lo que se quita (las plantas ya no están; los troncos de un árbol sí se quedan)
 			for (int k = h; k > y + holgura; k--) {
 				pos.set(x, k, z);

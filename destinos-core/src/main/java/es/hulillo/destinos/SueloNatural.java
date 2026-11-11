@@ -130,6 +130,20 @@ final class SueloNatural {
 		return s.getBlock() instanceof SlabBlock || s.getBlock() instanceof StairBlock || id.getPath().contains("slab");
 	}
 
+	/**
+	 * Si al lado de la columna (x, z) hay agua (u otro líquido) entre las alturas dadas: rebajar ahí abriría la orilla de
+	 * una charca o un arroyo y el agua se iría calle abajo. Deja pos donde le viene bien a ella.
+	 */
+	static boolean aguaAlLado(WorldGenLevel level, BlockPos.MutableBlockPos pos, int x, int z, int desde, int hasta) {
+		for (int y = desde; y <= hasta; y++) {
+			if (!level.getFluidState(pos.set(x + 1, y, z)).isEmpty() || !level.getFluidState(pos.set(x - 1, y, z)).isEmpty()
+					|| !level.getFluidState(pos.set(x, y, z + 1)).isEmpty() || !level.getFluidState(pos.set(x, y, z - 1)).isEmpty()) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	static boolean natural(BlockState s) {
 		return NATURAL.contains(s.getBlock());
 	}
