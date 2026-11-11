@@ -267,6 +267,12 @@ final class TerrenoCapital {
 		}
 	}
 
+	/** En una capital en terrazas, la altura de la calle ya trazada que pasa por (x, z), o Integer.MIN_VALUE. */
+	int calleEn(int x, int z) {
+		Integer y = calzada.get(Geo.clave(x, z));
+		return y == null ? Integer.MIN_VALUE : y;
+	}
+
 	/**
 	 * En una capital en terrazas, la altura de la calle ya trazada más cercana a (x, z), a r bloques como mucho; si no
 	 * hay ninguna, Integer.MIN_VALUE. Lo que se pone pegado a una calle (una placita) va a su altura, no a la del bancal.

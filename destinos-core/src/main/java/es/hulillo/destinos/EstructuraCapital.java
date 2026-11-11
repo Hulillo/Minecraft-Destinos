@@ -764,9 +764,30 @@ public class EstructuraCapital extends Structure {
 			// entre bancales la calle sube como una escalinata que se puede andar (como mucho un bloque por cada uno que
 			// avanza) y no a saltos: el suelo de las terrazas se encaja luego con ella. Más tendida (un bloque cada dos)
 			// se quedaba atrás en las laderas empinadas y acababa enterrada
-			for (int k = 1; k < n; k++) {
-				int lim = Math.max(1, (int) Math.floor(Math.hypot(c.get(k)[0] - c.get(k - 1)[0], c.get(k)[1] - c.get(k - 1)[1])));
-				y[k] = Math.clamp(y[k], y[k - 1] - lim, y[k - 1] + lim);
+			// donde pisa una calle ya trazada (sale de ella, la cruza o va un trecho por encima), su altura es la de
+			// esa calle y no se mueve: lo demás se ajusta a esos puntos por los dos lados (antes solo hacia delante: una
+			// calle que arrancaba en un bancal alto no llegaba a bajar y se quedaba cuatro bloques por encima de la otra)
+			boolean[] fijo = new boolean[n];
+			for (int k = 0; k < n; k++) {
+				int ya = terreno.calleEn(c.get(k)[0], c.get(k)[1]);
+				if (ya != Integer.MIN_VALUE) {
+					y[k] = ya;
+					fijo[k] = true;
+				}
+			}
+			for (int pasada = 0; pasada < 2; pasada++) {
+				for (int k = 1; k < n; k++) {
+					if (!fijo[k]) {
+						int lim = Math.max(1, (int) Math.floor(Math.hypot(c.get(k)[0] - c.get(k - 1)[0], c.get(k)[1] - c.get(k - 1)[1])));
+						y[k] = Math.clamp(y[k], y[k - 1] - lim, y[k - 1] + lim);
+					}
+				}
+				for (int k = n - 2; k >= 0; k--) {
+					if (!fijo[k]) {
+						int lim = Math.max(1, (int) Math.floor(Math.hypot(c.get(k)[0] - c.get(k + 1)[0], c.get(k)[1] - c.get(k + 1)[1])));
+						y[k] = Math.clamp(y[k], y[k + 1] - lim, y[k + 1] + lim);
+					}
+				}
 			}
 		}
 		return y;
