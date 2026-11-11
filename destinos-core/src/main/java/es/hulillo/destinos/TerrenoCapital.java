@@ -267,6 +267,25 @@ final class TerrenoCapital {
 		}
 	}
 
+	/**
+	 * En una capital en terrazas, la altura de la calle ya trazada más cercana a (x, z), a r bloques como mucho; si no
+	 * hay ninguna, Integer.MIN_VALUE. Lo que se pone pegado a una calle (una placita) va a su altura, no a la del bancal.
+	 */
+	int calleCerca(int x, int z, int r) {
+		int mejor = Integer.MIN_VALUE;
+		int cerca = Integer.MAX_VALUE;
+		for (int dx = -r; dx <= r; dx++) {
+			for (int dz = -r; dz <= r; dz++) {
+				Integer y = calzada.get(Geo.clave(x + dx, z + dz));
+				if (y != null && dx * dx + dz * dz < cerca) {
+					cerca = dx * dx + dz * dz;
+					mejor = y;
+				}
+			}
+		}
+		return mejor;
+	}
+
 	private int pisado(int x, int z) {
 		if (!calzada.isEmpty()) {
 			Integer calle = calzada.get(Geo.clave(x, z));

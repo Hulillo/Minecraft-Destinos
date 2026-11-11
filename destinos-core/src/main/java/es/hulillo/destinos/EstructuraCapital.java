@@ -839,7 +839,11 @@ public class EstructuraCapital extends Structure {
 				descartes[1]++;
 				continue;
 			}
-			PlazuelaCapital q = new PlazuelaCapital(s[0], s[1], rel[0], estilo, madera, color);
+			// en terrazas, a la altura de la calle a la que da (si no queda lejos de su bancal): si no, una calle en
+			// rampa pasaba varios bloques por debajo y la placita la tapaba
+			int junto = terreno.calleCerca(s[0], s[1], PlazuelaCapital.MEDIO + 4);
+			int alturaPlazuela = junto != Integer.MIN_VALUE && Math.abs(junto - rel[0]) <= TerrenoCapital.ESCALON ? junto : rel[0];
+			PlazuelaCapital q = new PlazuelaCapital(s[0], s[1], alturaPlazuela, estilo, madera, color);
 			BoundingBox nucleo = new BoundingBox(s[0] - PlazuelaCapital.MEDIO - 1, 0, s[1] - PlazuelaCapital.MEDIO - 1,
 					s[0] + PlazuelaCapital.MEDIO + 1, 0, s[1] + PlazuelaCapital.MEDIO + 1);
 			if (pisaCalle(nucleo, enCalle)) {
