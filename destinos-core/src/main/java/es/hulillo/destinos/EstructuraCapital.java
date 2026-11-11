@@ -596,6 +596,7 @@ public class EstructuraCapital extends Structure {
 			}
 			// después de la muralla: donde una calle la cruza, manda el suelo de la calle
 			terrazas.encaja(calles, pisan);
+			DestinosCore.LOG.info("Destinos Core: relieve de calles de {}, {}: {}", cx, cz, terrazas.choques());
 		}
 		long ms = (System.nanoTime() - antes) / 1_000_000;
 		BlockPos centro = new BlockPos(px, alturaPlaza, pz);

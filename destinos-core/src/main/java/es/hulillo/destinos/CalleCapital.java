@@ -179,8 +179,17 @@ public final class CalleCapital extends StructurePiece {
 		}
 	}
 
+	/** Las terrazas del asentamiento, si las tiene: el suelo de cada columna lo deciden ellas (no se guarda: el plano se rehace). */
+	private TerrazaCapital terraza;
+
+	/** Para el registro: de dónde a dónde va, a qué alturas y su ancho. */
+	String apodo() {
+		return "calle " + x0 + "," + z0 + "@" + y0 + ">" + x1 + "," + z1 + "@" + y1 + " r" + radio;
+	}
+
 	/** Deja en las terrazas el suelo de esta calle, columna a columna; sobre un puente, sin tocar. */
 	void encaja(TerrazaCapital terrazas) {
+		terraza = terrazas;
 		BoundingBox mia = getBoundingBox();
 		double r = radio / 10.0;
 		double dx = x1 - x0;
@@ -273,6 +282,17 @@ public final class CalleCapital extends StructurePiece {
 				}
 				double yf = y0 == SIN_ALTURA ? 0 : y0 + t * (y1 - y0);
 				int y = y0 == SIN_ALTURA ? SIN_ALTURA : (int) Math.floor(yf);
+				if (terraza != null && y != SIN_ALTURA) {
+					// en terrazas el suelo de cada columna es uno solo, el del plano de bancales (donde se tocan dos calles,
+					// el de la que manda): ni una calle amontona tierra sobre otra ni la cuneta deshace un bancal
+					int b = terraza.bancal(x, z);
+					if (!TerrazaCapital.sin(b)) {
+						if (!calle) {
+							continue;
+						}
+						y = b;
+					}
+				}
 				// en cuesta, justo antes de cada subida de un bloque va una fila de escalones (solo una: la de la
 				// columna cuya vecina cuesta arriba ya está un bloque más alta)
 				// y solo en tramos rectos por un eje, con cuesta de verdad y lejos de sus puntas (en cruces y curvas

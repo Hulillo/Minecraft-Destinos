@@ -105,8 +105,32 @@ public final class TerrazaCapital extends StructurePiece {
 		if (i < 0 || j < 0 || i >= lado || j >= lado || alto[i * lado + j] == SIN) {
 			return;
 		}
+		if (calle > 0 && quien != null) {
+			// dos calles distintas que pisan la misma columna a alturas que no casan: se apunta, para el registro
+			int otra = quien[i * lado + j];
+			if (otra > 0 && otra != calle && Math.abs(y - alto[i * lado + j]) >= 3) {
+				choques++;
+				if (ejemplos.length() < 400 && choques % 8 == 1) {
+					ejemplos.append(' ').append(x).append(',').append(z).append(" (").append(alto[i * lado + j]).append(" de ").append(nombres.get(otra - 1))
+							.append(", ").append(y).append(" de ").append(nombres.get(calle - 1)).append(')');
+				}
+			}
+			quien[i * lado + j] = calle;
+		}
 		alto[i * lado + j] = Math.abs(y - alto[i * lado + j]) > MAX_OBRA ? (short) SIN : (short) y;
 		ocupada[i * lado + j] = true;
+	}
+
+	/** Para el registro: qué calle ha fijado cada columna, y cuántas veces dos calles no casan en la misma. */
+	private int[] quien;
+	private int calle;
+	private int choques;
+	private final StringBuilder ejemplos = new StringBuilder();
+	private final java.util.List<String> nombres = new java.util.ArrayList<>();
+
+	/** Cuántas columnas pisan dos calles a alturas que no casan (3 bloques o más), con algunos sitios de ejemplo. */
+	String choques() {
+		return choques + " columnas con dos calles a distinta altura" + (choques > 0 ? ":" + ejemplos : "");
 	}
 
 	/** Como fija, para la muralla: si su pie queda lejos del bancal (un arco sobre una hondonada, un cortado), la columna se queda como estaba. */
@@ -164,9 +188,18 @@ public final class TerrazaCapital extends StructurePiece {
 		}
 		// las calles, lo último: donde pasan pegadas a una casa o entran en el borde de una plaza, manda su suelo (y el
 		// caminito de cada puerta llega hasta la calle)
-		for (CalleCapital c : calles) {
-			c.encaja(this);
+		// de la última a la primera: las principales se trazaron antes y son las que mandan donde otra las toca
+		quien = new int[alto.length];
+		for (int k = calles.size() - 1; k >= 0; k--) {
+			calle = k + 1;
+			while (nombres.size() <= k) {
+				nombres.add("");
+			}
+			nombres.set(k, calles.get(k).apodo());
+			calles.get(k).encaja(this);
 		}
+		calle = 0;
+		quien = null;
 	}
 
 	/** La altura del bancal en (x, z), o SIN. */
