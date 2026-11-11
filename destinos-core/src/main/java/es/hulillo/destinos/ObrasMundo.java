@@ -340,6 +340,9 @@ public final class ObrasMundo {
 			for (StructurePiece pieza : plan.piezas()) {
 				// cada pieza con su azar (el mismo en la construcción y en el repaso: sale igual)
 				n++;
+				if (repaso && pieza instanceof TerrazaCapital terraza && pieza.getBoundingBox().intersects(caja)) {
+					terraza.sinManantiales(region, caja);
+				}
 				if (pieza.getBoundingBox().intersects(caja) && (!repaso || seRepasa(pieza))) {
 					azar.setFeatureSeed(semilla, n, 0);
 					if (repaso) {

@@ -280,6 +280,38 @@ public final class TerrazaCapital extends StructurePiece {
 		}
 	}
 
+	/**
+	 * Al acabar el chunk: tapa los manantiales que Minecraft abre en las paredes de piedra o tierra con una sola cara al
+	 * aire (los cortes de los bancales y de las calles están llenos de sitios así, y el agua bajaba por las calles).
+	 * Un manantial es una fuente de agua o lava con terreno justo encima y aire a un lado; una charca o un río no.
+	 */
+	void sinManantiales(WorldGenLevel level, BoundingBox caja) {
+		BoundingBox mia = getBoundingBox();
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+		for (int x = Math.max(mia.minX(), caja.minX()); x <= Math.min(mia.maxX(), caja.maxX()); x++) {
+			for (int z = Math.max(mia.minZ(), caja.minZ()); z <= Math.min(mia.maxZ(), caja.maxZ()); z++) {
+				int t = bancal(x, z);
+				if (t == SIN) {
+					continue;
+				}
+				for (int y = t - 6; y <= t + MAXIMO; y++) {
+					if (!level.getFluidState(pos.set(x, y, z)).isSource()) {
+						continue;
+					}
+					BlockState encima = level.getBlockState(pos.set(x, y + 1, z));
+					if (!SueloNatural.natural(encima)) {
+						continue;
+					}
+					boolean aire = level.getBlockState(pos.set(x + 1, y, z)).isAir() || level.getBlockState(pos.set(x - 1, y, z)).isAir()
+							|| level.getBlockState(pos.set(x, y, z + 1)).isAir() || level.getBlockState(pos.set(x, y, z - 1)).isAir();
+					if (aire) {
+						level.setBlock(pos.set(x, y, z), encima.is(Blocks.GRASS_BLOCK) ? Blocks.DIRT.defaultBlockState() : encima, 2);
+					}
+				}
+			}
+		}
+	}
+
 	private void columna(WorldGenLevel level, BoundingBox caja, BlockPos.MutableBlockPos pos, int x, int z, int t) {
 		SueloNatural.tala(level, caja, x, z);
 		BlockState s = SueloNatural.superficie(level, pos, x, z);
