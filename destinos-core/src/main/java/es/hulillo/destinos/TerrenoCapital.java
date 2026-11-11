@@ -227,7 +227,43 @@ final class TerrenoCapital {
 		}
 	}
 
+	/** El suelo de las calles ya trazadas en una capital en terrazas, por columna. */
+	private final java.util.Map<Long, Integer> calzada = new java.util.HashMap<>();
+
+	/**
+	 * En una capital en terrazas, apunta el suelo de una calle ya trazada (sus puntos c, a las alturas y, con medio
+	 * ancho radio): las calles que se tracen después y salgan de ella o la crucen empiezan a su altura. Sin esto, cada
+	 * una se ponía a la del bancal de su punta y en el cruce quedaba un tajo de hasta medio escalón.
+	 */
+	void calzada(List<int[]> c, int[] y, double radio) {
+		if (!terrazas) {
+			return;
+		}
+		int m = (int) Math.ceil(radio) + 1;
+		for (int k = 0; k + 1 < c.size(); k++) {
+			int[] a = c.get(k);
+			int[] b = c.get(k + 1);
+			double dx = b[0] - a[0];
+			double dz = b[1] - a[1];
+			double l2 = dx * dx + dz * dz;
+			for (int x = Math.min(a[0], b[0]) - m; x <= Math.max(a[0], b[0]) + m; x++) {
+				for (int z = Math.min(a[1], b[1]) - m; z <= Math.max(a[1], b[1]) + m; z++) {
+					double t = l2 == 0 ? 0 : Math.clamp(((x - a[0]) * dx + (z - a[1]) * dz) / l2, 0, 1);
+					if (Math.hypot(a[0] + t * dx - x, a[1] + t * dz - z) <= radio + 1) {
+						calzada.putIfAbsent(Geo.clave(x, z), (int) Math.floor(y[k] + t * (y[k + 1] - y[k])));
+					}
+				}
+			}
+		}
+	}
+
 	private int pisado(int x, int z) {
+		if (!calzada.isEmpty()) {
+			Integer calle = calzada.get(Geo.clave(x, z));
+			if (calle != null) {
+				return calle;
+			}
+		}
 		for (int[] p : pisadas) {
 			if (x >= p[0] && x <= p[2] && z >= p[1] && z <= p[3]) {
 				return p[4];

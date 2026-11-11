@@ -663,6 +663,7 @@ public class EstructuraCapital extends Structure {
 		long dentroPlaza = (long) (AdornoCapital.PLAZA / 2) * (AdornoCapital.PLAZA / 2);
 		for (List<int[]> c : lista) {
 			int[] y = perfil(terreno, c);
+			terreno.calzada(c, y, radio);
 			for (int k = 0; k + 1 < c.size(); k++) {
 				int[] a = c.get(k);
 				int[] b = c.get(k + 1);
@@ -701,6 +702,7 @@ public class EstructuraCapital extends Structure {
 			maximo = Math.max(maximo, Math.abs(y[k] - terreno0));
 		}
 		maximo = Math.max(maximo, Math.abs(arriba - terreno.alto(c.get(n - 1)[0], c.get(n - 1)[1]))) + 2;
+		terreno.calzada(c, y, ANCHO_PRINCIPAL);
 		for (int k = 0; k + 1 < n; k++) {
 			int[] a = c.get(k);
 			int[] b = c.get(k + 1);
