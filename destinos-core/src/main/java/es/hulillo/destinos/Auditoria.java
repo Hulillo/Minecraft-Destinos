@@ -98,9 +98,20 @@ final class Auditoria {
 	private void fallo(String que, int x, int y, int z, String detalle) {
 		suma(que);
 		List<String> l = sitios.computeIfAbsent(que, k -> new ArrayList<>());
-		if (l.size() < EJEMPLOS) {
+		// los primeros y luego uno de cada veinte: que los ejemplos no sean todos del mismo rincón
+		int n = cuenta.getOrDefault(que, 0);
+		if (l.size() < 2 || n % 20 == 0 && l.size() < EJEMPLOS + 6) {
 			l.add(x + " " + y + " " + z + detalle);
 		}
+	}
+
+	/** Los bloques de la columna (x, z) desde y hacia arriba, para ver qué hay donde algo no cuadra. */
+	private String pila(int x, int y, int z, int cuantos) {
+		StringBuilder b = new StringBuilder();
+		for (int k = 0; k < cuantos; k++) {
+			b.append(k == 0 ? "" : " ").append(nombre(x, y + k, z));
+		}
+		return b.toString();
 	}
 
 	private String nombre(int x, int y, int z) {
@@ -360,7 +371,7 @@ final class Auditoria {
 					}
 				}
 				if (Math.abs(h - y) > LEJOS) {
-					fallo("calles.lejos_del_plano", x, h, z, " (plano " + y + ", " + nombre(x, h, z) + bancal(x, z) + ")");
+					fallo("calles.lejos_del_plano", x, h, z, " (plano " + y + ", " + nombre(x, h, z) + bancal(x, z) + ", de plano-1 arriba: " + pila(x, y - 1, z, 8) + ")");
 					antes = Integer.MIN_VALUE;
 					continue;
 				}
