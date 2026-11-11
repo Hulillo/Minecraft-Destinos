@@ -82,11 +82,26 @@ final class SueloNatural {
 				// también en los chunks de al lado (se pueden tocar al decorar): si no, medio árbol se quedaba en el aire
 				if (Math.abs(q.getX() - caja.getCenter().getX()) <= 23 && Math.abs(q.getZ() - caja.getCenter().getZ()) <= 23
 						&& Math.abs(q.getX() - x) <= RADIO_TALA && Math.abs(q.getZ() - z) <= RADIO_TALA
-						&& deArbol(c) && (deTronco || !c.is(BlockTags.LOGS)) && visto.add(q)) {
+						&& deArbol(c) && (deTronco || !c.is(BlockTags.LOGS)) && !(c.is(BlockTags.LOGS) && d.getAxis().isHorizontal() && !enTierra(level, q))
+						&& visto.add(q)) {
 					cola.add(q);
 				}
 			}
 		}
+	}
+
+	/**
+	 * Si la pila de troncos de q sale de la tierra (un árbol). La empalizada de una capital pobre también es de troncos,
+	 * pero va sobre su zapata: un árbol pegado a ella, al talarlo, se llevaba nueve bloques de muralla.
+	 */
+	private static boolean enTierra(WorldGenLevel level, BlockPos q) {
+		BlockPos.MutableBlockPos m = q.mutable();
+		BlockState b = level.getBlockState(m);
+		while (b.is(BlockTags.LOGS) && m.getY() > level.getMinY()) {
+			m.move(0, -1, 0);
+			b = level.getBlockState(m);
+		}
+		return natural(b) || b.isAir() || deArbol(b);
 	}
 
 	/** Un abeto gigante pasa de mil bloques entre tronco y copa: con menos, quedaba medio árbol flotando. */
