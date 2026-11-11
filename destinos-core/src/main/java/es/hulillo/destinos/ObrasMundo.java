@@ -249,7 +249,7 @@ public final class ObrasMundo {
 
 	/**
 	 * Cimiento bajo una casa ya puesta: bajo cada columna de su suelo (lo más bajo de la casa en los dos primeros
-	 * bloques de su caja), hasta tocar suelo firme, a través de aire o agua. Un río que excava después, o una orilla,
+	 * bloques de su caja, no más arriba), hasta tocar suelo firme, a través de aire o agua. Un río que excava después, o una orilla,
 	 * la dejaban colgando. De tierra bajo el césped del jardín; de piedra bajo lo demás.
 	 */
 	private static void cimienta(WorldGenLevel region, BoundingBox b, BoundingBox caja) {
@@ -258,7 +258,9 @@ public final class ObrasMundo {
 			for (int z = Math.max(b.minZ(), caja.minZ()); z <= Math.min(b.maxZ(), caja.maxZ()); z++) {
 				int pie = Integer.MIN_VALUE;
 				net.minecraft.world.level.block.state.BlockState base = null;
-				for (int y = b.minY(); y <= b.minY() + 2 && pie == Integer.MIN_VALUE; y++) {
+				// solo lo que está abajo del todo: un alero o un dintel dos bloques más arriba no es suelo (en las casas cuya
+				// caja empieza a la altura de la puerta, se rellenaba de piedra el hueco de delante de la puerta)
+				for (int y = b.minY(); y <= b.minY() + 1 && pie == Integer.MIN_VALUE; y++) {
 					net.minecraft.world.level.block.state.BlockState s = region.getBlockState(pos.set(x, y, z));
 					if (!s.isAir() && !s.canBeReplaced() && s.getFluidState().isEmpty()) {
 						pie = y;
