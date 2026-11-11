@@ -290,11 +290,10 @@ public final class TerrazaCapital extends StructurePiece {
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
 		for (int x = Math.max(mia.minX(), caja.minX()); x <= Math.min(mia.maxX(), caja.maxX()); x++) {
 			for (int z = Math.max(mia.minZ(), caja.minZ()); z <= Math.min(mia.maxZ(), caja.maxZ()); z++) {
-				int t = bancal(x, z);
-				if (t == SIN) {
-					continue;
-				}
-				for (int y = t - 6; y <= t + MAXIMO; y++) {
+				// también en las columnas que los bancales no tocan (un cortado, una calle sobre un puente): el manantial
+				// de la pared de un monte acababa igual calle abajo
+				int cima = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE_WG, x, z);
+				for (int y = cima - 24; y <= cima; y++) {
 					if (!level.getFluidState(pos.set(x, y, z)).isSource()) {
 						continue;
 					}
